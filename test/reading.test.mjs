@@ -85,11 +85,14 @@ test('R.F14: the reader refused a transcript too large, on its screen, with the 
       assert.equal(r.status, 0, r.stderr);
       return JSON.parse(r.stdout.trim().split('\n').pop()).map((l) => l.trimEnd());
     };
+    // the refusal, on the lines under the view's second, to the first blank one, joined as the screen wrapped it (by
+    // words: R5, a long TMPDIR put the path's last word on a line of its own)
+    const refusal = (lines) => { const out = []; for (const l of lines.slice(2)) { if (l.trim() === '') break; out.push(l.trim()); } return out.join(' '); };
     const file = run(['big.jsonl']);
     assert.equal(file[1], 'this transcript could not be read', JSON.stringify(file));
-    assert.match(file[2], /is not read: it is 13 MB, .* NODE_OPTIONS=--max-old-space-size=\d+ npx ltms-reader big\.jsonl$/);
+    assert.match(refusal(file), /is not read: it is 13 MB, .* NODE_OPTIONS=--max-old-space-size=\d+ npx ltms-reader big\.jsonl$/);
     const root = run(['projects'], ['\r', '\r']);
     assert.equal(root[1], 'this transcript could not be read', JSON.stringify(root));
-    assert.match(root[2], /is not read: it is 13 MB, .* NODE_OPTIONS=--max-old-space-size=\d+ npx ltms-reader projects$/);
+    assert.match(refusal(root), /is not read: it is 13 MB, .* NODE_OPTIONS=--max-old-space-size=\d+ npx ltms-reader projects$/);
   } finally { rmSync(own, { recursive: true, force: true }); }
 });
