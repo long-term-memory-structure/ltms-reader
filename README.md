@@ -98,8 +98,11 @@ pasted acts as a key.
   refused with its size and the `NODE_OPTIONS=--max-old-space-size=...` that would let it be read (the rule ltms's
   commands follow, so the lists and the reader agree on which files can be read); one over 480 MB cannot be read at all.
 - A record is shown when its view (up to 16 times the record's size) fits beside the transcript's (up to 8 times the
-  file's) in nine tenths of Node's memory limit; a larger one is refused before it is drawn, with its size and the
-  `NODE_OPTIONS` that would show it. Its lines are laid out a page at a time.
+  file's) in nine tenths of Node's memory limit, and so does the JSON the view writes of it, with 96 MB beside it: JSON
+  is indented once more at each level a value is nested in, so that a record nested deep writes JSON hundreds of times
+  its size (a list nested 990 deep, on a line of 0.8 MB: 381 MB). That JSON is measured by walking the record, before
+  any of it is written. A record that does not fit is refused before it is drawn, with its size and the `NODE_OPTIONS`
+  that would show it. Its lines are laid out a page at a time.
 - The screen runs in a process of its own, which the command waits for. If that process ends without restoring the
   terminal (Node's memory running out aborts it), the command restores it, then prints what Node said and what happened.
   An error in the command's own process (a module loaded through `NODE_OPTIONS` or `--import` that throws, say) ends the

@@ -8,7 +8,7 @@
 // after a frame that says which file is being read.
 import { recordTooLarge } from './reading.mjs';
 import { clusters } from './text.mjs';
-import { recordIndexAt, recordView } from './view.mjs';
+import { recordIndexAt, recordView, recordViewBytes } from './view.mjs';
 import { bodyHeight, coverageText, headOf, recordLines, render, top, topOf } from './views.mjs';
 
 /** An address as ltms prints it: a prefix (8 characters of a session's file name, or agent- and 8 of an agent's id)
@@ -200,13 +200,15 @@ export class App {
   }
 
   /** Push the record on a line: refused, before anything of it is laid out, when its view would not fit in this
-   *  process's memory beside the transcript's parse (src/reading.mjs recordTooLarge): the view says so, with the
-   *  NODE_OPTIONS that would let it be shown. */
+   *  process's memory beside the transcript's parse (src/reading.mjs recordTooLarge), by its line's size, then by the
+   *  JSON its view would write, measured by walking the record (view.mjs recordViewBytes, N3; walked only when its line
+   *  passes): the view says so, with the NODE_OPTIONS that would let it be shown. */
   pushRecord(project, file, doc, line) {
     const i = recordIndexAt(doc.t, line);
     if (i === undefined) { this.note(`no record was parsed on line ${line} of ${doc.name}: the line is blank, not a JSON object, or past the end of the file`, true); return null; }
     const a = `${doc.prefix}:L${line}`;
-    const why = recordTooLarge(doc.t.positions[i].bytes, doc.size, this.source.reading?.heapLimit, this.source.reading?.again);
+    const { heapLimit, again } = this.source.reading ?? {}, bytes = doc.t.positions[i].bytes;
+    const why = recordTooLarge(bytes, doc.size, heapLimit, again) ?? recordTooLarge(bytes, doc.size, heapLimit, again, recordViewBytes(doc.t, line));
     if (why) return this.push({ kind: 'record', project, file, doc, line, a, rec: null, json: false, error: `${a} is not shown: ${why}` });
     const rec = recordView(doc.t, line, { name: doc.name, whole: true });
     return this.push({ kind: 'record', project, file, doc, line, a, rec, json: false });

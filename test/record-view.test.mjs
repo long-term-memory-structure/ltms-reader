@@ -15,7 +15,7 @@ import { FileSource } from '../src/sources.mjs';
 import { againOf } from '../src/start.mjs';
 import { expandTabs, fit, visible, wrap } from '../src/text.mjs';
 import { recordLines, top } from '../src/views.mjs';
-import { KEY, keyboard, plainOf } from './helpers.mjs';
+import { KEY, deepRecord, keyboard, plainOf } from './helpers.mjs';
 
 /** The lines as the record view made them whole before (44b868f's recordLines, its wrap cutting the same places). */
 function whole(rec, json, cols) {
@@ -126,5 +126,91 @@ test('R.F1: a record too large for this process\'s memory: refused before it is 
       await keys.press(KEY.escape);
       assert.equal(top(app.state).kind, 'turn');
     } finally { app.dispose(); source.dispose(); }
+  } finally { rmSync(own, { recursive: true, force: true }); }
+});
+
+// ---- N3 (S377): a record nested deep -----------------------------------------------------------------------------------
+// The record view writes the record as JSON (json(r, 1)) and the parts it shows as JSON (json(.., 2)) whole before it
+// clips them, and JSON's indentation grows with depth: the checker's list nested 990 deep, a line of 0.8 MB, wrote
+// 399,389,570 units, and at --max-old-space-size=256 the heap ran out. The rule now weighs what the view builds, measured
+// by walking the record (view.mjs recordViewBytes), beside the 16 times its line.
+test('N3: a record nested 990 deep, its line small, its JSON large: refused before it is laid out, with its size and the NODE_OPTIONS that would show it; at that setting, shown', async () => {
+  const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-deep-'));
+  try {
+    const file = path.join(own, 'dddddddd-0000-4000-8000-000000000000.jsonl');
+    deepRecord(file, 990, 20_000);
+    const open = async (heapLimit) => {
+      const source = new FileSource({ file, heapLimit, again: againOf('deep.jsonl') });
+      const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC' });
+      const keys = keyboard(app);
+      try {
+        app.start(); await app.idle();
+        await keys.press(KEY.enter); await keys.press(KEY.down); await keys.press(KEY.down);
+        assert.match(plainOf(app.lines()).find((l) => l.startsWith('> ')) ?? '', /^> dddddddd:L3 +result /, 'the result selected');
+        await keys.press(KEY.enter);
+        const v = top(app.state);
+        return { v, lines: plainOf(app.lines()).map((l) => l.trimEnd()) };
+      } finally { app.dispose(); source.dispose(); }
+    };
+    // a heap limit of 160 MB for the rule: the line (about 42 KB) passes 16 times its size; its JSON does not fit
+    const { v, lines } = await open(160 * MB);
+    assert.equal(v.kind, 'record');
+    assert.ok(v.rec === null, `nothing of the record was laid out: ${lines[1]}`);
+    const said = lines.slice(2, lines.indexOf('', 2)).map((l) => l.trim()).join(' ');
+    assert.match(said, /^dddddddd:L3 is not shown: it is \d+ KB, and its view would write \d+ MB of JSON .*To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=\d+ npx ltms-reader deep\.jsonl$/, said);
+    const need = Number(/--max-old-space-size=(\d+)/.exec(said)[1]);
+    const shown = await open(need * MB);
+    assert.ok(shown.v.rec, `shown at the ${need} MB it names`);
+  } finally { rmSync(own, { recursive: true, force: true }); }
+});
+
+test('N3: what the record view builds, measured by a walk that builds no string, is what it builds: over the fixtures\' records and deep ones', async () => {
+  const V = await import('../src/view.mjs');
+  assert.equal(typeof V.recordViewBytes, 'function', 'view.mjs measures what recordView builds');
+  const { parseTranscript } = await import('#ltms');
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-deep-'));
+  try {
+    for (const [d, n] of [[990, 2000], [300, 5000], [1, 3]]) deepRecord(path.join(own, `deep-${d}-${n}.jsonl`), d, n);
+    const FXS = [path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures'), path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures', 'ltms'), own];
+    let records = 0;
+    for (const dir of FXS) for (const f of readdirSync(dir).filter((x) => x.endsWith('.jsonl'))) {
+      const t = parseTranscript(readFileSync(path.join(dir, f), 'utf8'));
+      for (let i = 0; i < t.records.length; i++) {
+        const line = t.positions[i].line;
+        if (V.recordIndexAt(t, line) !== i) continue;
+        const r = t.records[i];
+        // what is written, by JSON.stringify here: the record at indent 1, each part shown as JSON at indent 2
+        const bytes = (s) => (s === undefined ? 0 : s.length > 536_870_888 ? 0 : s.length * (/[^\u0000-ÿ]/.test(s) ? 2 : 1));
+        let want = bytes(JSON.stringify(r, null, 1));
+        for (const p of V.partsOf(r)) if (p.json !== undefined) want += bytes(JSON.stringify(p.json, null, p.indent));
+        assert.equal(V.recordViewBytes(t, line), want, `${f}:L${line}`);
+        // and the view writes those: its JSON whole is the raw's text and what it left out
+        const rec = V.recordView(t, line, { name: f, whole: true });
+        assert.equal(rec.raw.text.length + rec.raw.more, JSON.stringify(r, null, 1).length, `${f}:L${line}: the record's JSON`);
+        records++;
+      }
+    }
+    assert.ok(records > 100, `${records} records`);
+  } finally { rmSync(own, { recursive: true, force: true }); }
+});
+
+test("N3: the checker's record (a list nested 990 deep, 400,000 ones): its view's JSON measured at 399,389,570 bytes (the structured part, 796,770,118 units, past JavaScript's limit, is never written and counts nothing); refused at --max-old-space-size=256, 768 named", async () => {
+  const V = await import('../src/view.mjs');
+  const { parseTranscript } = await import('#ltms');
+  const { readFileSync } = await import('node:fs');
+  const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-deep-'));
+  try {
+    const file = path.join(own, 'deep.jsonl');
+    deepRecord(file, 990, 400_000);
+    const text = readFileSync(file, 'utf8'), t = parseTranscript(text);
+    assert.deepEqual(V.jsonSize(t.records[2], 1), { units: 399_389_570, wide: false });
+    assert.deepEqual(V.jsonSize(t.records[2].toolUseResult, 2), { units: 796_770_118, wide: false });
+    assert.ok(796_770_118 > V.STRING_MAX_UNITS);
+    assert.equal(V.recordViewBytes(t, 3), 399_389_570);
+    // Node's heap limit at --max-old-space-size=256 is 352 MB (measured)
+    const why = recordTooLarge(t.positions[2].bytes, Buffer.byteLength(text), 352 * MB, 'npx ltms-reader deep.jsonl', V.recordViewBytes(t, 3));
+    assert.equal(why, "it is 784 KB, and its view would write 381 MB of JSON (indented, as JSON is, once more at each level a value is nested in), which with what the view needs beside it (96 MB) does not fit beside the transcript's parse in nine tenths of the memory limit. To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=768 npx ltms-reader deep.jsonl");
+    assert.equal(recordTooLarge(t.positions[2].bytes, Buffer.byteLength(text), 768 * MB, 'x', V.recordViewBytes(t, 3)), null, 'shown at the setting named');
   } finally { rmSync(own, { recursive: true, force: true }); }
 });

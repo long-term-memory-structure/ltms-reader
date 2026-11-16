@@ -215,30 +215,109 @@ export function turnItems(input, { name, ta }) {
   return turn ? { items: turn.items.slice(0, CAPS.oneTurn), total: turn.items.length } : null;
 }
 
-/** The parts of a record a person reads, each clipped at `perPart` units: its text blocks, thinking, tool calls (their
- *  input as JSON), tool results, a system record's content, an attachment. */
-export function readingOf(r, perPart) {
+/** The parts of a record a person reads, before any is written out: its text blocks, thinking, tool calls (their input
+ *  as JSON), tool results, a system record's content, an attachment. Each is { kind, label, text }, or, for a part shown
+ *  as JSON, { kind, label, json: the value, indent }: readingOf writes it, recordViewBytes measures it. */
+export function partsOf(r) {
   const parts = [];
-  const add = (kind, label, text) => parts.push({ kind, label, ...clip(text, perPart) });
+  const add = (kind, label, text) => parts.push({ kind, label, text });
+  const asJson = (kind, label, value) => parts.push({ kind, label, json: value, indent: 2 });
   if (r?.type === 'user' || r?.type === 'assistant') {
     for (const b of blocksOf(r.message)) {
       if (b.type === 'text') add('text', 'text', str(b.text) ?? '');
       else if (b.type === 'thinking') add('thinking', 'thinking', str(b.thinking) ?? '');
       else if (b.type === 'redacted_thinking') add('thinking', 'thinking (redacted)', '');
-      else if (b.type === 'tool_use') add('tool_use', `tool call: ${str(b.name) ?? '(no name)'}`, json(b.input ?? {}, 2));
+      else if (b.type === 'tool_use') asJson('tool_use', `tool call: ${str(b.name) ?? '(no name)'}`, b.input ?? {});
       else if (b.type === 'tool_result') add('tool_result', b.is_error === true ? 'tool result (error)' : 'tool result', Array.isArray(b.content) ? b.content.map((x) => (typeof x?.text === 'string' ? x.text : x?.type === 'image' ? '[image]' : '')).join('\n') : flat(b.content));
       else if (b.type === 'image') add('image', `image (${str(b.source?.media_type) ?? 'unknown type'})`, '');
-      else add('other', `block: ${str(b.type) ?? '(no type)'}`, json(b, 2));
+      else asJson('other', `block: ${str(b.type) ?? '(no type)'}`, b);
     }
-    if (r.type === 'user' && r.toolUseResult !== undefined) add('structured', 'tool result, structured', typeof r.toolUseResult === 'string' ? r.toolUseResult : json(r.toolUseResult, 2));
+    if (r.type === 'user' && r.toolUseResult !== undefined) {
+      if (typeof r.toolUseResult === 'string') add('structured', 'tool result, structured', r.toolUseResult);
+      else asJson('structured', 'tool result, structured', r.toolUseResult);
+    }
   } else if (r?.type === 'system') {
-    add('system', `system: ${str(r.subtype) ?? '(no subtype)'}`, typeof r.content === 'string' ? r.content : json(r, 2));
+    if (typeof r.content === 'string') add('system', `system: ${str(r.subtype) ?? '(no subtype)'}`, r.content);
+    else asJson('system', `system: ${str(r.subtype) ?? '(no subtype)'}`, r);
   } else if (r?.type === 'attachment') {
-    add('attachment', `attachment: ${str(r.attachment?.type) ?? '(no type)'}`, json(r.attachment, 2));
+    asJson('attachment', `attachment: ${str(r.attachment?.type) ?? '(no type)'}`, r.attachment);
   } else {
-    add('other', `record: ${str(r?.type) ?? '(no type)'}`, json(r, 2));
+    asJson('other', `record: ${str(r?.type) ?? '(no type)'}`, r);
   }
   return parts;
+}
+
+/** The parts of a record a person reads (partsOf), each written out and clipped at `perPart` units. */
+export function readingOf(r, perPart) {
+  return partsOf(r).map((p) => ({ kind: p.kind, label: p.label, ...clip(p.json !== undefined ? json(p.json, p.indent) : p.text, perPart) }));
+}
+
+/** JavaScript's limit on a string's length (V8 on 64 bits, Node 20 to 26: 2^29 - 24 units): JSON.stringify of a value
+ *  longer than that throws, and view.mjs's json() writes "(too large to write out)" in its place. */
+export const STRING_MAX_UNITS = 2 ** 29 - 24;
+
+/**
+ * The length of JSON.stringify(v, null, indent), in UTF-16 units, and whether it holds a character past U+00FF (V8 then
+ * keeps the string at two bytes a unit), found by walking v: no string is built. For values JSON.parse gives (undefined
+ * as json() writes it, ''). A string is measured as JSON.stringify escapes it: " and \ and the controls \b \f \n \r
+ * \t as two units, the other controls and a lone surrogate as six. Checked against JSON.stringify over every record of
+ * the fixtures (test/record-view.test.mjs).
+ */
+export function jsonSize(v, indent) {
+  let units = 0, wide = false;
+  const text = (s) => {
+    let n = 2;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c === 0x22 || c === 0x5c) n += 2;
+      else if (c < 0x20) n += c === 8 || c === 9 || c === 10 || c === 12 || c === 13 ? 2 : 6;
+      else if (c >= 0xd800 && c <= 0xdfff) {
+        const next = s.charCodeAt(i + 1);
+        if (c <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) { n += 2; i++; wide = true; } else n += 6;
+      } else { n += 1; if (c > 0xff) wide = true; }
+    }
+    return n;
+  };
+  const leaf = (x) => (x === null ? 4 : typeof x === 'string' ? text(x) : typeof x === 'number' ? (Number.isFinite(x) ? String(x).length : 4) : typeof x === 'boolean' ? (x ? 4 : 5) : -1);
+  // the arrays and objects still to measure, and their depths: a stack, not recursion, and only containers on it
+  const values = [v], depths = [0];
+  if (v === undefined) return { units: 0, wide: false };
+  while (values.length) {
+    const x = values.pop(), d = depths.pop();
+    const l = leaf(x);
+    if (l >= 0) { units += l; continue; }
+    const keys = Array.isArray(x) ? null : Object.keys(x), n = keys ? keys.length : x.length;
+    if (n === 0) { units += 2; continue; }
+    // the brackets; each member after a new line and indent * (d + 1) spaces, an object's after its key and ": "; commas
+    // between; a new line and indent * d spaces before the closing bracket
+    units += n * (1 + indent * (d + 1) + (keys ? 2 : 0)) + (n - 1) + 3 + indent * d;
+    for (let i = 0; i < n; i++) {
+      const y = keys ? x[keys[i]] : x[i];
+      if (keys) units += text(keys[i]);
+      const m = leaf(y);
+      if (m >= 0) units += m;
+      else { values.push(y); depths.push(d + 1); }
+    }
+  }
+  return { units, wide };
+}
+
+/**
+ * What recordView writes of the record on `line` (null when no record was parsed on it), in bytes, measured by walking
+ * it (jsonSize): the record as JSON (indent 1) and each part shown as JSON (indent 2), whole, before they are clipped;
+ * each at one byte a unit, two when it holds a character past U+00FF, as V8 keeps a string; one longer than
+ * STRING_MAX_UNITS is never written (JSON.stringify throws; measured: it holds nothing) and counts nothing. N3: JSON is
+ * indented once more at each level a value is nested in, so that a list nested 990 deep, on a line of 0.8 MB, is written
+ * as 399,389,570 units.
+ */
+export function recordViewBytes(t, line) {
+  const i = recordIndexAt(t, line);
+  if (i === undefined) return null;
+  const r = t.records[i];
+  const bytes = (v, indent) => { const s = jsonSize(v, indent); return s.units > STRING_MAX_UNITS ? 0 : s.units * (s.wide ? 2 : 1); };
+  let n = bytes(r, 1);
+  for (const p of partsOf(r)) if (p.json !== undefined) n += bytes(p.json, p.indent);
+  return n;
 }
 
 /** The record written on `line`: its address, where it sits in the file, what kind of record it is, its reading, and the

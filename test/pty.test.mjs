@@ -9,7 +9,7 @@ import { chmodSync, closeSync, openSync, readFileSync, writeFileSync, writeSync 
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BIN, KEY, OWN, makeRoot } from './helpers.mjs';
+import { BIN, KEY, OWN, deepRecord, makeRoot } from './helpers.mjs';
 
 const SCRIPT = process.platform === 'linux' && spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
 const skip = SCRIPT ? false : 'no `script` here (util-linux, Linux)';
@@ -271,5 +271,27 @@ test('R.F1: the heap run out all the same (planted): the terminal restored by th
     const rest = restoredLast(res.out, 'the abort').replace(/\r\n/g, '\n');
     assert.match(rest, /FATAL ERROR: .*JavaScript heap out of memory/, "V8's report, after the restore");
     assert.match(rest, /ltms-reader: the screen's process ended by SIGABRT, without restoring the terminal; this command restored it\. Node's heap ran out, as it says above: to give it more memory, NODE_OPTIONS=--max-old-space-size=\d+ npx ltms-reader \S+hebrew-english\.jsonl\n$/);
+  } finally { r.dispose(); }
+});
+
+// ---- N3 (S377): a record nested deep, at a small heap -------------------------------------------------------------------
+test("N3: the checker's record nested 990 deep (a line of 0.8 MB) at --max-old-space-size=256: refused before it is drawn, with the setting that shows it; j does nothing; at that setting it is shown, as JSON too", { skip, timeout: 300_000 }, async () => {
+  const r = makeRoot('ltms-reader-pty-');
+  try {
+    const file = path.join(r.base, 'dddddddd-0000-4000-8000-000000000000.jsonl');
+    deepRecord(file, 990, 400_000);
+    const toResult = [{ until: '> dddddddd:T001', send: KEY.enter }, { until: 'Turn dddddddd:T001', send: KEY.down + KEY.down }, { until: /> dddddddd:L3 +result/, send: KEY.enter }];
+    const res = await ptyRun(r, { args: [file], env: { NODE_OPTIONS: '--max-old-space-size=256' }, wait: 120_000, steps: [...toResult, { until: /this record is not shown|Record dddddddd:L3/, send: 'j' }, { until: /this record is not shown|as JSON/, send: 'q' }] });
+    assert.equal(res.exit, 0, `q quits with 0; the terminal received, last: ${JSON.stringify(res.out.slice(-400))}`);
+    assert.equal(res.after, res.before, 'stty -g after = before');
+    const shown = readerPart(res.out).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\s+/g, '');
+    assert.ok(shown.includes('dddddddd:L3isnotshown:itis784KB,anditsviewwouldwrite'), 'its size, and what its view would write');
+    const need = /NODE_OPTIONS=--max-old-space-size=(\d+)npxltms-reader(\S+?)ltms-reader/.exec(shown) ?? /NODE_OPTIONS=--max-old-space-size=(\d+)npxltms-reader/.exec(shown);
+    assert.ok(need, 'the setting that shows it');
+    assert.ok(shown.includes(`NODE_OPTIONS=--max-old-space-size=${need[1]}npxltms-reader${file}`), 'with the path given');
+    assert.equal(restoredLast(res.out, 'q').replace(/\r?\n/g, ''), '', 'nothing after the restore');
+    const again = await ptyRun(r, { args: [file], env: { NODE_OPTIONS: `--max-old-space-size=${need[1]}` }, wait: 120_000, steps: [...toResult, { until: 'Record dddddddd:L3', send: 'j' }, { until: 'as JSON', send: 'q' }] });
+    assert.equal(again.exit, 0, `at ${need[1]}: shown, as JSON, and q quits with 0`);
+    assert.equal(again.after, again.before, 'stty -g after = before');
   } finally { r.dispose(); }
 });

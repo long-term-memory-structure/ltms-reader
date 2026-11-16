@@ -28,8 +28,9 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   out); a measurement on the screens decides whether a reader-side layout is needed.
 - A transcript is read in the reader's own process; one over a tenth of Node's memory limit is refused with its size
   and the `NODE_OPTIONS` that would let it be read, in the command that was run, the path given included. A record is
-  refused the same way when its view would not fit beside the transcript in Node's memory, and its lines are laid out a
-  page at a time. The screen runs in a process of its own: when it ends without restoring the terminal (Node's memory
+  refused the same way when its view would not fit beside the transcript in Node's memory, by its size and by the JSON
+  its view would write (measured by walking the record, before any is written: a record nested deep writes JSON
+  hundreds of times its size), and its lines are laid out a page at a time. The screen runs in a process of its own: when it ends without restoring the terminal (Node's memory
   ran out), the command restores it, and exits with 128 and the signal's number; an error in the command's own process
   ends the screen by its own way out first, and is printed after the restore (exit 1); when the command's own process
   is killed, the screen's process learns of it, restores the terminal and ends.

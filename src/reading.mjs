@@ -43,20 +43,29 @@ export const PARSE_PER_BYTE = 8;
  *  that holds one character outside Latin-1 takes two bytes a character, so up to 12; this is that with a margin. */
 export const RECORD_VIEW_PER_BYTE = 16;
 
+/** What a record's view needs beside the JSON it writes (N3), measured: over six records nested deep (lists 200 to 990
+ *  deep, one of Hebrew strings), the view opened, its text and its JSON laid out, at an old space of 9 to 24 MB more
+ *  than that JSON (recordViewBytes); Node's heap limit, which this rule reads, is the old space and 96 MB more. */
+export const BUILT_MARGIN = 96 * MB;
+
 /**
  * Why the record written on a line of `bytes` bytes, in a transcript of `fileSize` bytes, is not shown here (with the
  * NODE_OPTIONS that would let it be, before `again`, the command that was run), or null when it is shown: its view, at
  * RECORD_VIEW_PER_BYTE times its size, must fit beside the transcript's parse, at PARSE_PER_BYTE times the file's size,
  * in nine tenths of the heap limit (R.F1: a record a transcript's size allowed ran Node's heap out, and the abort left
- * the terminal raw).
+ * the terminal raw); and so must the JSON the view writes of it, `built` bytes (view.mjs recordViewBytes), and
+ * BUILT_MARGIN (N3: a record nested deep, its line small, wrote JSON hundreds of times its size, and ran the heap out).
  */
-export function recordTooLarge(bytes, fileSize, heapLimit = getHeapStatistics().heap_size_limit, again = 'npx ltms-reader') {
+export function recordTooLarge(bytes, fileSize, heapLimit = getHeapStatistics().heap_size_limit, again = 'npx ltms-reader', built = 0) {
   const room = 0.9 * heapLimit - PARSE_PER_BYTE * fileSize;
   const limit = Math.max(0, Math.floor(room / RECORD_VIEW_PER_BYTE));
-  if (bytes <= limit) return null;
-  const need = Math.ceil(Math.max(10 * fileSize, (PARSE_PER_BYTE * fileSize + RECORD_VIEW_PER_BYTE * bytes) / 0.9) / MB / 256) * 256;
   const size = (n, round) => (n < MB ? `${round(n / 1024).toLocaleString('en-US')} KB` : `${round(n / MB).toLocaleString('en-US')} MB`);
-  return `it is ${size(bytes, Math.ceil)}, and in a transcript of ${size(fileSize, Math.ceil)} this process shows a record of up to ${size(limit, Math.floor)} (its view takes up to ${RECORD_VIEW_PER_BYTE} times a record's size, the transcript's parse up to ${PARSE_PER_BYTE} times the file's, both within nine tenths of the memory limit). To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need} ${again}`;
+  // the setting at which both fit: its old space alone (Node's limit is that and more), and a tenth of it for the transcript
+  const need = (view) => Math.ceil(Math.max(10 * fileSize, (PARSE_PER_BYTE * fileSize + view) / 0.9) / MB / 256) * 256;
+  const view = Math.max(RECORD_VIEW_PER_BYTE * bytes, built > 0 ? built + BUILT_MARGIN : 0);
+  if (bytes > limit) return `it is ${size(bytes, Math.ceil)}, and in a transcript of ${size(fileSize, Math.ceil)} this process shows a record of up to ${size(limit, Math.floor)} (its view takes up to ${RECORD_VIEW_PER_BYTE} times a record's size, the transcript's parse up to ${PARSE_PER_BYTE} times the file's, both within nine tenths of the memory limit). To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need(view)} ${again}`;
+  if (built > 0 && built + BUILT_MARGIN > room) return `it is ${size(bytes, Math.ceil)}, and its view would write ${size(built, Math.ceil)} of JSON (indented, as JSON is, once more at each level a value is nested in), which with what the view needs beside it (${size(BUILT_MARGIN, Math.ceil)}) does not fit beside the transcript's parse in nine tenths of the memory limit. To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need(view)} ${again}`;
+  return null;
 }
 
 /**
