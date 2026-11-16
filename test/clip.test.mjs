@@ -76,3 +76,52 @@ test('R.F4: a call\'s input cut by the clip: its row ends with …, after a whol
     }
   } finally { rmSync(own, { recursive: true, force: true }); }
 });
+
+// ---- N4 (S377): a cluster longer than the window clip looked back over -------------------------------------------------
+// clip found a cut by segmenting the 512 units before its limit as if they began a text: a cluster that began before them
+// was cut inside (the checker's 'x', 'a' with 2,000 combining acute accents, 'y': cut at 988 for 1,500), and so is any
+// cluster whose rules look back past such a window: an emoji ZWJ sequence (GB11), an Indic conjunct (GB9c), a run of
+// regional indicators, which pair from the run's start (GB12, GB13). Each is checked at every limit, against the
+// boundaries of the whole text, segmented from its start here.
+const LONG = {
+  "the checker's: 'x', 'a' with 2,000 combining acute accents, 'y'": `x${'a'}${'́'.repeat(2000)}y`,
+  'an emoji ZWJ sequence of 300 people': `x${cp(0x1f468)}${`‍${cp(0x1f468)}`.repeat(300)}y`,
+  'an Indic conjunct of 401 consonants (ka, virama)': `x${'क'}${'्क'.repeat(400)} y`,
+  '801 regional indicators, then a word': `x${cp(0x1f1e6).repeat(801)}word`,
+  '601 regional indicators after 700 letters': `${'b'.repeat(700)}${cp(0x1f1e6).repeat(601)}c`,
+  // a Prepend character written as a surrogate pair (U+110BD) joins the letter after it (GB9b)
+  'the Kaithi number sign before each of 300 letters': `x${`${cp(0x110bd)}a`.repeat(300)}`,
+  // the copyright sign is an emoji (Extended_Pictographic) and joins after a ZWJ (GB11): one cluster of 601 units
+  'a man, then 300 times ZWJ and the copyright sign': `x${cp(0x1f468)}${'‍©'.repeat(300)}y`,
+};
+test('N4: clip never cuts inside a cluster longer than any window: the last boundary at or before its limit, of the whole text', () => {
+  for (const [what, s] of Object.entries(LONG)) {
+    const b = boundaries(s);
+    for (let n = 0; n <= s.length + 2; n++) {
+      const r = clip(s, n);
+      assert.ok(b.has(r.text.length), `${what} at ${n}: cut inside a cluster, at ${r.text.length}`);
+      const next = Math.min(...[...b].filter((x) => x > r.text.length));
+      if (r.text.length < s.length) assert.ok(next > n, `${what} at ${n}: the cluster up to ${next} would have fit`);
+      assert.equal(r.more, s.length - r.text.length, `${what} at ${n}: what is left`);
+    }
+  }
+});
+
+test('N4: clip on texts made of the characters that join (marks, ZWJ, emoji, regional indicators, Indic, Hangul, CR LF, Prepend) and long runs of them: always the whole text\'s last boundary at or before the limit', () => {
+  // a fixed sequence of pseudo-random numbers, so that a failure can be run again
+  let seed = 377;
+  const rnd = (k) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % k; };
+  // the Prepend characters U+0600 (Arabic) and U+110BD (Kaithi, a surrogate pair) join the character after them, ASCII too
+  const atoms = ['a', ' ', 'x', '-', '\n', '\r', '\r\n', '́', 'ָ', 'ש', 'ب', '‍', cp(0x1f468), cp(0x1f1ee), cp(0x1f1f1), '️', 'क', '्', '؀', cp(0x110bd), 'ᄀ', 'ᅡ', 'ᆨ', '가', 'é', '漢', cp(0x1f44d), cp(0x1f3fd), 'ำ', 'ः', '©'];
+  for (let i = 0; i < 300; i++) {
+    let s = '';
+    while (s.length < 1500) { const a = atoms[rnd(atoms.length)]; s += a.repeat(rnd(4) === 0 ? 1 + rnd(400) : 1); }
+    const b = boundaries(s);
+    for (let j = 0; j < 12; j++) {
+      const n = rnd(s.length + 1);
+      const r = clip(s, n);
+      const want = Math.max(...[...b].filter((x) => x <= n));
+      assert.equal(r.text.length, want, `text ${i} (seed 377), at ${n}: the last boundary at or before it is ${want}`);
+    }
+  }
+});

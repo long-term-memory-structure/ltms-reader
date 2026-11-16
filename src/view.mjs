@@ -23,21 +23,48 @@ export const prefixOf = (name) => (name.startsWith('agent-') ? `agent-${name.sli
 export const flat = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (typeof x === 'string' ? x : typeof x?.text === 'string' ? x.text : '')).join('\n') : '');
 
 const GRAPHEMES = typeof Intl?.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
-/** How far back from a limit a cluster's start is looked for: a cluster longer than this is cut where it is found. */
-const LOOK_BACK = 512;
 
-/** At most n UTF-16 units of s, cut where a grapheme cluster begins (R.F4: a cut by units alone left a pointed letter
- *  without some of its marks, and the page and the screen drew it so), and how many units were left out. The clusters
- *  are found in the units around n only, so a long text is not segmented whole. Without Intl.Segmenter, never inside a
- *  surrogate pair. */
+/** Whether the code point that ends at p, and the printable ASCII character at p, are two grapheme clusters: they are
+ *  unless the first is a Prepend character (UAX #29, GB9b, the one rule that joins anything to a printable ASCII
+ *  character after it), and ICU, asked of the two alone, knows which are; there is none below U+0600. */
+function splitsBefore(s, p) {
+  const b = s.charCodeAt(p - 1);
+  if (b < 0x0600) return true;
+  const from = b >= 0xdc00 && b <= 0xdfff && p >= 2 && s.charCodeAt(p - 2) >= 0xd800 && s.charCodeAt(p - 2) <= 0xdbff ? p - 2 : p - 1;
+  let n = 0;
+  for (const _ of GRAPHEMES.segment(s.slice(from, p + 1))) n++;
+  return n === 2;
+}
+
+/** A grapheme cluster boundary at or before k, found by the characters around it: after a line feed (GB4), or before a
+ *  printable ASCII character that does not join what is before it (splitsBefore); else the text's start. The rules that
+ *  look back over characters (GB9c, GB11, GB12, GB13) stop at a printable ASCII character and at a line feed, so that
+ *  the text segmented from such a place has the boundaries after it that the whole text has (N4; both places measured
+ *  with ICU 78 over every code point). */
+function boundaryAtOrBefore(s, k) {
+  for (let p = k; p > 0; p--) {
+    if (s.charCodeAt(p - 1) === 0x0a) return p;
+    const c = s.charCodeAt(p);
+    if (c >= 0x20 && c <= 0x7e && splitsBefore(s, p)) return p;
+  }
+  return 0;
+}
+
+/** At most n UTF-16 units of s, cut at the last grapheme cluster boundary at or before n (R.F4: a cut by units alone
+ *  left a pointed letter without some of its marks, and the page and the screen drew it so), and how many units were
+ *  left out. The boundaries are those of the whole text: it is segmented from a boundary found at or before n by the
+ *  characters around it (boundaryAtOrBefore), the start of a line or a word as a rule, else from its start (N4: the 512
+ *  units before n, segmented as if they began a text, cut inside any cluster longer than that, and inside an emoji
+ *  sequence, an Indic conjunct or a run of regional indicators that began before them; segmenting every text from its
+ *  start made opening R's 14 MB record 1.6 s, from 60 ms). Without Intl.Segmenter, never inside a surrogate pair. */
 export function clip(s, n) {
   if (typeof s !== 'string') return { text: '', more: 0 };
   if (s.length <= n) return { text: s, more: 0 };
   let k = Math.max(0, n);
   if (GRAPHEMES) {
-    const from = Math.max(0, k - LOOK_BACK);
+    const from = boundaryAtOrBefore(s, k);
     let last = from;
-    for (const { index } of GRAPHEMES.segment(s.slice(from, Math.min(s.length, k + 16)))) { if (from + index > k) break; last = from + index; }
+    for (const { index } of GRAPHEMES.segment(s.slice(from, k + 16))) { if (from + index > k) break; last = from + index; }
     k = last;
   } else {
     const c = s.charCodeAt(k - 1);
