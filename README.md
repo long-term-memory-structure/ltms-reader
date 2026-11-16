@@ -139,5 +139,5 @@ Reader extension for VS Code shares: it takes them from this package.
 ## License
 
 MIT (`LICENSE`). `src/width-table.mjs` is derived from the Unicode Character Database (`EastAsianWidth.txt` 17.0.0,
-© 2025 Unicode, Inc.); for its terms, see <https://www.unicode.org/terms_of_use.html> and
-<https://www.unicode.org/license.txt>.
+© 2025 Unicode, Inc.), under the Unicode License v3: its copyright and permission notice is in `LICENSE-UNICODE`, which
+the package ships, and at the head of the table.

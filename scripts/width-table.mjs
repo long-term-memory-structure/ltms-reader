@@ -85,9 +85,14 @@ export function wideRanges(entries) {
 
 const hex = (n) => `0x${n.toString(16).padStart(4, '0')}`;
 
-/** The module's text. */
-export function tableModule({ lines, sha256 }, ranges) {
+/** The licence of the source, as the package ships it (LICENSE-UNICODE): the Unicode License v3 asks that its copyright
+ *  and permission notice appear with every copy of the data, so the table carries it too. */
+export const NOTICE_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'LICENSE-UNICODE');
+
+/** The module's text; `notice` is LICENSE-UNICODE's text. */
+export function tableModule({ lines, sha256 }, ranges, notice = readFileSync(NOTICE_FILE, 'utf8')) {
   const header = lines.slice(0, 3).map((l) => `//   ${l}`).join('\n');
+  const licence = notice.trimEnd().split('\n').map((l) => (l === '' ? '//' : `// ${l}`)).join('\n');
   const body = [];
   for (let i = 0; i < ranges.length; i += 8) body.push(`  ${ranges.slice(i, i + 8).map(hex).join(', ')},`);
   return `// src/width-table.mjs — WRITTEN BY scripts/width-table.mjs; do not edit it by hand: change the script, and run it again.
@@ -101,8 +106,10 @@ export function tableModule({ lines, sha256 }, ranges) {
 //   sha256 ${sha256}
 // whose first lines are
 ${header}
-// For the Unicode terms of use and license, see https://www.unicode.org/terms_of_use.html and
-// https://www.unicode.org/license.txt.
+//
+// Its licence (LICENSE-UNICODE, which the package ships beside this table):
+//
+${licence}
 export const UNICODE_VERSION = '${VERSION}';
 export const SOURCE_URL = '${SOURCE_URL}';
 export const SOURCE_SHA256 = '${sha256}';

@@ -61,3 +61,20 @@ test('the command on no terminal: refused at once, naming ltms as the command fo
     }
   } finally { rmSync(own, { recursive: true, force: true }); }
 });
+
+// B's new issue (S376): the width table is derived from Unicode's EastAsianWidth.txt, whose licence (the Unicode
+// License v3) asks that its copyright and permission notice appear with every copy; the table named it by its URL only
+test('the Unicode-derived width table carries the Unicode License v3 notice: at its head, and in LICENSE-UNICODE, which the package ships', () => {
+  const table = readFileSync(path.join(root, 'src', 'width-table.mjs'), 'utf8');
+  let notice = '';
+  try { notice = readFileSync(path.join(root, 'LICENSE-UNICODE'), 'utf8'); } catch {}
+  const permission = 'Permission is hereby granted, free of charge, to any person obtaining a copy of data files and any associated documentation (the "Data Files") or software and any associated documentation (the "Software") to deal in the Data Files or Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, and/or sell copies of the Data Files or Software, and to permit persons to whom the Data Files or Software are furnished to do so, provided that either (a) this copyright and permission notice appear with all copies of the Data Files or Software, or (b) this copyright and permission notice appear in associated Documentation.';
+  const flat = (s) => s.replace(/^\/\/ ?/gm, '').replace(/\s+/g, ' ');
+  for (const [what, text] of [['src/width-table.mjs', table], ['LICENSE-UNICODE', notice]]) {
+    assert.ok(flat(text).includes('UNICODE LICENSE V3'), `${what}: the licence's name`);
+    assert.ok(flat(text).includes('Copyright © 2025 Unicode, Inc.'), `${what}: the data file's copyright`);
+    assert.ok(flat(text).includes(permission), `${what}: the permission notice`);
+    assert.ok(flat(text).includes('SPDX-License-Identifier: Unicode-3.0'), `${what}: its SPDX identifier`);
+  }
+  assert.ok(pkg.files.includes('LICENSE-UNICODE'), 'package.json "files" ships it (npm packs LICENSE by itself, not this name)');
+});

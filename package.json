@@ -14,7 +14,8 @@
   "files": [
     "bin/",
     "src/",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE-UNICODE"
   ],
   "engines": {
     "node": ">=20"

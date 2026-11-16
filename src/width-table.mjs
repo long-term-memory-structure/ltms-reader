@@ -11,8 +11,55 @@
 //   # EastAsianWidth-17.0.0.txt
 //   # Date: 2025-07-24, 00:12:54 GMT
 //   # © 2025 Unicode®, Inc.
-// For the Unicode terms of use and license, see https://www.unicode.org/terms_of_use.html and
-// https://www.unicode.org/license.txt.
+//
+// Its licence (LICENSE-UNICODE, which the package ships beside this table):
+//
+// src/width-table.mjs is derived from the Unicode Character Database file EastAsianWidth.txt, version 17.0.0
+// (https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt, sha256
+// ea7ce50f3444a050333448dffef1cadd9325af55cbb764b4a2280faf52170a33), whose header says "© 2025 Unicode®, Inc.".
+// It is used under this licence, the Unicode License v3 (https://www.unicode.org/license.txt):
+//
+// UNICODE LICENSE V3
+//
+// COPYRIGHT AND PERMISSION NOTICE
+//
+// Copyright © 2025 Unicode, Inc.
+//
+// NOTICE TO USER: Carefully read the following legal agreement. BY
+// DOWNLOADING, INSTALLING, COPYING OR OTHERWISE USING DATA FILES, AND/OR
+// SOFTWARE, YOU UNEQUIVOCALLY ACCEPT, AND AGREE TO BE BOUND BY, ALL OF THE
+// TERMS AND CONDITIONS OF THIS AGREEMENT. IF YOU DO NOT AGREE, DO NOT
+// DOWNLOAD, INSTALL, COPY, DISTRIBUTE OR USE THE DATA FILES OR SOFTWARE.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of data files and any associated documentation (the "Data Files") or
+// software and any associated documentation (the "Software") to deal in the
+// Data Files or Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, and/or sell
+// copies of the Data Files or Software, and to permit persons to whom the
+// Data Files or Software are furnished to do so, provided that either (a)
+// this copyright and permission notice appear with all copies of the Data
+// Files or Software, or (b) this copyright and permission notice appear in
+// associated Documentation.
+//
+// THE DATA FILES AND SOFTWARE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+// KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF
+// THIRD PARTY RIGHTS.
+//
+// IN NO EVENT SHALL THE COPYRIGHT HOLDER OR HOLDERS INCLUDED IN THIS NOTICE
+// BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL INDIRECT OR CONSEQUENTIAL DAMAGES,
+// OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+// WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+// ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THE DATA
+// FILES OR SOFTWARE.
+//
+// Except as contained in this notice, the name of a copyright holder shall
+// not be used in advertising or otherwise to promote the sale, use or other
+// dealings in these Data Files or Software without prior written
+// authorization of the copyright holder.
+//
+// SPDX-License-Identifier: Unicode-3.0
 export const UNICODE_VERSION = '17.0.0';
 export const SOURCE_URL = 'https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt';
 export const SOURCE_SHA256 = 'ea7ce50f3444a050333448dffef1cadd9325af55cbb764b4a2280faf52170a33';
