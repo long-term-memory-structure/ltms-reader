@@ -1,0 +1,32 @@
+{
+  "name": "ltms-reader",
+  "version": "0.0.0",
+  "description": "A terminal reader of your own Claude Code sessions: the turns, the tool calls, the compactions, and the text behind every address ltms prints. Read-only, local, no network.",
+  "type": "module",
+  "bin": {
+    "ltms-reader": "bin/ltms-reader.mjs"
+  },
+  "imports": {
+    "#ltms": "long-term-memory-structure",
+    "#ltms/cli": "long-term-memory-structure/dist/cli.js",
+    "#ltms/package.json": "long-term-memory-structure/package.json"
+  },
+  "files": [
+    "bin/",
+    "src/"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "long-term-memory-structure": "^0.3.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/long-term-memory-structure/ltms-reader.git"
+  }
+}
