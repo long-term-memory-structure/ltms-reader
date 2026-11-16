@@ -92,13 +92,16 @@ function statusLine(state, cols, address, hint = HINTS[top(state).kind] ?? '') {
   return room > 0 ? [seg(a, 'addr'), seg(`  ${hintIn(hint, room)}`, 'dim')] : [seg(a, 'addr')];
 }
 
-/** The body's height for a frame with (or without) a line of column headings. */
-export const bodyHeight = (rows, headings) => Math.max(1, rows - 4 - (headings ? 1 : 0));
+/** The body's height for a frame with (or without) a line of column headings, and `head` lines between the title and
+ *  them (one, the view's second line, but in a Sessions view: sessionsHead). */
+export const bodyHeight = (rows, headings, head = 1) => Math.max(1, rows - 3 - head - (headings ? 1 : 0));
 
-function frame(state, cols, rows, { title, sub = '', headings = null, body, detail = '', address = null, hint }) {
-  const out = [line(title, cols, 'head'), line(sub, cols, 'dim')];
+/** `head`: the lines under the title, when they are more than the one line `sub`. */
+function frame(state, cols, rows, { title, sub = '', head = null, headings = null, body, detail = '', address = null, hint }) {
+  const heads = head ?? [line(sub, cols, 'dim')];
+  const out = [line(title, cols, 'head'), ...heads];
   if (headings) out.push([seg(fit(headings, cols), 'dim')]);
-  const h = bodyHeight(rows, !!headings);
+  const h = bodyHeight(rows, !!headings, heads.length);
   for (let i = 0; i < h; i++) out.push(body[i] ?? []);
   out.push(line(detail, cols, 'dim'));
   out.push(statusLine(state, cols, address, hint));
@@ -186,16 +189,36 @@ export function projects(state, cols, rows) {
 }
 
 // ---- Sessions ---------------------------------------------------------------------------------------------------------
+/** From this width on, a Sessions view's counts and its notice are shown whole (N2). */
+export const WHOLE_FROM = 80;
+
+/**
+ * The lines between a Sessions view's title and its column headings: the counts and the coverage of `ltms index`'s
+ * reading, then, for a list kept from an earlier reading (src/engine.mjs: one that took AUTO_MS or more is not read
+ * again by itself when a file changes), when it was read and how many files changed since (R.F2). At WHOLE_FROM columns
+ * and wider each is whole, on as many lines as it takes (N2: the notice, put first on the counts' line, hid them at 80
+ * and 100 columns and was cut itself); narrower, or on a screen too low to keep a row of the list (under 8 rows at 80
+ * columns), each takes one line, cut with …. The App reads its length for its pages (headOf).
+ */
+export function sessionsHead(state, v, cols, rows) {
+  const d = v.data, c = d.coverage?.files ?? {};
+  const counts = `${plural(d.sessions.length, 'session', 'sessions')}  ${num(c.found)} files found, ${num(c.read)} read, ${num(c.failed)} failed${c.notConversation ? `, ${num(c.notConversation)} with no conversation` : ''}${d.copies?.files ? `; ${plural(d.copies.files, 'identical copy', 'identical copies')} folded` : ''}  ${((d.ms ?? 0) / 1000).toFixed(1)} s`;
+  const notice = d.changed ? `this list was read at ${when(new Date(d.changed.since).toISOString(), state.timeZone)}, and ${plural(d.changed.count, 'file', 'files')} changed since: it is read again when ltms-reader starts again` : null;
+  const lines = (text, style, whole) => (whole ? wrapWords(text, cols) : [text]).map((l) => line(l, cols, style));
+  const of = (whole) => [...lines(counts, 'dim', whole), ...(notice ? lines(notice, null, whole) : [])];
+  const whole = cols >= WHOLE_FROM ? of(true) : null;
+  return whole && rows - 4 - whole.length >= 1 ? whole : of(false);
+}
+
+/** How many lines a view has between its title and its column headings (frame's head): one, but in a Sessions view. */
+export const headOf = (state, v) => (v.kind === 'sessions' && v.data && !v.error ? sessionsHead(state, v, state.cols, state.rows).length : 1);
+
 export function sessions(state, cols, rows) {
   const v = top(state), d = v.data;
   const title = `ltms-reader  Sessions  ${label(v.project)}`;
   if (v.error) return frame(state, cols, rows, { title, sub: 'ltms index could not list them', body: errorBody(v.error, cols) });
   if (!d) return frame(state, cols, rows, { title, sub: 'ltms index reads every transcript of the project', body: loadingBody(v, state, 'reading the sessions with ltms index') });
-  const c = d.coverage?.files ?? {};
-  // a list kept from an earlier reading (src/engine.mjs: one that took AUTO_MS or more is not read again by itself when
-  // a file changes): when it was read, and how many files changed since (R.F2)
-  const kept = d.changed ? `this list was read at ${when(new Date(d.changed.since).toISOString(), state.timeZone)}, and ${plural(d.changed.count, 'file', 'files')} changed since: it is read again when ltms-reader starts again  ` : '';
-  const sub = `${kept}${plural(d.sessions.length, 'session', 'sessions')}  ${num(c.found)} files found, ${num(c.read)} read, ${num(c.failed)} failed${c.notConversation ? `, ${num(c.notConversation)} with no conversation` : ''}${d.copies?.files ? `; ${plural(d.copies.files, 'identical copy', 'identical copies')} folded` : ''}  ${((d.ms ?? 0) / 1000).toFixed(1)} s`;
+  const head = sessionsHead(state, v, cols, rows);
   const pw = widest(v.rows, 'p', (r) => width(label(r.p)), 8, 26);
   const wide = cols >= 120;
   // each count as wide as its widest, its heading's width at least (R.F9: 12,000 turns read "12,0…" in 5 columns)
@@ -209,11 +232,11 @@ export function sessions(state, cols, rows) {
     ...(wide ? [[when(r.last, state.timeZone), 16], [`${label(r.file)}${r.copies ? `  +${plural(r.copies, 'identical copy', 'identical copies')}` : ''}`, 0]] : []),
   ];
   const headings = `  ${cell('session', pw)}  ${cell('started', 16)}  ${cell('turns', tw, 'right')}  ${cell('calls', cw, 'right')}  ${cell('failed', fw, 'right')}  ${cell('compact', kw, 'right')}  ${cell('agents', gw, 'right')}${wide ? `  ${cell('last', 16)}  file` : ''}`;
-  const h = bodyHeight(rows, true);
+  const h = bodyHeight(rows, true, head.length);
   const body = v.rows.length ? listBody(v, v.rows, h, cellsOf, cols) : textBody('ltms index lists no session here: no transcript in this folder holds a turn.', cols);
   const r = v.rows[v.sel];
   const detail = r ? `${label(r.file)}  first prompt ${label(r.firstPrompt ?? '-')}  last reply ${label(r.lastReply ?? '-')}${r.copies ? `  +${plural(r.copies, 'identical copy', 'identical copies')}` : ''}` : '';
-  return frame(state, cols, rows, { title, sub, headings, body, detail, address: r ? label(r.p) : null });
+  return frame(state, cols, rows, { title, head, headings, body, detail, address: r ? label(r.p) : null });
 }
 
 // ---- A session --------------------------------------------------------------------------------------------------------

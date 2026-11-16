@@ -340,6 +340,81 @@ test('R.F2: a project\'s sessions answered from the list kept after its files ch
     await k.press(KEY.enter);
     f = frameOf(app);
     assert.equal(f[0], 'ltms-reader  Sessions  -work-demo');
-    assert.match(f[1], /^this list was read at \d{4}-\d\d-\d\d \d\d:\d\d, and 1 file changed since: it is read again when ltms-reader starts again {2}2 sessions /, f[1]);
+    // its counts on the line under the title, the notice on a line of its own (N2: at first it led the counts' line)
+    assert.match(f[1], /^2 sessions /, f[1]);
+    assert.match(f[2], /^this list was read at \d{4}-\d\d-\d\d \d\d:\d\d, and 1 file changed since: it is read again when ltms-reader starts again$/, f[2]);
   } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
+test('N2: a kept list at 80 and 100 columns: the counts and coverage whole on their own line, the notice whole on its own; narrower, the notice cut only with …', async () => {
+  const { appendFileSync } = await import('node:fs');
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press(KEY.enter);
+    source.engine.indexCache.get(path.join(r.root, '-work-demo')).value.ms = 60_000;
+    await k.press(KEY.escape);
+    appendFileSync(path.join(r.root, '-work-demo', '11111111-1111-4111-8111-111111111111.jsonl'), '\n');
+    await k.press(KEY.enter);
+    // what the line says, written here from the view's data, not by the code under test
+    const d = top(app.state).data, c = d.coverage.files;
+    const counts = `${d.sessions.length} sessions  ${c.found} files found, ${c.read} read, ${c.failed} failed  ${(d.ms / 1000).toFixed(1)} s`;
+    const at = new Date(d.changed.since).toISOString();
+    const notice = `this list was read at ${at.slice(0, 10)} ${at.slice(11, 16)}, and 1 file changed since: it is read again when ltms-reader starts again`;
+    for (const cols of [80, 100, 120, 200]) {
+      app.resize(cols, 24);
+      const f = frameOf(app);
+      assert.equal(f[0], 'ltms-reader  Sessions  -work-demo');
+      assert.equal(f[1], counts, `${cols}: the counts and coverage, whole, on the line under the title`);
+      const h = f.findIndex((l) => l.startsWith('  session '));
+      assert.ok(h > 2, `${cols}: the column headings after the notice`);
+      assert.equal(f.slice(2, h).join(' '), notice, `${cols}: the notice whole, on lines of its own: ${JSON.stringify(f.slice(2, h))}`);
+      const v = top(app.state);
+      assert.ok(f.slice(h + 1).some((l) => l.startsWith(`> ${v.rows[v.sel].p} `)), `${cols}: the list below, its selected row in sight`);
+    }
+    for (const cols of [40, 60, 79]) {
+      app.resize(cols, 24);
+      const f = frameOf(app);
+      const shown = f.slice(1, f.findIndex((l) => l.startsWith('  session')));
+      const n = shown.find((l) => l.startsWith('this list was read'));
+      assert.ok(n, `${cols}: the notice is shown`);
+      assert.ok(n === notice || (n.endsWith('…') && notice.startsWith(n.slice(0, -1))), `${cols}: the notice whole, or cut with the reader's own ellipsis: ${JSON.stringify(n)}`);
+    }
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
+test('N2: with the notice above the list, a page is the rows in sight less one: PgDn from the top keeps the first row in sight', async () => {
+  const sessions = Array.from({ length: 40 }, (_, i) => ({ p: `s${String(i).padStart(7, '0')}`, first: '2026-01-01T00:00:00.000Z', last: '2026-01-01T00:00:00.000Z', turns: 1, calls: 0, failures: 0, compactions: [], agents: 0, file: `s${i}.jsonl`, firstPrompt: null, lastReply: null }));
+  const source = {
+    kind: 'root', rootShown: '/r',
+    projects: () => ({ rootShown: '/r', state: 'dir', projects: [{ name: '-p', transcripts: 40, newest: 0 }], links: 0 }),
+    sessions: () => ({ sessions, coverage: { files: { found: 40, read: 40, failed: 0 } }, copies: { files: 0 }, ms: 60_000, changed: { count: 1, since: Date.UTC(2026, 10, 16, 5, 43) } }),
+    dispose() {},
+  };
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press(KEY.enter);
+    let f = frameOf(app);
+    assert.equal(f[2], 'this list was read at 2026-11-16 05:43, and 1 file changed since: it is read', 'the notice, on two lines at 80 columns');
+    const first = f.findIndex((l) => l.startsWith('> s0000000'));
+    const last = f.findIndex((l, i) => i > first && !/^ {2}s\d{7} /.test(l)) - 1;
+    assert.ok(first > 0 && last > first, 'the list in sight');
+    await k.press(KEY.pagedown);
+    f = frameOf(app);
+    assert.ok(f[first].startsWith('  s0000000 '), `the first row still in sight, at its place: ${f[first]}`);
+    assert.ok(f[last].startsWith(`> s${String(last - first).padStart(7, '0')} `), `the selection on the last row in sight: ${f[last]}`);
+    await k.press(KEY.end);
+    f = frameOf(app);
+    assert.ok(f[last].startsWith('> s0000039 '), `End: the last session selected, on the last row in sight: ${f[last]}`);
+    assert.ok(f[first].startsWith(`  s${String(39 - (last - first)).padStart(7, '0')} `), `and the rows above it in sight: ${f[first]}`);
+    await k.press(KEY.up);
+    f = frameOf(app);
+    assert.ok(f[first].startsWith(`  s${String(39 - (last - first)).padStart(7, '0')} `), `Up within the rows in sight does not scroll the list: ${f[first]}`);
+    assert.ok(f[last - 1].startsWith('> s0000038 '), f[last - 1]);
+  } finally { app.dispose(); }
 });

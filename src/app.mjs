@@ -9,7 +9,7 @@
 import { recordTooLarge } from './reading.mjs';
 import { clusters } from './text.mjs';
 import { recordIndexAt, recordView } from './view.mjs';
-import { bodyHeight, coverageText, recordLines, render, top, topOf } from './views.mjs';
+import { bodyHeight, coverageText, headOf, recordLines, render, top, topOf } from './views.mjs';
 
 /** An address as ltms prints it: a prefix (8 characters of a session's file name, or agent- and 8 of an agent's id)
  *  and a line (L) or a turn (T). */
@@ -279,7 +279,8 @@ export class App {
     this.changed();
   }
 
-  page(v) { return Math.max(1, bodyHeight(this.state.rows, headed(v)) - 1); }
+  /** A page: the rows of the list in sight, less one (the lines above a list are more than one in a Sessions view). */
+  page(v) { return Math.max(1, bodyHeight(this.state.rows, headed(v), headOf(this.state, v)) - 1); }
 
   move(v, delta) {
     if (v.kind === 'record') {
@@ -297,7 +298,7 @@ export class App {
     if (!ok(i)) { i = Math.max(0, Math.min(rows.length - 1, i)); while (rows[i] && !ok(i)) i -= dir; }
     if (!ok(i)) return;
     v.sel = i;
-    v.top = topOf(v, rows.length, bodyHeight(this.state.rows, headed(v)));
+    v.top = topOf(v, rows.length, bodyHeight(this.state.rows, headed(v), headOf(this.state, v)));
   }
 
   open(v) {
