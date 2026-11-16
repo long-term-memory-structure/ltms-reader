@@ -69,8 +69,8 @@ pasted acts as a key.
   Run through `npx`, npm writes files of its own: a log of each run under `~/.npm/_logs`, which names the folder or file
   given, and a compile cache under `$TMPDIR`; installed (`npm install -g ltms-reader`, then `ltms-reader`), it runs
   without npm, and without them.
-- An error inside it is printed after the terminal is restored, by its kind and where in this package it happened, not
-  by its message, which could quote a transcript.
+- An error inside it, in the screen's process or in the command's own, is printed after the terminal is restored, by
+  its kind and where in this package it happened, not by its message, which could quote a transcript.
 
 ## Text on the screen
 
@@ -102,6 +102,9 @@ pasted acts as a key.
   `NODE_OPTIONS` that would show it. Its lines are laid out a page at a time.
 - The screen runs in a process of its own, which the command waits for. If that process ends without restoring the
   terminal (Node's memory running out aborts it), the command restores it, then prints what Node said and what happened.
+  An error in the command's own process (a module loaded through `NODE_OPTIONS` or `--import` that throws, say) ends the
+  screen by its own way out (SIGTERM; if it has not ended within 2 s, SIGKILL, and the command restores the terminal),
+  then is printed after the restore, and the command exits with 1.
 - A list of sessions waits for `ltms index` to read every transcript of the project (on one machine, 39 s for a project
   of 385 sessions), and a search for `ltms search`; the screen says what is being read and for how long. A list that
   took 3 s or more is kept: opened again after its files changed, it is shown as it was read, and says when that was

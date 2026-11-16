@@ -150,6 +150,24 @@ test('an uncaught error: the terminal restored first, then the error, by its kin
   } finally { r.dispose(); }
 });
 
+// ---- N1 (S377): an error in the command's own process, while the frame is up ---------------------------------------------
+// R's P1 planted it with node --import (a timer that throws, a rejection, a thrown string); here a module loaded the same
+// way into both processes fails in the one that gets SIGUSR2, and the test sends it to the command's process only.
+for (const [what, plant, kind] of [['an Error thrown', 'error', 'TypeError'], ['a promise rejected with nothing to catch it', 'reject', 'RangeError'], ['a string thrown', 'string', 'string'], ['an Error thrown again every 20 ms', 'interval', 'TypeError']]) {
+  test(`N1: ${what} in the command's own process: the screen restores the terminal, then the command's report, by its kind, not its message; exit 1`, { skip, timeout: 60_000 }, async () => {
+    const r = makeRoot('ltms-reader-pty-');
+    try {
+      const res = await ptyRun(r, { args: [path.join(OWN, 'hebrew-english.jsonl')], nodeArgs: `--import ${path.join(OWN, 'throw-on-signal.mjs')}`, env: { LTMS_PLANT: plant }, steps: [{ until: '> hebrew-e:T001', act: ({ pid }) => process.kill(pid, 'SIGUSR2') }] });
+      assert.ok(!res.out.includes('PLANTED'), `the planted message is nowhere; the terminal received, last: ${JSON.stringify(res.out.slice(-700))}`);
+      assert.equal(res.after, res.before, 'stty -g after = before');
+      const rest = restoredLast(res.out, what).replace(/\r\n/g, '\n');
+      assert.match(rest, new RegExp(`^ltms-reader: an internal error \\(${kind}\\) in the command's process ended it; the terminal was restored\\.\\n`), JSON.stringify(rest));
+      assert.match(rest, /Its message is not printed: it could quote a transcript\.\n$/);
+      assert.equal(res.exit, 1);
+    } finally { r.dispose(); }
+  });
+}
+
 // ---- R.F1: no transcript leaves the terminal raw ------------------------------------------------------------------------
 /** R's transcript (R.F1): a prompt, a call, its result of 4,000,000 Hebrew characters with Claude Code's structured copy
  *  of it, and a reply; 14,000,514 bytes on the result's line. */

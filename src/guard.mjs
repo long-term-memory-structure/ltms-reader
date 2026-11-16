@@ -12,12 +12,21 @@
 // and written after it ends: its own error report comes after its own restore, as before, and V8's report of a heap
 // run out comes after this restore, on the main screen, instead of on the alternate screen that the restore takes away.
 // The screen's process uses this process's Node, its flags (process.execArgv) and its environment (NODE_OPTIONS too).
+//
+// An error in this process itself (thrown and not caught, or a promise rejected with nothing to catch it: a module
+// loaded through NODE_OPTIONS or --import that throws, say) ends the screen by its own way out, SIGTERM, on which the
+// screen's process restores the terminal and exits; this process waits for that (STOP_WAIT at most; then SIGKILL, and
+// the leave sequence is written here), writes what the screen's process wrote to stderr, then its own report, after the
+// restore, by the error's kind and place, not its message (src/main.mjs errorReport), and ends with 1. N1 (S377): Node's
+// own report of such an error, its message with it, was written on the alternate screen while the frame was up, and the
+// screen's own report went to a pipe no one read. Everything this process writes to stderr is made visible.
 import { spawn } from 'node:child_process';
 import { writeSync } from 'node:fs';
 import { constants } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getHeapStatistics } from 'node:v8';
+import { errorReport } from './main.mjs';
 import { LEAVE } from './screen.mjs';
 import { againOf, parseArgs } from './start.mjs';
 import { visible } from './text.mjs';
@@ -27,6 +36,8 @@ export const SCREEN_PROCESS = path.join(path.dirname(fileURLToPath(import.meta.u
 const KEEP = 64 * 1024;
 const MB = 1024 * 1024;
 const FORWARDED = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+/** How long the screen's process is given to end by its own way out (SIGTERM) when this process has failed itself. */
+export const STOP_WAIT = 2000;
 
 /** What this process says when the screen's process ended by a signal: the signal, the restore, and, when what it wrote
  *  says V8's heap ran out, the setting that gives it more (twice this process's heap limit, the same flags as the
@@ -40,10 +51,12 @@ export function endedBy(signal, said, argv, heapLimit = getHeapStatistics().heap
 /**
  * Run the screen (src/main.mjs's main, in src/screen-process.mjs) in a child process on this terminal, with `argv`;
  * resolves to the exit code this command ends with: the screen's own, or 128 + the signal's number when a signal ended
- * it, after the restore. `out` and `err` write to this process's stdout and stderr; `proc` receives the signals passed
- * on; the rest are parameters so that a test can run it with a screen of its own (onChild: given the child process).
+ * it, after the restore; 1 when this process failed itself (its uncaughtException or unhandledRejection, on `proc`).
+ * `out` and `err` write to this process's stdout and stderr; `proc` receives the signals passed on and this process's
+ * own errors; the rest are parameters so that a test can run it with a screen of its own (onChild: given the child
+ * process; stopWait: STOP_WAIT).
  */
-export function guard(argv, { execPath = process.execPath, execArgv = process.execArgv, env = process.env, proc = process, entry = SCREEN_PROCESS, out = (s) => writeSync(1, s), err = (s) => writeSync(2, s), onChild = null } = {}) {
+export function guard(argv, { execPath = process.execPath, execArgv = process.execArgv, env = process.env, proc = process, entry = SCREEN_PROCESS, out = (s) => writeSync(1, s), err = (s) => writeSync(2, s), onChild = null, stopWait = STOP_WAIT } = {}) {
   return new Promise((resolve) => {
     let child;
     try { child = spawn(execPath, [...execArgv, entry, ...argv], { stdio: ['inherit', 'inherit', 'pipe'], env }); }
@@ -54,19 +67,40 @@ export function guard(argv, { execPath = process.execPath, execArgv = process.ex
     child.stderr.on('data', (d) => { said = (said + d).slice(-KEEP); });
     const pass = Object.fromEntries(FORWARDED.map((sig) => [sig, () => { try { child.kill(sig); } catch {} }]));
     for (const sig of FORWARDED) proc.on(sig, pass[sig]);
+    // an error of this process's own: the first is kept, and the screen's process is ended by its own way out
+    let failed = null, stopping = null;
+    const fail = (e) => {
+      if (failed) return;
+      failed = { e, killed: false };
+      try { child.kill('SIGTERM'); } catch {}
+      stopping = setTimeout(() => { failed.killed = true; try { child.kill('SIGKILL'); } catch {} }, stopWait);
+    };
+    proc.on('uncaughtException', fail);
+    proc.on('unhandledRejection', fail);
     let started = true;
     child.on('error', (e) => {
-      // it could not start: the terminal was never taken
+      // it could not start (it has no pid): the terminal was never taken; a signal that could not be sent is not that
+      if (child.pid !== undefined) return;
       started = false;
       try { err(`ltms-reader: the screen's process could not start (${visible(e?.code ?? e?.name ?? 'error')}); nothing was read\n`); } catch {}
     });
     child.on('close', (code, signal) => {
+      clearTimeout(stopping);
       for (const sig of FORWARDED) proc.off(sig, pass[sig]);
-      if (!started) { resolve(1); return; }
+      proc.off('uncaughtException', fail);
+      proc.off('unhandledRejection', fail);
+      const own = () => { if (failed) { try { err(errorReport(failed.e, "the command's process")); } catch {} } };
+      if (!started) { own(); resolve(1); return; }
       if (signal) { try { out(LEAVE); } catch {} }
       if (said) { try { err(visible(said)); } catch {} }
+      if (failed) {
+        if (signal) { try { err(failed.killed && signal === 'SIGKILL' ? `ltms-reader: the screen's process did not end within ${stopWait} ms of SIGTERM; this command ended it (SIGKILL) and restored the terminal.\n` : visible(endedBy(signal, said, argv))); } catch {} }
+        own();
+        resolve(1);
+        return;
+      }
       if (signal) {
-        try { err(endedBy(signal, said, argv)); } catch {}
+        try { err(visible(endedBy(signal, said, argv))); } catch {}
         resolve(128 + (constants.signals[signal] ?? 0));
         return;
       }

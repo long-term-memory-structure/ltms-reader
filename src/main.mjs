@@ -17,12 +17,13 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const version = () => JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
 /** What is printed of an error after the terminal is restored: its kind, and the lines of its stack that are in this
- *  package or in Node; its message only when it is a refusal of this package's own (it has a kind). */
-export function errorReport(e) {
+ *  package or in Node; its message only when it is a refusal of this package's own (it has a kind). `where`: the
+ *  process it happened in, when it is not the screen's (src/guard.mjs: "the command's process"). */
+export function errorReport(e, where = null) {
   const kind = typeof e?.name === 'string' ? e.name : typeof e;
   const own = e instanceof Error && typeof e.kind === 'string';
   const frames = String(e?.stack ?? '').split('\n').filter((l) => /^\s+at /.test(l) && (l.includes(ROOT) || /\(node:|at node:/.test(l))).slice(0, 12);
-  return visible(`ltms-reader: ${own ? e.message : `an internal error (${kind}) ended it`}; the terminal was restored.\n${frames.length ? `${frames.join('\n')}\n` : ''}${own ? '' : 'Its message is not printed: it could quote a transcript.\n'}`);
+  return visible(`ltms-reader: ${own ? e.message : `an internal error (${kind})${where ? ` in ${where}` : ''} ended it`}; the terminal was restored.\n${frames.length ? `${frames.join('\n')}\n` : ''}${own ? '' : 'Its message is not printed: it could quote a transcript.\n'}`);
 }
 
 /**
