@@ -129,6 +129,9 @@ npm install
 npm test
 ```
 
+`npm test` runs `node --test test/*.test.mjs`, the pattern expanded by the shell, which runs the test files on Node 20,
+22, 24 and 26 alike. Given the folder `test/` instead, Node 20 runs every module under it as a test, the fixtures too,
+and Node 22 and 24 run none: they take the folder for a module, and fail.
 The tests run every view at 80 x 24 and 200 x 60 over ltms's own synthetic transcripts (`test/fixtures/ltms`) and the
 reader's (`test/fixtures/hebrew-english.jsonl`, `escapes.jsonl` and `channels.jsonl`, written by
 `node test/fixtures/make-fixtures.mjs`), compare what each row says with ltms's own commands, read every byte the

@@ -78,3 +78,20 @@ test('the Unicode-derived width table carries the Unicode License v3 notice: at 
   }
   assert.ok(pkg.files.includes('LICENSE-UNICODE'), 'package.json "files" ships it (npm packs LICENSE by itself, not this name)');
 });
+
+// R4 (S377, round 3): given the folder test/, Node 20.20.2's runner runs every .mjs and .js under it as a test file, the
+// fixtures too (four of them failed there: test/fixtures/guard/aborts.mjs, exits.mjs, killed.mjs and
+// reading-a-hit.recipe.js; and make-fixtures.mjs would write the fixtures again); Node 22.23.3 and 24.22.3 run none (they
+// take the folder for a module: "Cannot find module"); Node 26.13.1 runs the *.test.* files. So the test command names
+// the test files, test/*.test.mjs, as the shell expands it, which runs them on all four (Node 20 does not expand a
+// pattern itself).
+test('R4: npm test names the test files, test/*.test.mjs as sh expands it: every *.test.mjs in test/, and nothing else', async () => {
+  const { readdirSync } = await import('node:fs');
+  assert.equal(pkg.scripts.test, 'node --test test/*.test.mjs');
+  const r = spawnSync('sh', ['-c', 'printf "%s\\n" test/*.test.mjs'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  // the shell sorts by the locale's collation: compared as sets
+  const named = r.stdout.split('\n').filter(Boolean).sort();
+  assert.deepEqual(named, readdirSync(path.join(root, 'test')).filter((f) => f.endsWith('.test.mjs')).map((f) => `test/${f}`).sort());
+  assert.ok(named.length > 0 && named.every((f) => !f.includes('fixtures')), named.join(' '));
+});
