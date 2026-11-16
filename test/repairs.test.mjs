@@ -80,7 +80,9 @@ test('B.F2, C-09: a projects folder that is itself a symbolic link is read; what
   } finally { e.dispose(); }
 });
 
-test('B.F7, B.F13: a project folder that cannot be listed is marked, and the rest are listed; the count is of files', async () => {
+// A folder with permissions 000 cannot be listed but by root, which reads any folder: run as root, the folder is listed
+// and nothing is marked (V5, round 5: round 4's check, the suite as root in a container). The same guard as keys.test's.
+test('B.F7, B.F13: a project folder that cannot be listed is marked, and the rest are listed; the count is of files', { skip: process.getuid?.() === 0 ? 'root reads any folder' : false }, async () => {
   mkdirSync(path.join(root, '-locked'));
   chmodSync(path.join(root, '-locked'), 0o000);
   const e = new Engine({ root, env: childEnv(process.env) });
