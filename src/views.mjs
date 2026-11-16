@@ -106,14 +106,25 @@ function statusLine(state, cols, address, hint = HINTS[top(state).kind] ?? '') {
  *  them (one, the view's second line, but in a Sessions view: sessionsHead). */
 export const bodyHeight = (rows, headings, head = 1) => Math.max(1, rows - 3 - head - (headings ? 1 : 0));
 
-/** `head`: the lines under the title, when they are more than the one line `sub`. */
+/** `head`: the lines under the title, when they are more than the one line `sub`. The frame's lines: the title, `head`,
+ *  the column headings, the body (at least one row of it), the detail line, the status line. On a screen too low for
+ *  them all (W3: 80 x 5, a list with column headings; 6 rows and fewer, a kept Sessions list), the detail line gives way
+ *  first, then the column headings, then the head's lines from its last, so that the status line, with "? keys" and
+ *  "q quits", is the last line drawn at every height the reader draws (MIN_ROWS and more; under it, render() draws
+ *  `small`). */
 function frame(state, cols, rows, { title, sub = '', head = null, headings = null, body, detail = '', address = null, hint }) {
-  const heads = head ?? [line(sub, cols, 'dim')];
-  const out = [line(title, cols, 'head'), ...heads];
-  if (headings) out.push([seg(fit(headings, cols), 'dim')]);
+  let heads = head ?? [line(sub, cols, 'dim')];
   const h = bodyHeight(rows, !!headings, heads.length);
+  let over = 1 + heads.length + (headings ? 1 : 0) + h + 2 - rows;
+  const withDetail = over <= 0;
+  if (!withDetail) over--;
+  const withHeadings = !!headings && over <= 0;
+  if (headings && !withHeadings) over--;
+  if (over > 0) heads = heads.slice(0, Math.max(0, heads.length - over));
+  const out = [line(title, cols, 'head'), ...heads];
+  if (withHeadings) out.push([seg(fit(headings, cols), 'dim')]);
   for (let i = 0; i < h; i++) out.push(body[i] ?? []);
-  out.push(line(detail, cols, 'dim'));
+  if (withDetail) out.push(line(detail, cols, 'dim'));
   out.push(statusLine(state, cols, address, hint));
   if (state.note && !state.input) {
     // a message: on the last line, and on up to two lines above it when it is longer
@@ -122,7 +133,8 @@ function frame(state, cols, rows, { title, sub = '', head = null, headings = nul
     const shown = lines.length > 3 ? [...lines.slice(0, 2), line(lines.slice(2).map(([l]) => l.text).join(' '), cols - 1, style)] : lines;
     shown.forEach((l, i) => { out[out.length - shown.length + i] = l; });
   }
-  return out.slice(0, rows);
+  // more lines than rows only when the title itself would not fit beside a row of the body: the last line stays
+  return out.length > rows ? [...out.slice(0, Math.max(0, rows - 1)), out[out.length - 1]].slice(-rows) : out;
 }
 
 const widths = new WeakMap();

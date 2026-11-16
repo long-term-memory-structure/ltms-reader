@@ -449,8 +449,12 @@ test('N2 (R5): a kept list on a screen too low for its whole head: the counts an
         assert.equal(f.length, rows, `${kind} counts, ${cols} x ${rows}: the frame's lines`);
         assert.ok(f.every((l) => width(l) <= cols), `${kind} counts, ${cols} x ${rows}: no line wider than the screen`);
         assert.ok(f.some((l) => l.startsWith('> s0000002 ')), `${kind} counts, ${cols} x ${rows}: the selected row in sight: ${JSON.stringify(f)}`);
-        const at = f.findIndex((l) => l.startsWith('  session '));
-        assert.ok(at >= 2, `${kind} counts, ${cols} x ${rows}: the column headings`);
+        // the head: from under the title to the column headings or, where they gave way to the status line (W3: at 5
+        // rows), to the list
+        const at = f.findIndex((l, i) => i > 0 && (l.startsWith('  session ') || /^[> ] s\d{7} /.test(l)));
+        assert.ok(at >= 2, `${kind} counts, ${cols} x ${rows}: the head under the title`);
+        assert.ok(rows < 6 || f[at].startsWith('  session '), `${kind} counts, ${cols} x ${rows}: the column headings, from 6 rows`);
+        assert.match(f[rows - 1], /\? keys {2}q quits$/, `${kind} counts, ${cols} x ${rows}: the status line, the last line (W3)`);
         const head = f.slice(1, at);
         assert.ok(head.some((l) => /^\d+ sessions {2}/.test(l)) && head.some((l) => l.startsWith('this list was read at ')), `${kind} counts, ${cols} x ${rows}: the counts and the notice: ${JSON.stringify(head)}`);
       }
@@ -518,4 +522,73 @@ test('W1: every line the views wrap is a line of its paragraph: a message, the k
   const s2 = new RootSource({ root: empty });
   const a2 = new App({ source: s2, cols: 30, rows: 24, timeZone: 'UTC' });
   try { a2.start(); await a2.idle(); assert.ok(check(a2.lines(), 'no project folders') >= 2, 'its lines'); } finally { a2.dispose(); s2.dispose(); rmSync(empty, { recursive: true, force: true }); }
+});
+
+// ---- W3 (S378, round 4): the status line on a low screen ----------------------------------------------------------------
+// At 80 x 5 the views with column headings (Projects, Sessions, a session, a turn) drew six lines into five rows and the
+// last, the status line with "? keys" and "q quits", was cut (found by round 3's builder and confirmed by its check: older
+// than round 3). The reader draws from MIN_ROWS rows (5); at every height from there the status line is the last line
+// drawn: the detail line gives way first, then the column headings. Under 5 rows it says what it needs.
+const lastLines = (app, sizes) => sizes.map(([cols, rows]) => { app.resize(cols, rows); const f = plainOf(app.lines()).map((l) => l.replace(/ +$/, '')); assert.equal(f.length, rows, `${cols} x ${rows}: the frame's lines`); return [cols, rows, f]; });
+const LOW = [[80, 5], [80, 6], [80, 7], [80, 8], [80, 9], [200, 5], [200, 6], [120, 5]];
+test('W3: in every view, at every height from 5 rows, the last line drawn is the status line, "? keys" and "q quits" in it; the selected row in sight; under 5 rows, the size the reader needs, and q quits', async () => {
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const exits = [];
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC', onExit: (code) => exits.push(code) });
+  const k = keyboard(app);
+  const look = (what) => {
+    for (const [cols, rows, f] of lastLines(app, LOW)) {
+      assert.match(f[rows - 1], /\? keys {2}q quits$/, `${what} at ${cols} x ${rows}: the last line: ${JSON.stringify(f)}`);
+      if (what !== 'a record' && what !== 'a record as JSON') assert.ok(f.some((l) => l.startsWith('> ')), `${what} at ${cols} x ${rows}: the selected row in sight: ${JSON.stringify(f)}`);
+    }
+    app.resize(80, 24);
+  };
+  try {
+    app.start(); await app.idle(); look('Projects');
+    await k.press(KEY.enter); look('Sessions');
+    await k.press(KEY.enter); look('a session');
+    await k.press(KEY.enter); look('a turn');
+    await k.press(KEY.enter); look('a record');
+    await k.press('j'); look('a record as JSON');
+    await k.press('/'); await k.press('demo'); await k.press(KEY.enter); look('a search');
+    // the keys' screen: its own status line
+    await k.press('?');
+    for (const [cols, rows, f] of lastLines(app, LOW)) assert.equal(f[rows - 1], 'q or Ctrl-C quits  any other key goes back', `the keys at ${cols} x ${rows}`);
+    await k.press(KEY.escape); app.resize(80, 24);
+    // a message takes the last line's place, and the lines above it it needs
+    while (app.state.stack.length > 1) await k.press(KEY.escape);
+    await k.press(KEY.escape);
+    for (const [cols, rows, f] of lastLines(app, LOW)) assert.equal(f[rows - 1], 'this is the first view: q quits', `a message at ${cols} x ${rows}`);
+    // under 5 rows: the size it needs, and nothing else; q quits there too
+    for (const rows of [4, 3, 1]) {
+      app.resize(80, rows);
+      const f = plainOf(app.lines());
+      assert.equal(f.length, rows);
+      assert.equal(f[0].trimEnd(), `ltms-reader needs 20 x 5 at least; this is 80 x ${rows}`);
+    }
+    await k.press('q');
+    assert.deepEqual(exits, [0], 'q quits at 80 x 1');
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
+test('W3: a kept Sessions list (its counts and its notice above the list) at 5 and 6 rows: the status line last, the counts, the notice and the selected row in sight', async () => {
+  const sessions = Array.from({ length: 40 }, (_, i) => ({ p: `s${String(i).padStart(7, '0')}`, first: '2026-01-01T00:00:00.000Z', last: '2026-01-01T00:00:00.000Z', turns: 1, calls: 0, failures: 0, compactions: [], agents: 0, file: `s${i}.jsonl`, firstPrompt: null, lastReply: null }));
+  const source = {
+    kind: 'root', rootShown: '/r',
+    projects: () => ({ rootShown: '/r', state: 'dir', projects: [{ name: '-p', transcripts: 40, newest: 0 }], links: 0 }),
+    sessions: () => ({ sessions, coverage: { files: { found: 43, read: 43, failed: 0, notConversation: 3 } }, copies: { files: 2 }, ms: 60_000, changed: { count: 1, since: Date.UTC(2026, 10, 16, 5, 43) } }),
+    dispose() {},
+  };
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press(KEY.enter); await k.press(KEY.down); await k.press(KEY.down);
+    for (const [cols, rows, f] of lastLines(app, [[80, 5], [80, 6], [120, 6], [200, 5], [200, 6], [40, 5], [40, 6]])) {
+      assert.match(f[rows - 1], /^s0000002 {2}.*\? keys {2}q quits$/, `${cols} x ${rows}: the status line last: ${JSON.stringify(f)}`);
+      assert.ok(f.some((l) => /^\d+ sessions {2}/.test(l)) && f.some((l) => l.startsWith('this list was read at ')), `${cols} x ${rows}: the counts and the notice: ${JSON.stringify(f)}`);
+      assert.ok(f.some((l) => l.startsWith('> s0000002 ')), `${cols} x ${rows}: the selected row: ${JSON.stringify(f)}`);
+    }
+  } finally { app.dispose(); }
 });

@@ -40,6 +40,10 @@ prefix (the first 8 characters of its file's name; `agent-` and 8 for an agent's
 record's line (`1a2b3c4d:L120`). Search covers the project on screen, or every project from Projects. An agent's
 transcript is opened by its address, or from a search.
 
+It draws from 20 columns and 5 rows. The last line is always the status line (the selected row's address, `? keys`,
+`q quits`), or a message in its place: on a screen too low for every line, the line of details above it gives way
+first, then a list's column headings. Under 20 x 5 it says the size it needs, and `q` still quits.
+
 ## Keys
 
 | key | does |
