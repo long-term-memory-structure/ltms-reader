@@ -125,3 +125,32 @@ test('N4: clip on texts made of the characters that join (marks, ZWJ, emoji, reg
     }
   }
 });
+
+// ---- R2 (S377, round 3): clip's cost is bounded ---------------------------------------------------------------------------
+// N4's look-back asked ICU once for each printable ASCII character it passed, back to a boundary the characters around it
+// guaranteed; a text that puts a Prepend character (UAX #29 GB9b) before each ASCII character has none, so it went back
+// to the text's start: 9.4 s at 4,000,000 units (round 2's check: opening such a record took 30.5 s, against 1.4 s
+// before N4). Each text here is cut at limits near 4,000,000 units within a second, and where the whole text's
+// boundaries say: those of a short piece of it, segmented from its start, repeat with its period.
+const PERIODIC = {
+  'U+0600 (Arabic number sign) before each a': ['؀a', 2],
+  'U+06DD (end of ayah) before each a': ['۝a', 2],
+  'U+110BD (Kaithi number sign, a surrogate pair) before each a': [`${cp(0x110bd)}a`, 3],
+  'CJK, no ASCII and no new line': ['中文', 1],
+};
+test('R2: clip of 4,000,000 units with a Prepend character before each ASCII character (and of CJK) takes under a second, and cuts where the whole text\'s boundaries say', () => {
+  for (const [what, [unit, period]] of Object.entries(PERIODIC)) {
+    const piece = unit.repeat(50);
+    const b = boundaries(piece);
+    for (let i = 0; i <= piece.length; i++) assert.equal(b.has(i), i % period === 0, `${what}: a boundary at ${i} of a piece segmented from its start, as the period says`);
+    const s = unit.repeat(Math.ceil(4_000_010 / unit.length));
+    for (const n of [4_000_000, 4_000_001, 3_999_999]) {
+      const t0 = performance.now();
+      const r = clip(s, n);
+      const ms = performance.now() - t0;
+      assert.ok(ms < 1000, `${what} at ${n}: ${Math.round(ms)} ms`);
+      assert.equal(r.text.length, n - (n % period), `${what} at ${n}: the last boundary at or before it`);
+      assert.equal(r.more, s.length - r.text.length);
+    }
+  }
+});

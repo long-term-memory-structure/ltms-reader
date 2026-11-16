@@ -24,48 +24,23 @@ export const flat = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map
 
 const GRAPHEMES = typeof Intl?.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
 
-/** Whether the code point that ends at p, and the printable ASCII character at p, are two grapheme clusters: they are
- *  unless the first is a Prepend character (UAX #29, GB9b, the one rule that joins anything to a printable ASCII
- *  character after it), and ICU, asked of the two alone, knows which are; there is none below U+0600. */
-function splitsBefore(s, p) {
-  const b = s.charCodeAt(p - 1);
-  if (b < 0x0600) return true;
-  const from = b >= 0xdc00 && b <= 0xdfff && p >= 2 && s.charCodeAt(p - 2) >= 0xd800 && s.charCodeAt(p - 2) <= 0xdbff ? p - 2 : p - 1;
-  let n = 0;
-  for (const _ of GRAPHEMES.segment(s.slice(from, p + 1))) n++;
-  return n === 2;
-}
-
-/** A grapheme cluster boundary at or before k, found by the characters around it: after a line feed (GB4), or before a
- *  printable ASCII character that does not join what is before it (splitsBefore); else the text's start. The rules that
- *  look back over characters (GB9c, GB11, GB12, GB13) stop at a printable ASCII character and at a line feed, so that
- *  the text segmented from such a place has the boundaries after it that the whole text has (N4; both places measured
- *  with ICU 78 over every code point). */
-function boundaryAtOrBefore(s, k) {
-  for (let p = k; p > 0; p--) {
-    if (s.charCodeAt(p - 1) === 0x0a) return p;
-    const c = s.charCodeAt(p);
-    if (c >= 0x20 && c <= 0x7e && splitsBefore(s, p)) return p;
-  }
-  return 0;
-}
-
 /** At most n UTF-16 units of s, cut at the last grapheme cluster boundary at or before n (R.F4: a cut by units alone
  *  left a pointed letter without some of its marks, and the page and the screen drew it so), and how many units were
- *  left out. The boundaries are those of the whole text: it is segmented from a boundary found at or before n by the
- *  characters around it (boundaryAtOrBefore), the start of a line or a word as a rule, else from its start (N4: the 512
- *  units before n, segmented as if they began a text, cut inside any cluster longer than that, and inside an emoji
- *  sequence, an Indic conjunct or a run of regional indicators that began before them; segmenting every text from its
- *  start made opening R's 14 MB record 1.6 s, from 60 ms). Without Intl.Segmenter, never inside a surrogate pair. */
+ *  left out. The boundaries are those of the whole text, by ICU: the cut is where the cluster that holds the unit at n
+ *  begins (Intl.Segmenter's containing(), which ICU answers from the characters around n: its break iterator backs up
+ *  to a place its rules call safe, then goes forward, so that the cost is that of the clusters there, not of the text
+ *  before them). A boundary at or before n depends on the text before it and the code point at it, so the text is given
+ *  to ICU up to the code point at n. History: segmenting the 512 units before n as if they began a text cut inside a
+ *  cluster longer than that (N4); then a look-back to a boundary the characters around it guaranteed asked ICU once per
+ *  printable ASCII character it passed, back to the text's start when a Prepend character stood before each one: 9.4 s
+ *  at 4,000,000 units (R2); and segmenting every text from its start made opening R's 14 MB record 1.6 s, from 60 ms.
+ *  Without Intl.Segmenter, never inside a surrogate pair. */
 export function clip(s, n) {
   if (typeof s !== 'string') return { text: '', more: 0 };
   if (s.length <= n) return { text: s, more: 0 };
   let k = Math.max(0, n);
   if (GRAPHEMES) {
-    const from = boundaryAtOrBefore(s, k);
-    let last = from;
-    for (const { index } of GRAPHEMES.segment(s.slice(from, k + 16))) { if (from + index > k) break; last = from + index; }
-    k = last;
+    if (k > 0) k = GRAPHEMES.segment(s.slice(0, k + 2)).containing(k).index;
   } else {
     const c = s.charCodeAt(k - 1);
     if (c >= 0xd800 && c <= 0xdbff) k--;
