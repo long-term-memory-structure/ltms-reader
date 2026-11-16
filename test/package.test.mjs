@@ -1,6 +1,6 @@
 // test/package.test.mjs — the package as its design has it (S375): one runtime dependency, the core, whose library, CLI and
 // manifest the view layer reaches through package.json "imports" (#ltms, #ltms/cli, #ltms/package.json), each mapped into
-// that dependency; and the command package.json names, which, before the screen, prints its usage and exits 2.
+// that dependency; and the command package.json names, which runs on a terminal only, and says so on anything else.
 // Every run of the command here is given a folder of this test's own (CLAUDE_CONFIG_DIR too), never the user's projects.
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -31,17 +31,33 @@ test('one runtime dependency, the core; every #ltms import resolves into it', ()
   assert.match(createRequire(import.meta.url)(`${CORE}/package.json`).version, /^0\.3\.\d+$/, 'the installed core is in the range package.json declares');
 });
 
-test('the command, before the screen: its usage on stderr, nothing on stdout, exit 2, whatever it is given', () => {
+test('the command on no terminal: refused at once, naming ltms as the command for lines; stdout empty; exit 2', () => {
   assert.deepEqual(pkg.bin, { 'ltms-reader': 'bin/ltms-reader.mjs' });
   const bin = path.join(root, pkg.bin['ltms-reader']);
   assert.equal(readFileSync(bin, 'utf8').split('\n')[0], '#!/usr/bin/env node');
   const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-bin-'));
   try {
-    for (const args of [[], ['--help'], [own], [path.join(root, 'test', 'fixtures', 'ltms', 'demo.jsonl')]]) {
-      const r = spawnSync(process.execPath, [bin, ...args], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: own } });
+    // spawnSync gives pipes, not terminals; the folder that does not exist is refused for the terminal, not for the path:
+    // nothing is looked at before that check
+    for (const args of [[], [own], [path.join(root, 'test', 'fixtures', 'ltms', 'demo.jsonl')], [path.join(own, 'nothing-here')]]) {
+      const r = spawnSync(process.execPath, [bin, ...args], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: own, HOME: own } });
       assert.equal(r.status, 2, `${JSON.stringify(args)}: exit`);
       assert.equal(r.stdout, '', `${JSON.stringify(args)}: stdout`);
-      assert.match(r.stderr, /^usage: ltms-reader /, `${JSON.stringify(args)}: stderr`);
+      assert.match(r.stderr, /^ltms-reader: stdin and stdout are not terminals, so nothing was read\.\n/, `${JSON.stringify(args)}: stderr`);
+      for (const command of ['ltms index', 'ltms search', 'ltms skeleton', 'npx long-term-memory-structure']) assert.ok(r.stderr.includes(command), `${JSON.stringify(args)}: names ${command}`);
+    }
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: own, HOME: own };
+    const help = spawnSync(process.execPath, [bin, '--help'], { encoding: 'utf8', env });
+    assert.equal(help.status, 0);
+    assert.match(help.stdout, /^usage: ltms-reader {22}the projects under ~\/\.claude\/projects/);
+    assert.equal(help.stderr, '');
+    const version = spawnSync(process.execPath, [bin, '--version'], { encoding: 'utf8', env });
+    assert.equal(version.stdout, `ltms-reader ${pkg.version}\n`);
+    for (const [args, said] of [[['--bogus'], /^ltms-reader: no option "--bogus"\nusage: /], [['a', 'b'], /^ltms-reader: one folder or one file, not 2 arguments\nusage: /]]) {
+      const r = spawnSync(process.execPath, [bin, ...args], { encoding: 'utf8', env });
+      assert.equal(r.status, 2, `${JSON.stringify(args)}: exit`);
+      assert.equal(r.stdout, '');
+      assert.match(r.stderr, said);
     }
   } finally { rmSync(own, { recursive: true, force: true }); }
 });
