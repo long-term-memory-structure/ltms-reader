@@ -334,7 +334,7 @@ test('R1: LTMS_READER_BIDI set to a mode there is not: refused before the screen
   } finally { r.dispose(); }
 });
 
-// ---- W1 (S378, round 4): a wrapped paragraph, end to end ------------------------------------------------------------
+// ---- W1, W2 (S378, round 4): a wrapped paragraph, and the right-to-left mark, end to end ------------------------------------
 /** The rows the terminal received from the reader, each as written after its row's position and erase (styles taken
  *  out), every frame's. */
 const rowsOf = (out) => readerPart(out).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).map((x) => x.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ''));
@@ -353,5 +353,38 @@ test('W1: a record\'s wrapped paragraph, by default (laid out by the reader): he
     assert.ok(rows.includes('graph that mixes both scripts,'), `30 columns: ${JSON.stringify(rows.filter((x) => x.includes('scripts')))}`);
     assert.ok(rows.includes(`a long paragraph that mixes both scripts, :${VAYEHI}`), `60 columns: ${JSON.stringify(rows.filter((x) => x.includes('scripts')))}`);
     assert.ok(!rows.some((x) => x.startsWith(',')), 'no row begins with the comma');
+  } finally { r.dispose(); }
+});
+
+// Under Konsole ("terminal" mode), a left-to-right paragraph that holds Hebrew is written as stored, with no RLM after
+// it; a right-to-left one has its RLM. Round 3's pty tests showed only a right-to-left paragraph, and passed with an RLM
+// after every paragraph planted.
+const BIDI = 'bidibidi-0000-4000-8000-000000000000.jsonl';
+const LTR_LINES = ['abc אבג def', 'The word שלום means peace.', 'C++ \u200eהיא שפה (with LRM before the Hebrew)'];
+const RTL_LINE = 'שלום עולם, זהו משפט בעברית.';
+const WRAPPED = 'The word שלום means peace and the word עולם means world; both are written right to left, in a line that wraps.';
+/** A transcript of one turn, its prompt the given text. */
+function promptRecord(file, text) {
+  const base = { isSidechain: false, userType: 'external', cwd: '/work/b', sessionId: 'bidibidi-0000-4000-8000-000000000000', version: '2.0.0', gitBranch: 'main', entrypoint: 'cli' };
+  writeFileSync(file, `${JSON.stringify({ ...base, parentUuid: null, type: 'user', message: { role: 'user', content: text }, uuid: 'bb000000-0000-4000-8000-000000000001', timestamp: '2026-03-01T10:00:00.000Z', promptSource: 'typed' })}\n`);
+}
+test('W2 (a): under Konsole (KONSOLE_VERSION), a left-to-right paragraph that holds Hebrew, whole or wrapped, is written as stored with no RLM after it; a right-to-left one with its RLM; q, and the terminal as it was', { skip, timeout: 60_000 }, async () => {
+  const r = makeRoot('ltms-reader-pty-');
+  try {
+    const file = path.join(r.base, BIDI);
+    promptRecord(file, [...LTR_LINES, RTL_LINE, WRAPPED].join('\n'));
+    const res = await ptyRun(r, { args: [file], env: { KONSOLE_VERSION: '260803' }, steps: [{ until: '> bidibidi:T001', send: KEY.enter }, { until: 'Turn bidibidi:T001', send: KEY.enter }, { until: 'Record bidibidi:L1', send: 'q' }] });
+    assert.equal(res.exit, 0);
+    assert.equal(res.after, res.before, 'stty -g after = before');
+    const rows = rowsOf(res.out), at = rows.findIndex((x) => x.startsWith('ltms-reader  Record bidibidi:L1'));
+    assert.ok(at >= 0, 'the record drawn');
+    const record = rows.slice(at);
+    for (const l of LTR_LINES) assert.ok(record.includes(l), `as stored, nothing after it: ${JSON.stringify(l)} in ${JSON.stringify(record)}`);
+    assert.ok(record.includes(`${RTL_LINE}\u200f`), `the right-to-left paragraph with its RLM: ${JSON.stringify(record)}`);
+    // the wrapped one: its lines, each as stored, none with an RLM, joined the paragraph
+    const first = record.findIndex((x) => x.startsWith('The word שלום means peace and'));
+    assert.ok(first >= 0 && WRAPPED.startsWith(record[first]) && record[first].length < WRAPPED.length, `the wrapped paragraph's first line: ${JSON.stringify(record[first])}`);
+    assert.equal(record[first] + record[first + 1], WRAPPED, 'its two lines, as stored, are the paragraph');
+    assert.ok(!record.some((x) => x.includes('\u200f') && x !== `${RTL_LINE}\u200f`), 'no other RLM');
   } finally { r.dispose(); }
 });

@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RTL_MODES, clusterWidth, cut, directionOf, displayOrder, expandTabs, fit, fitParts, isWide, pathUnits, rtlModeOf, visible, visualLine, width, wordSpans, wrap, wrapWords } from '../src/text.mjs';
+import { RTL_MODES, clusterWidth, cut, directionOf, displayOrder, expandTabs, fit, fitParts, isWide, paragraphLine, pathUnits, rtlModeOf, visible, visualLine, width, wordSpans, wrap, wrapWords } from '../src/text.mjs';
 import { SOURCE_SHA256, SOURCE_URL, UNICODE_VERSION, WIDE } from '../src/width-table.mjs';
 import { SHA256, VERSION } from '../scripts/width-table.mjs';
 
@@ -324,4 +324,50 @@ test('W1: wordSpans: where each line of wrapWords begins and ends; each line is 
     }
   }
   assert.equal(n, texts.length * 40);
+});
+
+// ---- W2 (S378, round 4): the right-to-left mark in "terminal" mode; L1 for each line of a paragraph -------------------------
+// Round 3's check planted a defect in displayOrder, an RLM after every paragraph that holds a right-to-left character
+// whatever its direction ('rlm-everywhere'), and 90 of 90 tests and the 5 pty tests passed: these tests checked only
+// segments with no right-to-left character, which displayOrder passes over before the mode is asked. Konsole lays a line
+// out with a left-to-right base, and an RLM after a left-to-right paragraph would carry its end to the left.
+const RLM = '\u200f';
+const LTR_HEBREW = ['abc \u05df\u05df\u05df\u05e9\u05e9\u05e9 def', 'The word \u05e9\u05dc\u05d5\u05dd means peace.', 'C++ \u200e\u05d4\u05d9\u05d0 \u05e9\u05e4\u05d4', 'abc \u05d0\u05d1\u05d2 123 \u05d3\u05d4\u05d5 def'];
+const RTL_HEBREW = ['\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd, \u05d6\u05d4\u05d5 \u05de\u05e9\u05e4\u05d8 \u05d1\u05e2\u05d1\u05e8\u05d9\u05ea.', '\u05de\u05d4 \u05e9\u05dc\u05d5\u05de\u05da?'];
+test('W2 (a): "terminal" writes an RLM after a right-to-left paragraph\'s text and after no other: a left-to-right one that holds Hebrew is written as stored; the bytes the screen writes, for a cell, a record\'s line and a wrapped paragraph\'s lines', async () => {
+  const { frameBytes } = await import('../src/screen.mjs');
+  const written = (lines) => frameBytes(lines, { cols: 200, rows: lines.length, colour: false, rtl: 'terminal' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).map((x) => x.replace(/\x1b\[[0-9;]*m/g, ''));
+  for (const t of LTR_HEBREW) assert.equal(directionOf(t), 0, t);
+  for (const t of RTL_HEBREW) assert.equal(directionOf(t), 1, t);
+  // a list's row (the text a cell of its own, after the reader's words), a record's line (its direction given), the two
+  // lines of a paragraph wrapped into them (a line of its paragraph: par, at)
+  const rows = (t, dir) => [
+    [{ text: '> ', style: 'sel' }, { text: 'demo.jso:L2', style: 'addr' }, { text: '  ' }, { text: t, style: null }],
+    [{ text: t, style: null, dir }],
+    [{ text: t, style: null, dir, par: `${t} ${t}`, at: 0 }],
+    [{ text: t, style: null, dir, par: `${t} ${t}`, at: t.length + 1 }],
+  ];
+  for (const t of LTR_HEBREW) assert.deepEqual(written(rows(t, 0)), [`> demo.jso:L2  ${t}`, t, t, t], `left to right: ${t}`);
+  for (const t of RTL_HEBREW) assert.deepEqual(written(rows(t, 1)), [`> demo.jso:L2  ${t}${RLM}`, `${t}${RLM}`, `${t}${RLM}`, `${t}${RLM}`], `right to left: ${t}`);
+});
+
+// L1 (UAX #9): on each line, the whitespace at its end (and before a segment separator) takes the paragraph's level. A
+// line resolved by itself, as round 3 laid each line out, never needed it (its end is the paragraph's end there, and
+// what is neutral there takes the paragraph's direction): round 3's check planted 'l1-off' and nothing failed. Laid out
+// from its paragraph's levels, a space at a line's end has the level its neighbours across the break give it, and L1
+// decides where it goes. (The screen keeps a segment's spaces at either end where they are, so that what it lays out
+// never ends in one: there, L1 changes nothing.)
+test('W2 (b): a line of a paragraph laid out from its levels (paragraphLine): L1 gives the whitespace at the line\'s end the paragraph\'s level', () => {
+  // a right-to-left paragraph "abc def": its space, between two L, resolved L (level 2); at the end of the line "abc ",
+  // the paragraph's level (1): the line reads " abc", the space at its end in the paragraph's direction, the left
+  assert.equal(paragraphLine('abc def', 1, 0, 4), ' abc');
+  assert.equal(paragraphLine('abc def', 1, 0, 7), 'abc def', 'the whole paragraph: the space between them, at 2');
+  assert.equal(paragraphLine('abc  \t def', 1, 0, 5), '  abc', 'two spaces at the end');
+  // a left-to-right paragraph: the space between two Hebrew words, resolved R (level 1); at the end of the line, 0
+  const heb = '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd';
+  assert.equal(paragraphLine(heb, 0, 0, 5), '\u05dd\u05d5\u05dc\u05e9 ');
+  assert.equal(paragraphLine(heb, 0, 0, 9), '\u05dd\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9', 'the whole paragraph: the space at 1, between the two');
+  // a space that does not end the line keeps its level; a path that ends it is not whitespace (an isolate's content)
+  assert.equal(paragraphLine('abc def ghi', 1, 0, 8), ' abc def');
+  assert.equal(paragraphLine('abc \u05e9\u05dc\u05d5\u05dd /srv/x.txt \u05e2\u05d5\u05dc\u05dd def', 0, 0, 19), 'abc /srv/x.txt \u05dd\u05d5\u05dc\u05e9');
 });

@@ -339,3 +339,27 @@ test('W1: wrapped paragraphs, each line as the record view writes it, equal GNU 
   // the population is not empty: 881 lines of the fixtures and 4,919 random ones when this was written
   assert.ok(count.fixture[0] + count.fixture[1] >= 800 && count.random[0] + count.random[1] >= 4000, JSON.stringify(count));
 });
+
+// L1, against the same oracle: the lines of the same paragraphs whole, their spaces at either end laid out with the
+// rest (text.mjs paragraphLine, what the screen asks for a line's text between its spaces: here, for the whole line). On
+// a line that ends in a space, L1 decides where the space goes: the paragraph's level, whatever its neighbours across the
+// break resolved it to (round 3's check planted 'l1-off', L1 left out, and nothing failed).
+test('W2 (b): the same lines whole, their spaces at either end included (paragraphLine), equal GNU FriBidi\'s library: L1 gives the whitespace at each line\'s end the paragraph\'s level', { skip: hasLib ? false : `no ${PYTHON} that loads GNU FriBidi's library (libfribidi) here`, timeout: 600_000 }, async (t) => {
+  const { paragraphLine } = await import('../src/text.mjs');
+  assert.equal(typeof paragraphLine, 'function', 'text.mjs lays out a line of a paragraph (W1)');
+  const rnd = randomOf(379), pars = [...fixtureLines().map((text) => ({ text, cols: 10 + rnd(71) })), ...randomParagraphs(1500, 2612).map((text) => ({ text, cols: 10 + rnd(71) }))];
+  const asked = [], mine = [];
+  let ending = 0;
+  for (const p of pars) {
+    const level = directionOf(p.text), lines = [...lineSpans(p.text, p.cols)].filter(([a, b]) => a < b);
+    for (const [a, b] of lines) { mine.push({ line: p.text.slice(a, b), level, reader: paragraphLine(p.text, level, a, b) }); if (/\s$/.test(p.text.slice(a, b))) ending++; }
+    asked.push({ text: p.text, level, lines });
+  }
+  const theirs = fribidiLines(asked).flat();
+  assert.equal(theirs.length, mine.length);
+  const differ = mine.map((m, i) => ({ ...m, fribidi: theirs[i] })).filter((m) => m.reader !== m.fribidi);
+  t.diagnostic(`${mine.length} lines, ${ending} of them ending in a space: ${mine.length - differ.length} equal to FriBidi's, ${differ.length} differ`);
+  assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's`);
+  // the population is not empty: 6,503 lines, 704 of them ending in a space, when this was written
+  assert.ok(mine.length >= 4000 && ending >= 500, `${mine.length} lines, ${ending} ending in a space`);
+});
