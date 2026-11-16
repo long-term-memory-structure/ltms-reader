@@ -455,16 +455,44 @@ export function visualLine(text, level = null, { units = true } = {}) {
   return lineOf(layOut(text, level, units), 0, text.length);
 }
 
+/** Whether a grapheme cluster boundary is at offset i of s (0 < i < s.length), read from the code point before i and the
+ *  one at i only: exact where either is whitespace, as at a segment's edges below (the rules that read further back, the
+ *  Indic conjuncts', the emoji sequences' and the flags', join a character to a linker, a ZWJ or a regional indicator
+ *  before it, never to whitespace, and never join whitespace to what is before it). */
+function boundaryAt(s, i) {
+  const lo = s.charCodeAt(i - 1), pair = lo >= 0xdc00 && lo <= 0xdfff && i >= 2 && s.charCodeAt(i - 2) >= 0xd800 && s.charCodeAt(i - 2) <= 0xdbff;
+  const from = pair ? i - 2 : i - 1;
+  const hi = s.charCodeAt(i), to = Math.min(s.length, i + (hi >= 0xd800 && hi <= 0xdbff ? 2 : 1));
+  return clusters(s.slice(from, to)).next().value.length === i - from;
+}
+
+/**
+ * The whitespace at either end of a segment's text, ECMAScript's as trimStart and trimEnd take it, in whole grapheme
+ * clusters made of whitespace only: [a, b), the core between them (V3, round 5: by trimStart, a space carrying a mark at
+ * a segment's start was cut from its mark, which was laid out with the rest, on the letter beside it). A character that
+ * joins the cluster of a space before it is at U+0300 or above (a mark, ZWJ, a spacing mark); one that joins a space
+ * after it, at U+0600 or above (a Prepend character): below those the boundary is not looked up (test/text.test.mjs
+ * checks both, by Intl.Segmenter).
+ */
+function blankEdges(text) {
+  let a = text.length - text.trimStart().length, b = text.trimEnd().length;
+  if (a >= b) return [a, a];
+  while (a > 0 && (!SEG || text.charCodeAt(a) >= 0x300) && !boundaryAt(text, a)) a--;
+  while (b < text.length && (!SEG || text.charCodeAt(b - 1) >= 0x600) && !boundaryAt(text, b)) b++;
+  return [a, b];
+}
+
 /**
  * One screen row's segments ([{ text, style, dir, par, at }], already cut to the row's width) as they are written, in
  * `mode`. A segment is a paragraph of its own, or a line of one: `par` names the paragraph (its text, of which the
  * segment's text is the slice at `at`: a line of a record, of a message, of the reader's own words wrapped into lines,
  * W1). Its direction is `dir` when given (0 or 1: a line's, its paragraph's), else its own (P2, P3). Its spaces at
- * either end stay where they are (the columns stay; the text is aligned left). "reader": the rest laid out, a line of a
- * paragraph from the paragraph's levels (paragraphLine), a paragraph of its own by visualLine (a line cut to its
- * columns is one: R1 (c)). "terminal": as stored, with an RLM after a right-to-left paragraph's text, so that a terminal
- * that lays the line out with a left-to-right base (Konsole) puts the paragraph's end punctuation at its left (measured
- * on Konsole 26.08.3; a mark at the row's first column it drops); never after a left-to-right one's.
+ * either end, in whole clusters (blankEdges), stay where they are (the columns stay; the text is aligned left).
+ * "reader": the rest laid out, a line of a paragraph from the paragraph's levels (paragraphLine), a paragraph of its own
+ * by visualLine (a line cut to its columns is one: R1 (c)). "terminal": as stored, with an RLM after a right-to-left
+ * paragraph's text, so that a terminal that lays the line out with a left-to-right base (Konsole) puts the paragraph's
+ * end punctuation at its left (measured on Konsole 26.08.3; a mark at the row's first column it drops); never after a
+ * left-to-right one's.
  */
 export function displayOrder(row, mode = 'reader') {
   if (mode !== 'reader' && mode !== 'terminal') throw new RangeError(`no right-to-left mode ${JSON.stringify(mode)}: the modes are "reader" and "terminal"`);
@@ -474,7 +502,7 @@ export function displayOrder(row, mode = 'reader') {
     // a line of a paragraph: one whose paragraph holds what the segment's text is, at its place
     const line = typeof s.par === 'string' && Number.isInteger(s.at) && s.par.startsWith(text, s.at);
     if (!line && s.dir !== 1 && NO_RTL.test(text)) continue;
-    const a = text.length - text.trimStart().length, b = text.trimEnd().length;
+    const [a, b] = blankEdges(text);
     if (a >= b) continue;
     const core = text.slice(a, b), dir = s.dir ?? (line ? directionOf(s.par) : directionOf(core));
     let shown;

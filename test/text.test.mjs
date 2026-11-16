@@ -201,6 +201,59 @@ test('R1: a row\'s segments, each a paragraph: "reader" lays each out in place, 
   for (const mode of RTL_MODES) assert.deepEqual(displayOrder(row, mode).map((s) => width(s.text)), row.map((s) => width(s.text)), mode);
 });
 
+// V3 (round 5): displayOrder took a segment's whitespace at either end with trimStart and trimEnd, which know nothing of
+// grapheme clusters: a space carrying a mark at a segment's start was cut from its mark, and the mark, laid out with the
+// rest, was drawn on the letter beside it (round 4's check: in a right-to-left paragraph ' \u05b8\u05e2\u05d5\u05dc\u05dd'
+// was written ' \u05dd\u05dc\u05d5\u05e2\u05b8', the qamats on ayin; 81 of 56,341 record lines and 20 of 59,142 message lines
+// of its random paragraphs). The edges are taken in whole clusters, each made of whitespace only.
+test('V3: a segment\'s whitespace at either end is taken in whole clusters: a mark on a space at its start stays on it; a space a Prepend character holds stays with it', () => {
+  const qamats = '\u05b8', olam = '\u05e2\u05d5\u05dc\u05dd', t = ` ${qamats}${olam}`;
+  // a cell (a paragraph of its own) and a line of a paragraph, right to left: the space and its qamats one cluster, at
+  // the line's right end with the rest of it, as the paragraph's first strong character puts it
+  assert.equal(displayOrder([{ text: t, style: null, dir: 1 }], 'reader')[0].text, `\u05dd\u05dc\u05d5\u05e2 ${qamats}`);
+  const par = `\u05e9\u05dc\u05d5\u05dd${t}`;
+  assert.equal(displayOrder([{ text: t, style: null, dir: 1, par, at: 4 }], 'reader')[0].text, `\u05dd\u05dc\u05d5\u05e2 ${qamats}`);
+  // every mark that joins a space (a nonspacing mark, an enclosing one, ZWJ, a spacing mark), after one space or more,
+  // in either direction, in a cell or a line: the space and its mark are one cluster in what is written
+  for (const mark of ['\u05b8', '\u0651', '\u0301', '\u20dd', '\u200d', '\u0903']) {
+    for (const lead of [' ', '   ', '\u3000']) {
+      for (const [dir, rest] of [[1, olam], [0, 'abc \u05e9\u05dc\u05d5\u05dd']]) {
+        const text = `${lead}${mark}${rest}`, joined = `${lead.slice(-1)}${mark}`;
+        assert.equal([...SEG2.segment(joined)].length, 1, `${JSON.stringify(joined)} is one cluster`);
+        for (const s of [{ text, style: null, dir }, { text, style: null, dir, par: `x${text}`, at: 1 }]) {
+          for (const mode of RTL_MODES) {
+            const w = displayOrder([s], mode)[0].text;
+            assert.ok(w.includes(joined), `${mode}, ${s.par ? 'a line' : 'a cell'}, ${JSON.stringify(text)}: the mark on its space: ${JSON.stringify(w)}`);
+            assert.equal(width(w), width(text), `${mode}: the columns stay`);
+          }
+        }
+      }
+    }
+  }
+  // a space after a Prepend character (U+0600, an Arabic number sign) is in its cluster: not an edge, so that in
+  // "terminal" the RLM follows it, and in "reader" it is drawn with its cluster
+  const prep = `\u05e9\u05dc\u05d5\u05dd\u0600 `;
+  assert.equal([...SEG2.segment('\u0600 ')].length, 1);
+  assert.equal(displayOrder([{ text: prep, style: null, dir: 1 }], 'terminal')[0].text, `${prep}\u200f`);
+  assert.equal(displayOrder([{ text: prep, style: null, dir: 1 }], 'reader')[0].text, '\u0600 \u05dd\u05d5\u05dc\u05e9');
+  // the edges as they were where no cluster crosses them: the cell's padding in place
+  assert.equal(displayOrder([{ text: ` ${olam}  `, style: null, dir: 1 }], 'reader')[0].text, ` \u05dd\u05dc\u05d5\u05e2  `);
+  assert.equal(displayOrder([{ text: ` ${olam}  `, style: null, dir: 1 }], 'terminal')[0].text, ` ${olam}\u200f  `);
+});
+
+test('V3: no character under U+0300 joins the cluster of a space before it, none under U+0600 the cluster of a space after it (what displayOrder\'s edges rely on, by this Node\'s Intl.Segmenter)', () => {
+  const one = (s) => [...SEG2.segment(s)].length === 1;
+  const after = [], before = [];
+  for (let cp = 0; cp < 0x600; cp++) {
+    const c = String.fromCodePoint(cp);
+    if (cp < 0x300 && one(` ${c}`)) after.push(cp.toString(16));
+    if (one(`${c} `)) before.push(cp.toString(16));
+  }
+  assert.deepEqual(after, []);
+  assert.deepEqual(before, []);
+  assert.ok(one(' \u0300') && one('\u0600 '), 'U+0300 joins a space before it, U+0600 one after it');
+});
+
 test('R1: the parts of a cell cut in logical order, between clusters of the whole, with \u2026 at the end of the last part shown', () => {
   const parts = ['user  12 characters  ', '\u05de\u05d4 \u05e9\u05dc\u05d5\u05de\u05da \u05d4\u05d9\u05d5\u05dd?'];
   assert.equal(fitParts(parts, 200), parts);
