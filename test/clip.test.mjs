@@ -154,3 +154,22 @@ test('R2: clip of 4,000,000 units with a Prepend character before each ASCII cha
     }
   }
 });
+
+// ---- R5 (S377, round 3): a Prepend character below U+0700 ---------------------------------------------------------------
+// Round 2's check planted a defect that took every code point below U+0700 for one that never joins the character after
+// it (splitsBefore's 'b < 0x0700'), and clip.test passed: its fixed samples had no Prepend character there, and its
+// random texts did not put a limit between one and its letter. Here every code point from U+0590 to U+06FF that ICU joins
+// to an ASCII letter after it (U+0600 to U+0605 and U+06DD, Prepend) stands before a letter, and the text is cut at
+// every limit.
+test('R5: each Prepend character below U+0700, before a letter: clip at every limit cuts where the whole text\'s boundaries say', () => {
+  const joins = [];
+  for (let c = 0x590; c <= 0x6ff; c++) if ([...SEG.segment(`${cp(c)}a`)].length === 1) joins.push(c);
+  assert.deepEqual(joins, [0x600, 0x601, 0x602, 0x603, 0x604, 0x605, 0x6dd], 'the Prepend characters there, as ICU segments them');
+  const s = joins.map((c) => `x ${cp(c)}a${cp(c)}${cp(c)}bc. `).join('');
+  const b = boundaries(s);
+  for (let n = 0; n <= s.length + 1; n++) {
+    const r = clip(s, n);
+    const want = Math.max(...[...b].filter((x) => x <= Math.min(n, s.length)));
+    assert.equal(r.text.length, want, `at ${n}: the last boundary at or before it is ${want} (U+${(s.codePointAt(Math.min(s.length - 1, Math.max(0, n - 1))) ?? 0).toString(16)} before it)`);
+  }
+});
