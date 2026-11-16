@@ -35,6 +35,30 @@ export function tooLarge(size, heapLimit = getHeapStatistics().heap_size_limit, 
   return `it is ${mb(size)}, and this process reads a transcript of up to ${mb(limit)} (a tenth of its memory limit, as ltms reads; parsing takes 5 to 8 times a file's size). To read it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need} ${again}`;
 }
 
+/** What a transcript's parse takes, at most, for each byte of the file (ltms's figure: 5 to 8 times a file's size). */
+export const PARSE_PER_BYTE = 8;
+/** What a record's view takes, at most, for each byte of the record's line in the file. Measured (R.F1's probe, one
+ *  record of each kind): its strings (the record as JSON, and the parts it re-writes as JSON) and the marks of its lines
+ *  took up to 5.5 bytes a byte, for an array of numbers (re-written with indents, some 6 characters a byte); a JSON
+ *  that holds one character outside Latin-1 takes two bytes a character, so up to 12; this is that with a margin. */
+export const RECORD_VIEW_PER_BYTE = 16;
+
+/**
+ * Why the record written on a line of `bytes` bytes, in a transcript of `fileSize` bytes, is not shown here (with the
+ * NODE_OPTIONS that would let it be, before `again`, the command that was run), or null when it is shown: its view, at
+ * RECORD_VIEW_PER_BYTE times its size, must fit beside the transcript's parse, at PARSE_PER_BYTE times the file's size,
+ * in nine tenths of the heap limit (R.F1: a record a transcript's size allowed ran Node's heap out, and the abort left
+ * the terminal raw).
+ */
+export function recordTooLarge(bytes, fileSize, heapLimit = getHeapStatistics().heap_size_limit, again = 'npx ltms-reader') {
+  const room = 0.9 * heapLimit - PARSE_PER_BYTE * fileSize;
+  const limit = Math.max(0, Math.floor(room / RECORD_VIEW_PER_BYTE));
+  if (bytes <= limit) return null;
+  const need = Math.ceil(Math.max(10 * fileSize, (PARSE_PER_BYTE * fileSize + RECORD_VIEW_PER_BYTE * bytes) / 0.9) / MB / 256) * 256;
+  const size = (n, round) => (n < MB ? `${round(n / 1024).toLocaleString('en-US')} KB` : `${round(n / MB).toLocaleString('en-US')} MB`);
+  return `it is ${size(bytes, Math.ceil)}, and in a transcript of ${size(fileSize, Math.ceil)} this process shows a record of up to ${size(limit, Math.floor)} (its view takes up to ${RECORD_VIEW_PER_BYTE} times a record's size, the transcript's parse up to ${PARSE_PER_BYTE} times the file's, both within nine tenths of the memory limit). To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need} ${again}`;
+}
+
 /**
  * Read and parse one transcript; `abs` is its full path (already checked by the caller to be a regular file reached
  * through no symbolic link). Returns { abs, name, prefix, size, t, view }: `view` is the session view, uncapped (a

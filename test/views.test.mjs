@@ -149,7 +149,7 @@ for (const file of population) {
               checkFrame(app.lines(), cols, rows, `${where} first page${json ? ' JSON' : ''}`);
               await keys.press(KEY.end);
               checkFrame(app.lines(), cols, rows, `${where} last page${json ? ' JSON' : ''}`);
-              const all = recordLines(rv.rec, json, cols).map((l) => l.map((s) => s.text).join(''));
+              const all = recordLines(rv.rec, json, cols).slice().map((l) => l.map((s) => s.text).join(''));
               for (const l of all) { assert.ok(!CC.test(l), `${where}: a control character`); assert.ok(width(l) <= cols, `${where}: ${width(l)} columns`); }
               const squash = (s) => s.replace(/\s+/g, '');
               if (json) {

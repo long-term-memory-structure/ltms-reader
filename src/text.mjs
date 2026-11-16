@@ -65,6 +65,7 @@ export function clusterWidth(c) {
 
 const SEG = typeof Intl?.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
 const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
+const ASCII_AND_TABS = /^[\t\x20-\x7e]*$/;
 
 /** The grapheme clusters of s, in order. Without Intl.Segmenter, each code point with the zero-width ones after it. */
 export function* clusters(s) {
@@ -111,20 +112,29 @@ export function pad(s, cols) {
   return r.text + ' '.repeat(Math.max(0, cols - r.width));
 }
 
-/** One line (no new line in it) cut into lines of at most `cols` columns, between clusters; a cluster wider than the
- *  columns goes on a line of its own. The lines join back to s. */
-export function wrap(s, cols) {
-  if (s === '') return [''];
+/** Where the lines of one line of text s (no new line in it) begin and end, [start, end), when it is cut into lines of
+ *  at most `cols` columns between clusters, a cluster wider than the columns on a line of its own; from offset `from`,
+ *  where a cluster begins. One pair at a time, so that a long text can be laid out without its lines being made. An
+ *  empty s is one empty line. */
+export function* lineSpans(s, cols, from = 0) {
   const n = Math.max(1, cols);
-  if (PRINTABLE_ASCII.test(s)) { const out = []; for (let i = 0; i < s.length; i += n) out.push(s.slice(i, i + n)); return out; }
-  const out = [];
-  let line = '', w = 0;
-  for (const c of clusters(s)) {
+  if (from >= s.length) { if (from === 0) yield [0, 0]; return; }
+  if (PRINTABLE_ASCII.test(s)) { for (let i = from; i < s.length; i += n) yield [i, Math.min(s.length, i + n)]; return; }
+  let start = from, at = from, w = 0;
+  for (const c of clusters(from ? s.slice(from) : s)) {
     const cw = clusterWidth(c);
-    if (w + cw > n && line !== '') { out.push(line); line = ''; w = 0; }
-    line += c; w += cw;
+    if (w + cw > n && at > start) { yield [start, at]; start = at; w = 0; }
+    at += c.length; w += cw;
   }
-  out.push(line);
+  yield [start, s.length];
+}
+
+/** One line (no new line in it) cut into lines of at most `cols` columns, between clusters; a cluster wider than the
+ *  columns goes on a line of its own. The lines join back to s. Each line is a slice of s (a line built by adding
+ *  cluster after cluster cost a string object per cluster: 28 MB for a million characters of Hebrew, R.F1). */
+export function wrap(s, cols) {
+  const out = [];
+  for (const [a, b] of lineSpans(s, cols)) out.push(s.slice(a, b));
   return out;
 }
 
@@ -148,12 +158,23 @@ export function wrapWords(s, cols) {
 /** s with each tab as spaces to the next multiple of `tab` columns, counted by width from the start of s. */
 export function expandTabs(s, tab = 8) {
   if (!s.includes('\t')) return s;
-  let out = '', col = 0;
-  for (const c of clusters(s)) {
-    if (c === '\t') { const n = tab - (col % tab); out += ' '.repeat(n); col += n; continue; }
-    out += c; col += clusterWidth(c);
+  // the runs between tabs as slices of s, joined once (a tab is a cluster of its own); printable ASCII and tabs alone
+  // are counted by their characters, without the segmenter
+  if (ASCII_AND_TABS.test(s)) {
+    const parts = [];
+    let from = 0, col = 0;
+    for (let i = s.indexOf('\t'); i >= 0; i = s.indexOf('\t', from)) { col += i - from; const n = tab - (col % tab); parts.push(s.slice(from, i), ' '.repeat(n)); col += n; from = i + 1; }
+    parts.push(s.slice(from));
+    return parts.join('');
   }
-  return out;
+  const parts = [];
+  let from = 0, at = 0, col = 0;
+  for (const c of clusters(s)) {
+    if (c === '\t') { const n = tab - (col % tab); parts.push(s.slice(from, at), ' '.repeat(n)); col += n; at += 1; from = at; continue; }
+    at += c.length; col += clusterWidth(c);
+  }
+  parts.push(s.slice(from));
+  return parts.join('');
 }
 
 /** The right-to-left modes there are. */

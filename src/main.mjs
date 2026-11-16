@@ -26,11 +26,11 @@ export function errorReport(e) {
 }
 
 /**
- * Run the command. Returns the exit code when it ends before the screen (usage, a refusal); once the screen is open,
- * it returns { app, finish } and the process exits from the screen, through finish(). The streams and the process are
- * parameters so that the tests can run it whole on streams of their own.
+ * What the command does before its screen opens: the help, the version, a usage error, and the refusals (stdin or
+ * stdout not a terminal, a path that is none of the three ways in), each written, and its exit code returned; or, when
+ * the screen is to open, { a: the arguments, start: what to open }. Only isTTY is read of stdin and stdout.
  */
-export function main(argv, { stdin = process.stdin, stdout = process.stdout, stderr = process.stderr, env = process.env, proc = process } = {}) {
+export function before(argv, { stdin = process.stdin, stdout = process.stdout, stderr = process.stderr, env = process.env } = {}) {
   const a = parseArgs(argv);
   if (a.help) { stdout.write(USAGE); return 0; }
   if (a.version) { stdout.write(`ltms-reader ${version()}\n`); return 0; }
@@ -39,6 +39,19 @@ export function main(argv, { stdin = process.stdin, stdout = process.stdout, std
   if (tty) { stderr.write(tty); return 2; }
   const start = startOf(a.path, { env, home: homedir() });
   if (start.refused) { stderr.write(`ltms-reader: ${start.refused}\n`); return 2; }
+  return { a, start };
+}
+
+/**
+ * Run the command. Returns the exit code when it ends before the screen (usage, a refusal); once the screen is open,
+ * it returns { app, finish } and the process exits from the screen, through finish(). The streams and the process are
+ * parameters so that the tests can run it whole on streams of their own. bin/ltms-reader.mjs runs this in a process of
+ * its own (src/screen-process.mjs), and restores the terminal if that process ends without doing so (src/guard.mjs).
+ */
+export function main(argv, { stdin = process.stdin, stdout = process.stdout, stderr = process.stderr, env = process.env, proc = process } = {}) {
+  const b = before(argv, { stdin, stdout, stderr, env });
+  if (typeof b === 'number') return b;
+  const { a, start } = b;
 
   // a refusal of a transcript too large names the command that was run, with what it was given
   const again = againOf(a.path);

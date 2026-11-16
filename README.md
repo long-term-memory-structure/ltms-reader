@@ -87,13 +87,20 @@ While a line is typed: Backspace, Ctrl-U to clear it, Enter, Esc to leave it.
 - A transcript is read into memory whole, in the reader's own process. One over a tenth of Node's memory limit is
   refused with its size and the `NODE_OPTIONS=--max-old-space-size=...` that would let it be read (the rule ltms's
   commands follow, so the lists and the reader agree on which files can be read); one over 480 MB cannot be read at all.
+- A record is shown when its view (up to 16 times the record's size) fits beside the transcript's (up to 8 times the
+  file's) in nine tenths of Node's memory limit; a larger one is refused before it is drawn, with its size and the
+  `NODE_OPTIONS` that would show it. Its lines are laid out a page at a time.
+- The screen runs in a process of its own, which the command waits for. If that process ends without restoring the
+  terminal (Node's memory running out aborts it), the command restores it, then prints what Node said and what happened.
 - A list of sessions waits for `ltms index` to read every transcript of the project (on one machine, 39 s for a project
   of 385 sessions), and a search for `ltms search`; the screen says what is being read and for how long.
 - Some clusters are drawn wider by some terminals than by the cluster rule (an Indic conjunct, an emoji sequence a
   terminal does not join); a row then ends early, at the screen's edge.
 
 Exit status: 0 after `q`; 130 after Ctrl-C or SIGINT; 129 after SIGHUP; 143 after SIGTERM; 1 after an internal error;
-2 when it is refused before the screen opens (not a terminal, a usage error, a path that is not a folder or a `.jsonl`).
+2 when it is refused before the screen opens (not a terminal, a usage error, a path that is not a folder or a `.jsonl`);
+128 and a signal's number when a signal the screen cannot handle ended its process (134, SIGABRT, when Node's memory ran
+out), the terminal restored all the same.
 
 ## Development
 

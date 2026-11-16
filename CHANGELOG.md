@@ -24,7 +24,10 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   the table); lines cut by columns, never inside a cluster. Right to left: the text as written (the terminal lays it
   out); a measurement on the screens decides whether a reader-side layout is needed.
 - A transcript is read in the reader's own process; one over a tenth of Node's memory limit is refused with its size
-  and the `NODE_OPTIONS` that would let it be read.
+  and the `NODE_OPTIONS` that would let it be read, in the command that was run, the path given included. A record is
+  refused the same way when its view would not fit beside the transcript in Node's memory, and its lines are laid out a
+  page at a time. The screen runs in a process of its own: when it ends without restoring the terminal (Node's memory
+  ran out), the command restores it, and exits with 128 and the signal's number.
 - The view layer (`src/view.mjs`, `layout.mjs`, `engine.mjs`, `lines.mjs`, `helper.mjs`) moved here from the LTMS
   Reader extension, with its tests; the extension takes it from this package. Since the move, a prompt whose channel is
   an empty word reads `none`, as `ltms skeleton` prints it (the view layer gave an empty string; found by running the

@@ -5,7 +5,7 @@
 //
 // Every list row begins with its address as ltms prints it (a session's prefix, a turn's id, a record's <prefix>:L<line>),
 // so the address of what is on screen can be given to an agent as it is; the selected row's is also on the last line.
-import { clusters, expandTabs, fit, visible, width, wrap, wrapWords } from './text.mjs';
+import { clusters, expandTabs, fit, lineSpans, visible, width, wrapWords } from './text.mjs';
 import { prefixOf } from './view.mjs';
 
 export const MIN_COLS = 20, MIN_ROWS = 5;
@@ -251,33 +251,96 @@ export function turn(state, cols, rows) {
 }
 
 // ---- A record ---------------------------------------------------------------------------------------------------------
-const pages = new WeakMap();
-/** The record's lines at `cols` columns: each part's label, then its text, wrapped; or its JSON. */
-export function recordLines(rec, json, cols) {
-  let byKey = pages.get(rec);
-  if (!byKey) { byKey = new Map(); pages.set(rec, byKey); }
-  const key = `${json ? 'j' : 't'}:${cols}`;
-  if (byKey.has(key)) return byKey.get(key);
-  const out = [];
-  const text = (s, style = null) => { for (const p of visible(s).split('\n')) for (const l of wrap(expandTabs(p), cols)) out.push([seg(l, style)]); };
-  if (json) {
-    text(rec.raw.text);
-    if (rec.raw.more) out.push([seg(fit(`... ${plural(rec.raw.more, 'more character', 'more characters')} not shown`, cols), 'dim')]);
-  } else {
-    if (!rec.reading.length) out.push([seg('(nothing to read in this record)', 'dim')]);
-    rec.reading.forEach((p, i) => {
-      if (i) out.push([]);
-      for (const l of wrap(`-- ${label(p.label)} --`, cols)) out.push([seg(l, 'head')]);   // a long tool name is wrapped, not cut
-      if (p.text !== '') text(p.text);
-      if (p.more) out.push([seg(fit(`... ${plural(p.more, 'more character', 'more characters')} not shown`, cols), 'dim')]);
-    });
+/** Every STEP-th line's start is kept when a record's lines are counted; a page is laid out from the nearest before it. */
+const STEP = 256;
+
+/**
+ * A record's lines at one width, laid out a page at a time (R.F1: a record's lines, made whole and kept at every width
+ * a window passed through, ran Node's heap out). The record is a list of pieces: a line of its own (a blank line
+ * between parts, a "more characters" line, the empty record's note), or a text laid out by its new lines, each line's
+ * tabs as spaces, then by columns between clusters (src/text.mjs lineSpans, as wrap cuts). One pass counts the lines and
+ * keeps where every STEP-th begins (its piece, the start of its text line, the offset in that line once its tabs are
+ * spaces); slice(a, b) lays out lines a to b from the nearest. What it keeps is the pieces (the record's own strings)
+ * and those marks, whatever the lines are.
+ */
+export class RecordLines {
+  constructor(pieces, cols) {
+    this.pieces = pieces;
+    this.cols = cols;
+    this.marks = [];
+    this.last = null;   // the text line laid out last, its tabs as spaces: { p, at, text }
+    let n = 0;
+    for (const l of this.walk(0, 0, 0)) { if (n % STEP === 0) this.marks.push([l.p, l.at, l.k]); n++; }
+    this.length = n;
   }
-  byKey.set(key, out);
-  return out;
+
+  /** A text line of piece p, from `at` to the next new line, with its tabs as spaces (the one laid out last is kept). */
+  textLine(p, at, end) {
+    if (this.last?.p !== p || this.last.at !== at) this.last = { p, at, text: expandTabs(this.pieces[p].text.slice(at, end)) };
+    return this.last.text;
+  }
+
+  /** The lines from a mark (piece p, its text line at `at`, offset k in it): { p, at, k, text, a, b, style } each, where
+   *  text.slice(a, b) is the line; a piece's own line has no text line ({ line }). */
+  *walk(p, at, k) {
+    for (; p < this.pieces.length; p++, at = 0, k = 0) {
+      const piece = this.pieces[p];
+      if (piece.line !== undefined) { yield { p, at: 0, k: 0, line: piece.line, style: piece.style }; continue; }
+      const t = piece.text;
+      for (;;) {
+        let end = t.indexOf('\n', at);
+        if (end < 0) end = t.length;
+        const text = this.textLine(p, at, end);
+        for (const [a, b] of lineSpans(text, this.cols, k)) yield { p, at, k: a, text, a, b, style: piece.style };
+        if (end === t.length) break;
+        at = end + 1; k = 0;
+      }
+    }
+  }
+
+  /** Lines a to b (all, when not given), as the views' lines: [{ text, style }] each, [] for a blank line. */
+  slice(a = 0, b = this.length) {
+    a = Math.max(0, a); b = Math.min(b, this.length);
+    if (a >= b) return [];
+    const m = Math.min(this.marks.length - 1, Math.floor(a / STEP));
+    const out = [];
+    let i = m * STEP;
+    for (const l of this.walk(...this.marks[m])) {
+      if (i >= a) out.push(l.line !== undefined ? (l.line === '' ? [] : [seg(l.line, l.style)]) : [seg(l.text.slice(l.a, l.b), l.style)]);
+      if (++i >= b) break;
+    }
+    return out;
+  }
+}
+
+/** A record's pieces at `cols` columns: each part's label (wrapped: a tool's name can be long), its text, and how much
+ *  of it is not shown; or its JSON. */
+function recordPieces(rec, json, cols) {
+  const more = (n) => ({ line: fit(`... ${plural(n, 'more character', 'more characters')} not shown`, cols), style: 'dim' });
+  if (json) return [{ text: visible(rec.raw.text), style: null }, ...(rec.raw.more ? [more(rec.raw.more)] : [])];
+  if (!rec.reading.length) return [{ line: fit('(nothing to read in this record)', cols), style: 'dim' }];
+  return rec.reading.flatMap((p, i) => [
+    ...(i ? [{ line: '', style: null }] : []),
+    { text: `-- ${label(p.label)} --`, style: 'head' },
+    ...(p.text !== '' ? [{ text: visible(p.text), style: null }] : []),
+    ...(p.more ? [more(p.more)] : []),
+  ]);
+}
+
+const pages = new WeakMap();
+/** The record's lines at `cols` columns (a RecordLines: its length, and slice(a, b)), its text's or its JSON's. Kept for
+ *  the width drawn last only: the lines at every width a window was resized through, kept, ran Node's heap out (R.F1). */
+export function recordLines(rec, json, cols) {
+  let kept = pages.get(rec);
+  if (!kept) { kept = { t: null, j: null }; pages.set(rec, kept); }
+  const kind = json ? 'j' : 't';
+  if (kept[kind]?.cols !== cols) { kept[kind] = null; kept[kind] = new RecordLines(recordPieces(rec, json, cols), cols); }
+  return kept[kind];
 }
 export function record(state, cols, rows) {
   const v = top(state), rec = v.rec;
-  const title = `ltms-reader  Record ${label(rec.a)}  ${v.project === null ? label(v.file) : `${label(v.project)}/${label(v.file)}`}`;
+  const title = `ltms-reader  Record ${label(v.a ?? rec.a)}  ${v.project === null ? label(v.file) : `${label(v.project)}/${label(v.file)}`}`;
+  if (v.error) return frame(state, cols, rows, { title, sub: 'this record is not shown', body: errorBody(v.error, cols), detail: `${label(v.a)}  line ${v.line} of ${label(v.file)}`, address: v.a });
   const lines = recordLines(rec, v.json, cols);
   const h = bodyHeight(rows, false);
   const t = Math.max(0, Math.min(v.top ?? 0, lines.length - h));

@@ -6,8 +6,9 @@
 // goes back there. Lists come from the source (src/sources.mjs): the projects at once, a project's sessions by ltms
 // index and a search by ltms search, each while the screen says what is being read; a session is read in this process,
 // after a frame that says which file is being read.
+import { recordTooLarge } from './reading.mjs';
 import { clusters } from './text.mjs';
-import { recordView } from './view.mjs';
+import { recordIndexAt, recordView } from './view.mjs';
 import { bodyHeight, coverageText, recordLines, render, top, topOf } from './views.mjs';
 
 /** An address as ltms prints it: a prefix (8 characters of a session's file name, or agent- and 8 of an agent's id)
@@ -197,10 +198,17 @@ export class App {
     return this.push({ kind: 'turn', project: sv.project, file: sv.file, doc: sv.doc, turn: t, rows: turnRows(t) });
   }
 
+  /** Push the record on a line: refused, before anything of it is laid out, when its view would not fit in this
+   *  process's memory beside the transcript's parse (src/reading.mjs recordTooLarge): the view says so, with the
+   *  NODE_OPTIONS that would let it be shown. */
   pushRecord(project, file, doc, line) {
+    const i = recordIndexAt(doc.t, line);
+    if (i === undefined) { this.note(`no record was parsed on line ${line} of ${doc.name}: the line is blank, not a JSON object, or past the end of the file`, true); return null; }
+    const a = `${doc.prefix}:L${line}`;
+    const why = recordTooLarge(doc.t.positions[i].bytes, doc.size, this.source.reading?.heapLimit, this.source.reading?.again);
+    if (why) return this.push({ kind: 'record', project, file, doc, line, a, rec: null, json: false, error: `${a} is not shown: ${why}` });
     const rec = recordView(doc.t, line, { name: doc.name, whole: true });
-    if (!rec) { this.note(`no record was parsed on line ${line} of ${doc.name}: the line is blank, not a JSON object, or past the end of the file`, true); return null; }
-    return this.push({ kind: 'record', project, file, doc, line, rec, json: false });
+    return this.push({ kind: 'record', project, file, doc, line, a, rec, json: false });
   }
 
   pushSearch(q) {
@@ -255,7 +263,7 @@ export class App {
     else if (str === '/') this.state.input = { kind: 'search', text: '', scopeShown: this.scope().shown };
     else if (str === ':') this.state.input = { kind: 'address', text: '' };
     else if (str === '?') this.state.help = true;
-    else if (str === 'j' && v.kind === 'record') { v.json = !v.json; v.top = 0; }
+    else if (str === 'j' && v.kind === 'record' && v.rec) { v.json = !v.json; v.top = 0; }
     this.changed();
   }
 
@@ -263,6 +271,7 @@ export class App {
 
   move(v, delta) {
     if (v.kind === 'record') {
+      if (!v.rec) return;
       const n = recordLines(v.rec, v.json, this.state.cols).length, h = bodyHeight(this.state.rows, false);
       v.top = Math.max(0, Math.min(Math.max(0, n - h), delta === -Infinity ? 0 : delta === Infinity ? n : (v.top ?? 0) + delta));
       return;
