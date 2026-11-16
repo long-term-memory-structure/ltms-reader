@@ -1,0 +1,154 @@
+// src/text.mjs — what of a transcript's text reaches the terminal, and how many columns it takes there.
+//
+// A transcript can hold escape sequences (tool output often does: colours, cursor moves, a title, OSC 52, which writes
+// the clipboard). None reaches the terminal as such: every C0 and C1 control character and DEL, but the new line and the
+// tab, is shown as a visible escape (ESC as ␛, the rest as \xNN), so a transcript cannot move the cursor, set the title,
+// write the clipboard or leave the terminal in another mode. The new line ends a line and the tab becomes spaces (by
+// the callers below); neither is written to the terminal as itself.
+//
+// Width, by grapheme cluster (Intl.Segmenter): a cluster takes two columns when it holds a wide or fullwidth character
+// (East_Asian_Width W or F: src/width-table.mjs, generated from Unicode's EastAsianWidth.txt), when it is an emoji
+// presentation sequence (an emoji and U+FE0F) or a flag (regional indicators); none when every character in it takes
+// none (combining marks, niqqud and cantillation among them, and format characters); one otherwise. A line is cut by
+// columns, between clusters, never inside one.
+//
+// Right to left: the text is written in the order it is stored, and the terminal lays it out (mode "terminal"). The one
+// place a "reader" mode would go, laying out each screen line by the Unicode Bidirectional Algorithm (UAX #9) for
+// terminals that do not, is displayOrder() below; whether it is needed is decided by a measurement on the screen.
+import { WIDE } from './width-table.mjs';
+
+/** C0 but the tab and the new line, DEL, C1. */
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+const hex2 = (c) => c.charCodeAt(0).toString(16).padStart(2, '0');
+
+/** s with every control character but \n and \t as a visible escape: ESC as ␛ (U+241B), the others as \xNN. */
+export function visible(s) {
+  const t = typeof s === 'string' ? s : String(s);
+  return t.replace(CONTROL, (c) => (c === '\x1b' ? '\u241b' : `\\x${hex2(c)}`));
+}
+
+/** Whether a code point is East_Asian_Width W or F (a binary search of the generated ranges). */
+export function isWide(cp) {
+  if (cp < WIDE[0]) return false;
+  let lo = 0, hi = WIDE.length / 2 - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (cp < WIDE[2 * mid]) hi = mid - 1;
+    else if (cp > WIDE[2 * mid + 1]) lo = mid + 1;
+    else return true;
+  }
+  return false;
+}
+
+// Characters that take no column of their own (Markus Kuhn's wcwidth rule): nonspacing and enclosing marks, format
+// characters but the soft hyphen, and the Hangul medial vowels and final consonants, which join the syllable before them.
+const ZERO = /^[\p{Mn}\p{Me}\p{Cf}\u1160-\u11ff\ud7b0-\ud7ff]$/u;
+const EMOJI = /^\p{Emoji}$/u;
+const isRegional = (cp) => cp >= 0x1f1e6 && cp <= 0x1f1ff;
+const zeroWidth = (ch, cp) => cp !== 0x00ad && ZERO.test(ch);
+
+/** The columns one grapheme cluster takes: 0, 1 or 2. */
+export function clusterWidth(c) {
+  const cp0 = c.codePointAt(0);
+  if (c.length === 1 && cp0 >= 0x20 && cp0 < 0x7f) return 1;
+  if (isRegional(cp0)) return 2;
+  let any = false, base = null, vs16 = false;
+  for (const ch of c) {
+    const cp = ch.codePointAt(0);
+    if (isWide(cp)) return 2;
+    if (cp === 0xfe0f) { vs16 = true; continue; }
+    if (!zeroWidth(ch, cp)) { any = true; base ??= ch; }
+  }
+  if (vs16 && base !== null && EMOJI.test(base)) return 2;
+  return any ? 1 : 0;
+}
+
+const SEG = typeof Intl?.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
+
+/** The grapheme clusters of s, in order. Without Intl.Segmenter, each code point with the zero-width ones after it. */
+export function* clusters(s) {
+  if (SEG) { for (const { segment } of SEG.segment(s)) yield segment; return; }
+  let cur = '';
+  for (const ch of s) {
+    if (cur !== '' && (zeroWidth(ch, ch.codePointAt(0)) || ch === '\ufe0f')) { cur += ch; continue; }
+    if (cur !== '') yield cur;
+    cur = ch;
+  }
+  if (cur !== '') yield cur;
+}
+
+/** The columns s takes on one line (s holds no new line; its tabs are expanded). */
+export function width(s) {
+  if (PRINTABLE_ASCII.test(s)) return s.length;
+  let w = 0;
+  for (const c of clusters(s)) w += clusterWidth(c);
+  return w;
+}
+
+/** The longest start of s made of whole clusters that fits in `cols` columns: { text, width, rest }. */
+export function cut(s, cols) {
+  if (PRINTABLE_ASCII.test(s)) { const n = Math.max(0, Math.min(s.length, cols)); return { text: s.slice(0, n), width: n, rest: s.slice(n) }; }
+  let w = 0, at = 0;
+  for (const c of clusters(s)) {
+    const cw = clusterWidth(c);
+    if (w + cw > cols) break;
+    w += cw; at += c.length;
+  }
+  return { text: s.slice(0, at), width: w, rest: s.slice(at) };
+}
+
+/** s within `cols` columns: as it is when it fits, else cut with … at its end. */
+export function fit(s, cols) {
+  if (cols <= 0) return '';
+  if (width(s) <= cols) return s;
+  return `${cut(s, cols - 1).text}\u2026`;
+}
+
+/** s padded with spaces to `cols` columns (cut first when it is wider). */
+export function pad(s, cols) {
+  const r = cut(s, cols);
+  return r.text + ' '.repeat(Math.max(0, cols - r.width));
+}
+
+/** One line (no new line in it) cut into lines of at most `cols` columns, between clusters; a cluster wider than the
+ *  columns goes on a line of its own. The lines join back to s. */
+export function wrap(s, cols) {
+  if (s === '') return [''];
+  const n = Math.max(1, cols);
+  if (PRINTABLE_ASCII.test(s)) { const out = []; for (let i = 0; i < s.length; i += n) out.push(s.slice(i, i + n)); return out; }
+  const out = [];
+  let line = '', w = 0;
+  for (const c of clusters(s)) {
+    const cw = clusterWidth(c);
+    if (w + cw > n && line !== '') { out.push(line); line = ''; w = 0; }
+    line += c; w += cw;
+  }
+  out.push(line);
+  return out;
+}
+
+/** s with each tab as spaces to the next multiple of `tab` columns, counted by width from the start of s. */
+export function expandTabs(s, tab = 8) {
+  if (!s.includes('\t')) return s;
+  let out = '', col = 0;
+  for (const c of clusters(s)) {
+    if (c === '\t') { const n = tab - (col % tab); out += ' '.repeat(n); col += n; continue; }
+    out += c; col += clusterWidth(c);
+  }
+  return out;
+}
+
+/** The right-to-left modes there are. */
+export const RTL_MODES = Object.freeze(['terminal']);
+
+/**
+ * The order in which one screen row's segments ([{ text, style }], already cut to the row's width) are written.
+ * "terminal": as stored; the terminal lays the text out (Konsole lays out bidirectional text itself; Alacritty, kitty
+ * and VS Code's terminal show the stored order). A "reader" mode would reorder the row here, by UAX #9, for terminals
+ * that do not; it is not built, because a measurement on the screens decides whether it is needed.
+ */
+export function displayOrder(row, mode = 'terminal') {
+  if (mode === 'terminal') return row;
+  throw new RangeError(`no right-to-left mode ${JSON.stringify(mode)}: the one mode is "terminal" (the text as written)`);
+}
