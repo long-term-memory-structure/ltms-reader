@@ -44,7 +44,7 @@ test('the command on no terminal: refused at once, naming ltms as the command fo
       assert.equal(r.status, 2, `${JSON.stringify(args)}: exit`);
       assert.equal(r.stdout, '', `${JSON.stringify(args)}: stdout`);
       assert.match(r.stderr, /^ltms-reader: stdin and stdout are not terminals, so nothing was read\.\n/, `${JSON.stringify(args)}: stderr`);
-      for (const command of ['ltms index', 'ltms search', 'ltms skeleton', 'npx long-term-memory-structure']) assert.ok(r.stderr.includes(command), `${JSON.stringify(args)}: names ${command}`);
+      for (const command of ['ltms is the command', 'npx long-term-memory-structure index', 'npx long-term-memory-structure search', 'npx long-term-memory-structure skeleton', 'npm install -g long-term-memory-structure']) assert.ok(r.stderr.includes(command), `${JSON.stringify(args)}: names ${command}`);
     }
     const env = { ...process.env, CLAUDE_CONFIG_DIR: own, HOME: own };
     const help = spawnSync(process.execPath, [bin, '--help'], { encoding: 'utf8', env });

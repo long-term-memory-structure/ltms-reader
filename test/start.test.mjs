@@ -30,7 +30,7 @@ test('no terminal: which stream is not one, and ltms as the command for lines', 
   assert.match(notTerminal(pipe, tty), /^ltms-reader: stdin is not a terminal, so nothing was read\./);
   assert.match(notTerminal(tty, pipe), /^ltms-reader: stdout is not a terminal, so nothing was read\./);
   assert.match(notTerminal(pipe, pipe), /^ltms-reader: stdin and stdout are not terminals, so nothing was read\./);
-  assert.match(notTerminal(tty, pipe), /ltms is the command \(npx long-term-memory-structure/);
+  assert.match(notTerminal(tty, pipe), /ltms is the command, from the package ltms-reader is built on/);
 });
 
 test('the three ways in, and the refusals', () => {
@@ -81,4 +81,15 @@ test('a project folder given where its parent was meant opens as that project, t
     } finally { app.dispose(); source.dispose(); }
     assert.deepEqual(startOf(r.root, { env: {}, home: r.base }), { kind: 'root', root: r.root, from: 'argument' });
   } finally { r.dispose(); }
+});
+
+// R.F13: after `npm install -g ltms-reader`, as the README offers, there is no ltms on the PATH (the core's bin is not
+// linked), so `ltms index ...` copied from the refusal was "command not found"
+test('R.F13: the refusal\'s commands for lines run as they are written, without ltms installed; it says how to install ltms', () => {
+  const said = notTerminal({}, {});
+  const examples = said.split('\n').filter((l) => /^ {2}\S/.test(l));
+  assert.equal(examples.length, 3, said);
+  for (const [i, sub] of ['index', 'search', 'skeleton'].entries()) assert.match(examples[i], new RegExp(`^ {2}npx long-term-memory-structure ${sub} `), `example ${i + 1}: ${examples[i]}`);
+  assert.match(said, /ltms is the command/, 'ltms named as the command for lines (the design)');
+  assert.match(said, /npm install -g long-term-memory-structure/, 'and how to have it on the PATH');
 });

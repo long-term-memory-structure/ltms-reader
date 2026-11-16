@@ -50,12 +50,15 @@ export function notTerminal(stdin, stdout) {
   const inTty = stdin?.isTTY === true, outTty = stdout?.isTTY === true;
   if (inTty && outTty) return null;
   const which = !inTty && !outTty ? 'stdin and stdout are not terminals' : !outTty ? 'stdout is not a terminal' : 'stdin is not a terminal';
+  // the commands are written as npx runs them, so that they run as they are written: installing ltms-reader does not put
+  // ltms on the PATH (R.F13)
   return `ltms-reader: ${which}, so nothing was read.
 ltms-reader shows transcripts on a terminal's screen only: none of their text goes to a pipe, a file or a log.
-For lines to read or to pipe, ltms is the command (npx long-term-memory-structure, the package ltms-reader is built on):
-  ltms index <projects folder>/<project>    the sessions, newest first
-  ltms search '<words>' <folder>             the turns that hold the words, by address
-  ltms skeleton <file.jsonl>                 a session's turns and tool calls, with their addresses
+For lines to read or to pipe, ltms is the command, from the package ltms-reader is built on.
+npm install -g long-term-memory-structure puts ltms on the PATH; npx runs it without that:
+  npx long-term-memory-structure index <projects folder>/<project>    the sessions, newest first
+  npx long-term-memory-structure search '<words>' <folder>             the turns that hold the words, by address
+  npx long-term-memory-structure skeleton <file.jsonl>                 a session's turns and tool calls, with addresses
 `;
 }
 

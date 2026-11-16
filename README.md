@@ -20,7 +20,8 @@ A project's own folder (one of those under `~/.claude/projects`) given where its
 project. Or install it once: `npm install -g ltms-reader`, which gives the command `ltms-reader`.
 
 It runs on a terminal only: when stdin or stdout is not one (a pipe, a file), it reads nothing and says so. For lines to
-read, to pipe or to give an agent, `ltms` is the command (`npx long-term-memory-structure index|search|skeleton ...`).
+read, to pipe or to give an agent, `ltms` is the command (`npx long-term-memory-structure index|search|skeleton ...`;
+installing `ltms-reader` does not put `ltms` on the PATH, `npm install -g long-term-memory-structure` does).
 
 ## What it shows
 
