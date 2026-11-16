@@ -66,6 +66,9 @@ pasted acts as a key.
   itself prints no content of a transcript; this reader is for the person whose transcripts they are.)
 - **It writes no file and uses no network.** It reads the transcripts under the folder it is given, and runs ltms's
   commands (`index`, `search`, `skeleton`) as local processes, which read the same files and write only to the reader.
+  Run through `npx`, npm writes files of its own: a log of each run under `~/.npm/_logs`, which names the folder or file
+  given, and a compile cache under `$TMPDIR`; installed (`npm install -g ltms-reader`, then `ltms-reader`), it runs
+  without npm, and without them.
 - An error inside it is printed after the terminal is restored, by its kind and where in this package it happened, not
   by its message, which could quote a transcript.
 
