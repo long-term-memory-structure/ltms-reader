@@ -140,14 +140,17 @@ pasted acts as a key.
   killed, racing the screen's process. The screen's process then writes the leave sequence and leaves the terminal's
   modes to the shell (it puts back the modes it started with only where they are still the screen's raw ones, as
   under a shell that sets none).
-  Measured in a pseudo-terminal, 10 runs each (bash 5.3, zsh 5.9, fish 4.9, and a stand-in that sets no modes): the
-  modes after were bash's, fish's and the stand-in's own, as at their prompt, and zsh's those it builds (below); a line
-  typed was echoed once, not twice. What stays: bash and zsh wrote their first prompt 4 to 6 ms after the kill, before
-  the leave sequence, on the alternate screen, so it is not seen (10 of 10 runs; the stand-in 9, fish 0): the shell
-  waits at it, and the next line given to it brings a prompt back. And zsh, unless its terminal is
-  frozen (`ttyctl -f`, in `.zshrc`), takes the modes a command killed by a signal leaves as its own: after such a kill,
-  the commands it runs have the keyboard's signals (Ctrl-C) and flow control off (`stty sane` puts the signals back);
-  with `ttyctl -f` they had zsh's own.
+  Measured on 2026-11-16 with round 3's check's probe, `shellkill.py`, and its stand-in for a job-control shell that
+  sets no modes, `standin.py`: a pseudo-terminal of 80 x 24, the shell at its prompt, the reader started from it,
+  SIGKILL to the command's process once its frame is up; 10 runs for each of bash 5.3.20, zsh 5.9.2 (`-f`, and `-f`
+  with `ttyctl -f` typed first), fish 4.9.3 and the stand-in. The modes 1.5 s after were the shell's own, as at its
+  prompt, 10 of 10 for bash, zsh with `ttyctl -f`, fish and the stand-in; a line typed then came back once, 10 of 10,
+  for bash, both zsh and the stand-in. What stays: bash, both zsh and the stand-in wrote their prompt before the leave
+  sequence, 10 of 10 each (fish 0 of 10), on the alternate screen, where it is not seen (bash 4.0 to 4.9 ms after the
+  kill, zsh 4.1 to 9.2, zsh with `ttyctl -f` 3.9 to 5.1, the stand-in 3.7 to 5.1): the shell waits at it, and the next
+  line given to it brings a prompt back. And zsh without `ttyctl -f` took the modes the killed command left as its own
+  (10 of 10: its iflag and lflag not those at its prompt), so that the commands it ran next had the keyboard's signals
+  (Ctrl-C) and flow control off, `-isig -ixon`, 10 of 10; with `ttyctl -f` (in `.zshrc`) they had them on, 10 of 10.
 - A list of sessions waits for `ltms index` to read every transcript of the project (on one machine, 39 s for a project
   of 385 sessions), and a search for `ltms search`; the screen says what is being read and for how long. A list that
   took 3 s or more is kept: opened again after its files changed, it is shown as it was read, and says when that was
