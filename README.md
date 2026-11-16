@@ -142,11 +142,16 @@ reader's (`test/fixtures/hebrew-english.jsonl`, `escapes.jsonl` and `channels.js
 `node test/fixtures/make-fixtures.mjs`), compare what each row says with ltms's own commands, read every byte the
 reader writes for a transcript full of escape sequences, and run it end to end in a pseudo-terminal (`script`, on
 Linux). `LTMS_READER_FIXTURES=<folder>` adds every `.jsonl` under a folder to the views' test (the core's own
-`test/fixtures`, say). The table's regeneration is checked when `LTMS_READER_EAW` names the pinned `EastAsianWidth.txt`:
+`test/fixtures`, say). The width table's regeneration is checked when `LTMS_READER_EAW` names the pinned
+`EastAsianWidth.txt`; the bidirectional table's regeneration, and Unicode's conformance test of the algorithm
+(`test/bidi.test.mjs`, which reports how many cases passed and failed), when `LTMS_READER_UCD` names a folder holding
+the pinned files (`scripts/bidi-table.mjs` names each with its sha256):
 
 ```sh
 curl -sS --fail -o EastAsianWidth.txt https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt
-LTMS_READER_EAW=EastAsianWidth.txt npm test
+mkdir ucd && for f in extracted/DerivedBidiClass.txt UnicodeData.txt BidiBrackets.txt BidiMirroring.txt BidiCharacterTest.txt; do
+  curl -sS --fail -o "ucd/${f##*/}" "https://www.unicode.org/Public/17.0.0/ucd/$f"; done
+LTMS_READER_EAW=EastAsianWidth.txt LTMS_READER_UCD=ucd npm test
 ```
 
 `src/view.mjs`, `src/layout.mjs`, `src/engine.mjs`, `src/lines.mjs` and `src/helper.mjs` are the view layer the LTMS
@@ -154,6 +159,7 @@ Reader extension for VS Code shares: it takes them from this package.
 
 ## License
 
-MIT (`LICENSE`). `src/width-table.mjs` is derived from the Unicode Character Database (`EastAsianWidth.txt` 17.0.0,
+MIT (`LICENSE`). `src/width-table.mjs` and `src/bidi-table.mjs` are derived from the Unicode Character Database, version
+17.0.0 (`EastAsianWidth.txt`; `DerivedBidiClass.txt`, `UnicodeData.txt`, `BidiBrackets.txt` and `BidiMirroring.txt`;
 © 2025 Unicode, Inc.), under the Unicode License v3: its copyright and permission notice is in `LICENSE-UNICODE`, which
-the package ships, and at the head of the table.
+the package ships, and at the head of each table.

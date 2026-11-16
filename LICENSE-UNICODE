@@ -1,7 +1,10 @@
-src/width-table.mjs is derived from the Unicode Character Database file EastAsianWidth.txt, version 17.0.0
-(https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt, sha256
-ea7ce50f3444a050333448dffef1cadd9325af55cbb764b4a2280faf52170a33), whose header says "© 2025 Unicode®, Inc.".
-It is used under this licence, the Unicode License v3 (https://www.unicode.org/license.txt):
+Two files of this package are derived from the Unicode Character Database, version 17.0.0, whose files' headers say
+"© 2025 Unicode®, Inc.":
+- src/width-table.mjs from EastAsianWidth.txt (https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt, sha256
+  ea7ce50f3444a050333448dffef1cadd9325af55cbb764b4a2280faf52170a33);
+- src/bidi-table.mjs from DerivedBidiClass.txt, UnicodeData.txt, BidiBrackets.txt and BidiMirroring.txt
+  (https://www.unicode.org/Public/17.0.0/ucd/, each named with its sha256 at the head of the table).
+They are used under this licence, the Unicode License v3 (https://www.unicode.org/license.txt):
 
 UNICODE LICENSE V3
 
