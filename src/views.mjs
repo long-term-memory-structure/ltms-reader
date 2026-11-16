@@ -399,7 +399,7 @@ export function help(state, cols, rows) {
     [],
     ...textBody('It shows your transcripts\' text, to you, on this terminal\'s alternate screen: nothing it shows is written to stdout, a pipe or a log. It writes no file and uses no network. Its lists are the lines ltms index and ltms search print; a session\'s turns and calls are those ltms skeleton prints.', cols),
   ];
-  return frame({ ...state, input: null, note: null }, cols, rows, { title: 'ltms-reader  Keys', sub: 'any key goes back', body, detail: '', hint: 'any key goes back  Ctrl-C quits' });
+  return frame({ ...state, input: null, note: null }, cols, rows, { title: 'ltms-reader  Keys', sub: 'q quits; any other key goes back', body, detail: '', hint: 'q or Ctrl-C quits  any other key goes back' });
 }
 
 /** A screen too small to use. */

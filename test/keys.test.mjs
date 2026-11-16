@@ -229,3 +229,36 @@ test('R.F7: after a search, Enter opens the turn at its first match, its record 
     assert.match(selected(f), /^> 11111111 {7}2026-01-05 09:03 /, 'the session\'s row above the hit');
   } finally { app.dispose(); source.dispose(); r.dispose(); }
 });
+
+// R.F11: the README's keys say q quits; on the keys screen it went back instead
+test('R.F11: q on the keys screen quits, as everywhere but a line being typed', async () => {
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const exits = [];
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC', onExit: (code) => exits.push(code) });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press('?'); await k.press('q');
+    assert.deepEqual(exits, [0], 'q quits with 0');
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
+test('R.F11: the keys screen says so: q quits, any other key goes back', async () => {
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const exits = [];
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC', onExit: (code) => exits.push(code) });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press('?');
+    const f = frameOf(app);
+    assert.equal(f[0], 'ltms-reader  Keys');
+    assert.equal(f[1], 'q quits; any other key goes back');
+    assert.match(f[23], /^q or Ctrl-C quits {2}any other key goes back$/);
+    await k.press('x');
+    assert.match(frameOf(app)[0], /^ltms-reader {2}Projects/, 'x goes back');
+    assert.deepEqual(exits, []);
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});

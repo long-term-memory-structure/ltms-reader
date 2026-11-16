@@ -255,7 +255,8 @@ export class App {
     }
     this.state.note = null;
     if (this.state.input) { this.inputKey(str, k); return this.changed(); }
-    if (this.state.help) { this.state.help = false; return this.changed(); }
+    // the keys screen: q quits there too (R.F11), any other key goes back
+    if (this.state.help) { if (k.name === 'q' && !k.ctrl && !k.meta) return this.exit(0); this.state.help = false; return this.changed(); }
     const v = top(this.state);
     const name = k.name;
     // a key with Ctrl does nothing here (but Ctrl-C, above); with Alt (meta), a named key is the key itself: two Esc
