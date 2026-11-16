@@ -128,6 +128,18 @@ pasted acts as a key.
   then is printed after the restore, and the command exits with 1. If the command's own process is killed (SIGKILL),
   the screen's process learns of it (an IPC channel between the two closes), restores the terminal and ends; if both
   are killed at once (a whole cgroup, as systemd-oomd does), nothing is left to restore it.
+- Under an interactive shell with job control, that shell takes the terminal back as soon as the command's process is
+  killed, racing the screen's process. The screen's process then writes the leave sequence and leaves the terminal's
+  modes to the shell (it puts back the modes it started with only where they are still the screen's raw ones, as
+  under a shell that sets none).
+  Measured in a pseudo-terminal, 10 runs each (bash 5.3, zsh 5.9, fish 4.9, and a stand-in that sets no modes): the
+  modes after were bash's, fish's and the stand-in's own, as at their prompt, and zsh's those it builds (below); a line
+  typed was echoed once, not twice. What stays: bash and zsh wrote their first prompt 4 to 6 ms after the kill, before
+  the leave sequence, on the alternate screen, so it is not seen (10 of 10 runs; the stand-in 9, fish 0): the shell
+  waits at it, and the next line given to it brings a prompt back. And zsh, unless its terminal is
+  frozen (`ttyctl -f`, in `.zshrc`), takes the modes a command killed by a signal leaves as its own: after such a kill,
+  the commands it runs have the keyboard's signals (Ctrl-C) and flow control off (`stty sane` puts the signals back);
+  with `ttyctl -f` they had zsh's own.
 - A list of sessions waits for `ltms index` to read every transcript of the project (on one machine, 39 s for a project
   of 385 sessions), and a search for `ltms search`; the screen says what is being read and for how long. A list that
   took 3 s or more is kept: opened again after its files changed, it is shown as it was read, and says when that was

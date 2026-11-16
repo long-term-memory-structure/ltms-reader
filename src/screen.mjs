@@ -51,7 +51,8 @@ export function frameBytes(lines, { cols, rows, colour = true, rtl = 'reader' })
 /**
  * Take the terminal: raw mode, keypress events on `input`, the alternate screen. onKey(str, key) for each key;
  * onResize() when the window's size changes; `rtl` the right-to-left mode. Returns { draw(lines, cols, rows), restore(),
- * size() }; restore() may be called any number of times, and from any way out.
+ * size() }; restore() may be called any number of times, and from any way out; restore({ modes: false }) writes the
+ * leave sequence and leaves the terminal's modes as they are (another process has set them since: R3).
  */
 export function openScreen({ input, output, colour = true, rtl = 'reader', onKey, onResize }) {
   let open = true, dead = false;
@@ -68,13 +69,13 @@ export function openScreen({ input, output, colour = true, rtl = 'reader', onKey
     get open() { return open; },
     size: () => ({ cols: output.columns || 80, rows: output.rows || 24 }),
     draw(lines, cols, rows) { if (open) write(frameBytes(lines, { cols, rows, colour, rtl })); },
-    restore() {
+    restore({ modes = true } = {}) {
       if (!open) return;
       open = false;
       input.off('keypress', onKey);
       output.off('resize', onResize);
       write(LEAVE);
-      try { input.setRawMode(false); } catch {}
+      if (modes) { try { input.setRawMode(false); } catch {} }
       try { input.pause(); } catch {}
     },
   };

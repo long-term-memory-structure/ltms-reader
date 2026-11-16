@@ -83,7 +83,7 @@ export function terminal({ cols = 80, rows = 24 } = {}) {
   stdin.setRawMode = (on) => { stdin.raw.push(on); return stdin; };
   const sink = (name) => Object.assign(new Writable({ write(chunk, enc, cb) { log.push([name, String(chunk)]); cb(); } }), { isTTY: true, columns: cols, rows });
   const stdout = sink('out'), stderr = sink('err');
-  const proc = Object.assign(new EventEmitter(), { exits: [], exit(code) { this.exits.push(code); } });
+  const proc = Object.assign(new EventEmitter(), { pid: 4242, exits: [], exit(code) { this.exits.push(code); }, kills: [], kill(pid, signal) { this.kills.push([pid, signal]); } });
   return { stdin, stdout, stderr, proc, log, out: () => log.filter(([n]) => n === 'out').map(([, s]) => s).join(''), err: () => log.filter(([n]) => n === 'err').map(([, s]) => s).join('') };
 }
 

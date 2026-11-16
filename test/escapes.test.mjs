@@ -185,20 +185,43 @@ test('every way out restores the terminal: q, Ctrl-C, SIGTERM, SIGHUP, SIGINT, a
 // N5 (S377): SIGKILL of the command's own process left the screen's process raw until the terminal hung up. The command
 // opens an IPC channel to it; when the command's process is gone, the channel closes, and the screen restores the
 // terminal and ends, as on SIGHUP. The channel is unref'd: it keeps nothing running.
-test("N5: the command's process gone (its IPC channel closed): the terminal restored, raw mode off, exit 129; nothing on stderr", async () => {
+test("N5: the command's process gone (its IPC channel closed), the terminal still this process group's: the terminal restored, raw mode off, then SIGKILL to itself (R3); nothing on stderr", async () => {
   const t = terminal();
   t.proc.channel = { unrefs: 0, unref() { this.unrefs++; } };
-  const h = main([FILE], { stdin: t.stdin, stdout: t.stdout, stderr: t.stderr, env: {}, proc: t.proc });
+  const h = main([FILE], { stdin: t.stdin, stdout: t.stdout, stderr: t.stderr, env: {}, proc: t.proc, owner: () => ({ ours: true, group: 7 }), modes: () => 'raw' });
   await settle(h);
   await press(t, h, KEY.enter);
   t.proc.emit('disconnect');
   await settle(h);
-  assert.deepEqual(t.proc.exits, [129], 'exit 129');
+  assert.deepEqual(t.proc.kills, [[4242, 'SIGKILL']], 'it ends by SIGKILL: not by Node\'s exit, which would put back the modes it started with');
+  assert.deepEqual(t.proc.exits, [], 'no exit');
   assert.deepEqual(t.stdin.raw, [true, false], 'raw mode off');
   assert.ok(t.out().endsWith(LEAVE), 'the terminal restored last');
   assert.equal(t.err(), '', 'nothing on stderr: the pipe to the command is gone');
   assert.equal(t.proc.channel.unrefs, 1, 'the channel unref\'d once: it keeps nothing running');
 });
+
+// R3 (S377, round 3): a shell with job control has taken the terminal back when the command's process is gone: the
+// screen's process writes the leave sequence and leaves the modes to the shell; if they are still the screen's raw
+// modes (a shell that sets none), Node's own exit puts back those this process started with.
+for (const [what, now, end] of [
+  ['the shell has set its own modes: they are left as they are; SIGKILL to itself', 'the shell\'s', { kills: [[4242, 'SIGKILL']], exits: [] }],
+  ['the modes are still the screen\'s raw ones (a shell that sets none): Node\'s own exit puts back the modes it started with', 'raw', { kills: [], exits: [129] }],
+]) {
+  test(`R3: the command's process gone, the terminal taken back by a shell; ${what}`, async () => {
+    const t = terminal();
+    t.proc.channel = { unref() {} };
+    let reads = 0;
+    const h = main([FILE], { stdin: t.stdin, stdout: t.stdout, stderr: t.stderr, env: {}, proc: t.proc, owner: () => ({ ours: false, group: 7 }), modes: () => (reads++ === 0 ? 'raw' : now) });
+    await settle(h);
+    t.proc.emit('disconnect');
+    await settle(h);
+    assert.deepEqual({ kills: t.proc.kills, exits: t.proc.exits }, end);
+    assert.deepEqual(t.stdin.raw, [true], 'the modes not set here: the kernel refuses them to a background group, and they are the shell\'s');
+    assert.ok(t.out().endsWith(LEAVE), 'the leave sequence written last');
+    assert.equal(reads, 2, 'the modes read when the screen opened, and once after');
+  });
+}
 
 test("N5: without a channel (the screen run by itself), nothing is watched", async () => {
   const t = terminal();
