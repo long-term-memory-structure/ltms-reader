@@ -41,13 +41,15 @@ export function unchanged(doc) {
 export function shownPath(p) { const h = homedir(); return h && (p === h || p.startsWith(`${h}${path.sep}`)) ? `~${p.slice(h.length)}` : p; }
 
 /** The projects folder given (or Claude Code's), read through the engine. `only`: the one project shown, when the
- *  folder given was a project's own. */
+ *  folder given was a project's own. `again`: the command that was run (src/start.mjs's againOf), which a refusal of a
+ *  transcript too large names; `heapLimit`: the limit its size rule reads by (the runtime's when not given). */
 export class RootSource {
-  constructor({ root, only = null, env = childEnv(process.env), engine = null }) {
+  constructor({ root, only = null, env = childEnv(process.env), engine = null, again = undefined, heapLimit = undefined }) {
     this.kind = 'root';
     this.engine = engine ?? new Engine({ root, env });
     this.only = only;
     this.env = env;
+    this.reading = { again, heapLimit };
   }
 
   get rootShown() { return this.engine.rootShown(); }
@@ -73,7 +75,7 @@ export class RootSource {
   sessions(project) { return this.engine.index(project); }
 
   /** One transcript of a project, read here. */
-  open(project, file) { return { project, file, ...readTranscript(this.engine.sessionFile(project, file).abs) }; }
+  open(project, file) { return { project, file, ...readTranscript(this.engine.sessionFile(project, file).abs, this.reading) }; }
 
   unchanged(doc) { return unchanged(doc); }
 
@@ -93,18 +95,19 @@ export class RootSource {
   dispose() { this.engine.dispose(); }
 }
 
-/** One transcript, given by its path. */
+/** One transcript, given by its path; `again` and `heapLimit` as RootSource's. */
 export class FileSource {
-  constructor({ file, env = childEnv(process.env) }) {
+  constructor({ file, env = childEnv(process.env), again = undefined, heapLimit = undefined }) {
     this.kind = 'file';
     this.file = file;
     this.name = path.basename(file);
     this.prefix = prefixOf(this.name);
     this.env = env;
     this.running = null;
+    this.reading = { again, heapLimit };
   }
 
-  open() { return { project: null, file: this.name, ...readTranscript(this.file) }; }
+  open() { return { project: null, file: this.name, ...readTranscript(this.file, this.reading) }; }
 
   unchanged(doc) { return unchanged(doc); }
 

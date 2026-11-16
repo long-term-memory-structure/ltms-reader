@@ -5,18 +5,16 @@
 // Every view is drawn, every record as text and as JSON, a search and the keys; then every byte written is read: the only
 // escape sequences are the reader's own (the alternate screen, the cursor, wrapping, a position, an erase, its styles),
 // and no other control character is there at all. Then each way out restores the terminal.
-import { EventEmitter } from 'node:events';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { PassThrough, Writable } from 'node:stream';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { main } from '../src/main.mjs';
 import { ENTER, LEAVE } from '../src/screen.mjs';
 import { width } from '../src/text.mjs';
 import { top } from '../src/views.mjs';
-import { KEY, OWN } from './helpers.mjs';
+import { KEY, OWN, terminal } from './helpers.mjs';
 
 const FILE = path.join(OWN, 'escapes.jsonl');
 /** The reader's own sequences: the alternate screen, the cursor, wrapping, a position, an erase, and its styles. */
@@ -38,18 +36,6 @@ export function strangers(bytes) {
   return bad;
 }
 
-/** Streams standing for a terminal, and a process standing for this one: everything written, in the order written. */
-function terminal({ cols = 80, rows = 24 } = {}) {
-  const log = [];
-  const stdin = new PassThrough();
-  stdin.isTTY = true;
-  stdin.raw = [];
-  stdin.setRawMode = (on) => { stdin.raw.push(on); return stdin; };
-  const sink = (name) => Object.assign(new Writable({ write(chunk, enc, cb) { log.push([name, String(chunk)]); cb(); } }), { isTTY: true, columns: cols, rows });
-  const stdout = sink('out'), stderr = sink('err');
-  const proc = Object.assign(new EventEmitter(), { exits: [], exit(code) { this.exits.push(code); } });
-  return { stdin, stdout, stderr, proc, log, out: () => log.filter(([n]) => n === 'out').map(([, s]) => s).join(''), err: () => log.filter(([n]) => n === 'err').map(([, s]) => s).join('') };
-}
 const settle = async (h, ms = 5) => { await new Promise((r) => setTimeout(r, ms)); await h.app.idle(); };
 /** Each key, and the frame it gives checked: within the columns, no control character in its text. */
 async function press(t, h, bytes) {

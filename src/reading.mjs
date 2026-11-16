@@ -23,23 +23,25 @@ export class Refusal extends Error { constructor(kind, message) { super(message)
 /** The largest transcript this process reads, by ltms's rule, for a heap limit of `heapLimit` bytes. */
 export const sizeLimit = (heapLimit) => Math.min(STRING_MAX, Math.floor(heapLimit / 10));
 
-/** Why a file of `size` bytes is not read here (with the NODE_OPTIONS that would let it be), or null when it is read. */
-export function tooLarge(size, heapLimit = getHeapStatistics().heap_size_limit) {
+/** Why a file of `size` bytes is not read here (with the NODE_OPTIONS that would let it be, before `again`, the command
+ *  that was run: src/start.mjs's againOf), or null when it is read. */
+export function tooLarge(size, heapLimit = getHeapStatistics().heap_size_limit, again = 'npx ltms-reader') {
   const limit = sizeLimit(heapLimit);
   if (size <= limit) return null;
   const mb = (n) => `${Math.ceil(n / MB).toLocaleString('en-US')} MB`;
   if (size > STRING_MAX) return `it is ${mb(size)}: no memory setting lets it be read, since its text would pass JavaScript's limit on a string's length (about ${mb(STRING_MAX)} here); ltms skips it too`;
   // ltms's rule reads a file of up to a tenth of the heap's limit; the old space alone, set to ten times the size, is enough
   const need = Math.ceil((size * 10) / MB / 256) * 256;
-  return `it is ${mb(size)}, and this process reads a transcript of up to ${mb(limit)} (a tenth of its memory limit, as ltms reads; parsing takes 5 to 8 times a file's size). To read it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need} npx ltms-reader`;
+  return `it is ${mb(size)}, and this process reads a transcript of up to ${mb(limit)} (a tenth of its memory limit, as ltms reads; parsing takes 5 to 8 times a file's size). To read it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need} ${again}`;
 }
 
 /**
  * Read and parse one transcript; `abs` is its full path (already checked by the caller to be a regular file reached
  * through no symbolic link). Returns { abs, name, prefix, size, t, view }: `view` is the session view, uncapped (a
  * terminal draws only the rows on screen), whose turns, calls and compactions are those `ltms skeleton` prints.
+ * heapLimit: the limit the size rule reads by (the runtime's when not given); again: the command a refusal names.
  */
-export function readTranscript(abs, { heapLimit } = {}) {
+export function readTranscript(abs, { heapLimit, again } = {}) {
   let fd;
   try { fd = openSync(abs, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0)); }
   catch (e) {
@@ -50,7 +52,7 @@ export function readTranscript(abs, { heapLimit } = {}) {
   try {
     const st = fstatSync(fd);
     if (!st.isFile()) throw new Refusal('not-file', `${abs} is not a regular file`);
-    const why = tooLarge(st.size, heapLimit);
+    const why = tooLarge(st.size, heapLimit, again);
     if (why) throw new Refusal('too-large', `${abs} is not read: ${why}`);
     const t = parseTranscript(readFileSync(fd, 'utf8'));
     const name = path.basename(abs);

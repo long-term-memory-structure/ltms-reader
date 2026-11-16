@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { App } from './app.mjs';
 import { openScreen, colourFrom } from './screen.mjs';
 import { FileSource, RootSource } from './sources.mjs';
-import { USAGE, notTerminal, parseArgs, startOf } from './start.mjs';
+import { USAGE, againOf, notTerminal, parseArgs, startOf } from './start.mjs';
 import { visible } from './text.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,7 +40,9 @@ export function main(argv, { stdin = process.stdin, stdout = process.stdout, std
   const start = startOf(a.path, { env, home: homedir() });
   if (start.refused) { stderr.write(`ltms-reader: ${start.refused}\n`); return 2; }
 
-  const source = start.kind === 'file' ? new FileSource({ file: start.file }) : new RootSource({ root: start.root, only: start.project ?? null });
+  // a refusal of a transcript too large names the command that was run, with what it was given
+  const again = againOf(a.path);
+  const source = start.kind === 'file' ? new FileSource({ file: start.file, again }) : new RootSource({ root: start.root, only: start.project ?? null, again });
   let screen = null, app = null, finished = false;
   const finish = (code, err = null) => {
     if (finished) return;

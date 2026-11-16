@@ -1,11 +1,12 @@
 // test/helpers.mjs — what the screen's tests share (not a test file: node --test runs only *.test.mjs here).
 import { execFileSync } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, utimesSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -71,3 +72,17 @@ export function keyboard(app) {
 }
 
 export const plainOf = (lines) => lines.map((l) => l.map((s) => s.text).join(''));
+
+/** Streams standing for a terminal, and a process standing for this one, for src/main.mjs's main(): everything written,
+ *  in the order written. */
+export function terminal({ cols = 80, rows = 24 } = {}) {
+  const log = [];
+  const stdin = new PassThrough();
+  stdin.isTTY = true;
+  stdin.raw = [];
+  stdin.setRawMode = (on) => { stdin.raw.push(on); return stdin; };
+  const sink = (name) => Object.assign(new Writable({ write(chunk, enc, cb) { log.push([name, String(chunk)]); cb(); } }), { isTTY: true, columns: cols, rows });
+  const stdout = sink('out'), stderr = sink('err');
+  const proc = Object.assign(new EventEmitter(), { exits: [], exit(code) { this.exits.push(code); } });
+  return { stdin, stdout, stderr, proc, log, out: () => log.filter(([n]) => n === 'out').map(([, s]) => s).join(''), err: () => log.filter(([n]) => n === 'err').map(([, s]) => s).join('') };
+}

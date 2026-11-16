@@ -35,6 +35,16 @@ export function parseArgs(argv) {
   return { path: rest[0] ?? null };
 }
 
+/** One word for a POSIX shell: as it is when it holds nothing a shell reads specially, else in single quotes. */
+const shellWord = (s) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
+
+/** The command that runs the reader again on what it was given (`arg`, as typed; null for none), for a message that
+ *  tells the person how to read something with more memory: without the path, it would open another folder. */
+export function againOf(arg) {
+  if (arg === null || arg === undefined) return 'npx ltms-reader';
+  return `npx ltms-reader ${arg.startsWith('-') ? '-- ' : ''}${shellWord(arg)}`;
+}
+
 /** Why the reader does not run on these streams, or null when stdin and stdout are both terminals. */
 export function notTerminal(stdin, stdout) {
   const inTty = stdin?.isTTY === true, outTty = stdout?.isTTY === true;
