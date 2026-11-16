@@ -162,7 +162,10 @@ pasted acts as a key.
   characters or more. For R's record (one paragraph of 4,000,000 Hebrew characters), measured on 2026-11-16 on one
   machine, its first frame took 150 to 239 ms on Node 26.13.1 (11 runs), where it took 12 to 23 ms before (11 runs);
   the levels alone 137 to 147 ms (6 runs), and 143 to 145 on Node 20.20.2 (2 runs); the frames after it as before (a
-  page at 200 x 60: 9.4 to 14.4 ms in 7 runs, 10.4 to 14.2 before).
+  page at 200 x 60: 9.4 to 14.4 ms in 7 runs, 10.4 to 14.2 before). A line finds the paths in it by a binary search of
+  its paragraph's: in a right-to-left paragraph of 200,000 paths (3,200,004 characters), measured on 2026-11-17 (2 runs
+  each), the first frame took 163 to 171 ms (21 to 22 when each line was laid out by itself), and a page at its start,
+  its middle and its end 5.8 to 6.4 ms at 200 x 60 (13.6 to 16.5 before), 1.1 to 1.7 at 80 x 24 (2.1 to 2.8 before).
 - On Node 20, a long line of text that is not ASCII is laid out about three times slower than on Node 26: Node 20's
   grapheme segmenter is slower, and walked over one long string it costs more at each cluster the longer the string is
   (3.4 us a cluster at 10,000 units, 115 at 80,000), so the reader walks a long line 256 units at a time. Measured on

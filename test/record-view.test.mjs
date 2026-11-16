@@ -14,7 +14,7 @@ import { MB, PARSE_PER_BYTE, RECORD_VIEW_PER_BYTE, recordTooLarge } from '../src
 import { FileSource } from '../src/sources.mjs';
 import { againOf } from '../src/start.mjs';
 import { directionOf, expandTabs, fit, visible, wrap } from '../src/text.mjs';
-import { recordLines, top } from '../src/views.mjs';
+import { RecordLines, recordLines, top } from '../src/views.mjs';
 import { KEY, deepRecord, keyboard, plainOf } from './helpers.mjs';
 
 /** The lines as the record view made them whole before (44b868f's recordLines, its wrap cutting the same places); each
@@ -62,6 +62,31 @@ test('R.F1: a record\'s lines laid out a page at a time: every page is that page
         assert.equal(recordLines(rec, json, cols), lines, `${at}: kept for the width drawn last`);
       }
     }
+  }
+});
+
+// V1 (round 5): round 4 laid out each line of a wrapped paragraph from the paragraph's levels, and found the paths and
+// URLs (its units) a line holds by passing over every unit before the line, from the first. In a right-to-left paragraph
+// of 200,000 paths (round 4's check's probe, unitscost.mjs, run on 2026-11-17, twice), a page at its end took 44.8 and
+// 45.3 ms at 200 x 60 against 5.9 and 6.2 at its start, and 16.8 and 20.0 ms at 80 x 24 against 1.1 and 1.3, where round
+// 3 (b0ff6ac) drew every page alike (13.5 to 15.0 ms, 2.1 to 2.9). The probe made a test: the page at the end against the
+// page at the start, drawn one after the other, the median of 15 each, after the first frame (which resolves the
+// paragraph's levels); the bound leaves room for a machine's noise (the suite runs its files side by side), not for a
+// pass over the paths.
+test('V1: in a right-to-left paragraph of 200,000 paths, a page at its end costs about what a page at its start does (at most three times, and 3 ms), at 80 x 24 and 200 x 60', { timeout: 300_000 }, async (t) => {
+  const { frameBytes } = await import('../src/screen.mjs');
+  const text = 'אבגד' + '/srv/data/x.txt '.repeat(200_000);
+  const median = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
+  for (const [cols, rows] of [[80, 24], [200, 60]]) {
+    const lines = new RecordLines([{ text, style: null }], cols), last = lines.length - rows;
+    const page = (at) => { const t0 = performance.now(); frameBytes(lines.slice(at, at + rows), { cols, rows, colour: true, rtl: 'reader' }); return performance.now() - t0; };
+    const first = page(0);
+    const start = [], end = [];
+    for (let i = 0; i < 15; i++) { start.push(page(0)); end.push(page(last)); }
+    const s = median(start), e = median(end);
+    const said = `${cols} x ${rows}: the first frame ${first.toFixed(1)} ms; a page at the start ${s.toFixed(1)} ms, at the end (line ${last.toLocaleString('en-US')} of ${lines.length.toLocaleString('en-US')}) ${e.toFixed(1)} ms`;
+    t.diagnostic(said);
+    assert.ok(e <= 3 * s + 3, said);
   }
 });
 

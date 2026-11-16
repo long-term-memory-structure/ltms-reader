@@ -343,8 +343,11 @@ function layOut(text, level, units) {
  */
 function lineOf(P, a, b) {
   const { text, level: p, levels, units } = P;
+  // the first unit that ends after a, by a binary search (the units are in order and apart, so their ends are in order
+  // too): a line late in a paragraph of many paths is laid out without passing over the units before it (V1, round 5:
+  // passed over one by one, a page at the end of 200,000 paths cost seven to fifteen times a page at the start)
   let u = 0;
-  while (u < units.length && units[u].b <= a) u++;
+  for (let hi = units.length; u < hi;) { const mid = (u + hi) >> 1; if (units[mid].b <= a) u = mid + 1; else hi = mid; }
   const piece = (U, s, e) => (U.inner ? ordered(text.slice(s, e), U.inner, s - U.a, 0) : text.slice(s, e));
   if (!levels) {
     // nothing outside the units is reordered: the line as stored, each unit's part in its own order
