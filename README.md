@@ -72,6 +72,10 @@ While a line is typed: Backspace, Ctrl-U to clear it, Enter, Esc to leave it.
   window's title, OSC 52, which writes the clipboard). Every C0 and C1 control character and DEL is shown as a visible
   escape: ESC as `␛`, the others as `\x07`, `\x9b` and so on; tabs become spaces and new lines become lines. Nothing a
   transcript holds can move the cursor, set the title, write the clipboard or leave the terminal in another mode.
+- **So is what reorders or hides text:** the bidirectional embeddings, overrides and isolates (U+202A to U+202E, U+2066
+  to U+2069), the byte order mark (U+FEFF), the line and paragraph separators (U+2028, U+2029) and the tag characters
+  (U+E0000 to U+E007F), as `\u202e`, `\u{e0041}` and so on: an override in a transcript cannot reorder the rest of its
+  row. The light marks Hebrew and Arabic text use (U+200E, U+200F, U+061C) are written as they are.
 - **Width by grapheme cluster** (`Intl.Segmenter`): combining marks, niqqud and cantillation take no column of their
   own; East Asian wide characters and emoji take two. A line is cut by columns, never inside a cluster. The wide
   characters come from a table generated from Unicode's `EastAsianWidth.txt`, version 17.0.0 (`src/width-table.mjs`,

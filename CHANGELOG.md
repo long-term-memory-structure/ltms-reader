@@ -19,7 +19,9 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   Ctrl-C and SIGINT (130), SIGHUP (129), SIGTERM (143), an uncaught error (1, printed after the restore by its kind and
   its place, not its message). `NO_COLOR` honoured.
 - Text: every C0 and C1 control character and DEL shown as a visible escape (ESC as `␛`, the rest as `\xNN`), so a
-  transcript's escape sequences (OSC 52 among them) never reach the terminal as such. Width by grapheme cluster, wide
+  transcript's escape sequences (OSC 52 among them) never reach the terminal as such; and what reorders or hides text
+  (bidirectional embeddings, overrides and isolates, the byte order mark, the line and paragraph separators, tag
+  characters) as `\uXXXX`, while LRM, RLM and ALM are written as they are. Width by grapheme cluster, wide
   characters and emoji two columns, from a table generated from Unicode's `EastAsianWidth.txt` 17.0.0 (its sha256 in
   the table); lines cut by columns, never inside a cluster. Right to left: the text as written (the terminal lays it
   out); a measurement on the screens decides whether a reader-side layout is needed.

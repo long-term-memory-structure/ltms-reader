@@ -8,13 +8,16 @@
 // escapes.jsonl: what a transcript can hold that a terminal would act on: ESC sequences (colours, cursor moves, the
 // alternate screen, a title, a hyperlink, a device query), OSC 52 (which writes the clipboard), BEL, C1 controls (raw in
 // the file, as JSON leaves them), the other C0 controls and DEL; in prompts, a reply, thinking, a tool's name and input, a
-// result, and a channel's own word.
+// result, and a channel's own word. And what reorders or hides text (R.F5): bidirectional embeddings, overrides and
+// isolates, the byte order mark, the line and paragraph separators, tag characters.
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ESC = '\u001b', BEL = '\u0007';
+// what reorders or hides text (R.F5), built from their code points
+const [LRE, PDF, LRO, RLO, LRI, RLI, FSI, PDI, BOM, LS, PS, TAG_A, TAG_B] = [0x202a, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069, 0xfeff, 0x2028, 0x2029, 0xe0041, 0xe0042].map((cp) => String.fromCodePoint(cp));
 
 function transcript(sid, records) {
   let parent = null, n = 0;
@@ -60,6 +63,12 @@ export const ESCAPES = transcript('55555555-5555-4555-8555-555555555555', [
   { req: 2, blocks: [{ type: 'text', text: `Here: ${ESC}[1mbold${ESC}[0m, ${ESC}]8;;http://example.invalid${ESC}\\a link${ESC}]8;;${ESC}\\, \u009b?1049h c1 alternate screen, ${ESC}P+q544e${ESC}\\ a query, ${ESC}[6n ${ESC}[c reports` }] },
   { prompt: `again \u009b2J\u0085 with C1 raw ${ESC}]52;p;${BEL}`, extra: { origin: { kind: `peer${ESC}]52;c;b3JpZ2lu${BEL}` } } },
   { req: 3, blocks: [{ type: 'text', text: `the end ${ESC}[0m${ESC}[?25l${ESC}[?7l${ESC}[?1000h${ESC}[?2004h` }] },
+  // R.F5: an override and an isolate around words, an embedding, the byte order mark, the line and paragraph separators,
+  // the tag characters: in a prompt, a tool's name and input, its result, and a reply
+  { prompt: `reorder ${RLO}desserp${PDF} isolate ${RLI}ltr${PDI} embed ${LRE}x${PDF} bom${BOM} ls${LS}ps${PS} tags${TAG_A}${TAG_B}` },
+  { req: 4, blocks: [{ type: 'tool_use', id: 'toolu_esc_2', name: `Bash${RLO}`, input: { command: `echo ${FSI}x${PDI}${BOM}` } }] },
+  { result: `out ${LRO}y${PDF}${LS}${PS} ${LRI}z${PDI}${TAG_A}`, id: 'toolu_esc_2' },
+  { req: 5, blocks: [{ type: 'text', text: `done ${RLO}deredro${PDF} ${BOM}` }] },
 ]);
 
 // channels.jsonl: prompts whose channel is the record's own word: another agent's ("peer"), an empty one (ltms prints

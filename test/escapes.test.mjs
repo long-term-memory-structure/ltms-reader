@@ -20,7 +20,12 @@ const FILE = path.join(OWN, 'escapes.jsonl');
 /** The reader's own sequences: the alternate screen, the cursor, wrapping, a position, an erase, and its styles. */
 const OWN_SEQ = /^(?:\x1b\[\?1049[hl]|\x1b\[\?25[hl]|\x1b\[\?7[hl]|\x1b\[\d{1,3};1H|\x1b\[K|\x1b\[(?:0|1|2|7|31|36)m)/;
 
-/** Every place in `bytes` where something other than the reader's own sequences would act on a terminal. */
+/** What reorders or hides text (R.F5): bidirectional embeddings, overrides and isolates, the byte order mark, the line
+ *  and paragraph separators, the tag characters. */
+const reordersOrHides = (c) => (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069) || c === 0xfeff || c === 0x2028 || c === 0x2029 || (c >= 0xe0000 && c <= 0xe007f);
+
+/** Every place in `bytes` where something other than the reader's own sequences would act on a terminal, or would
+ *  reorder or hide what the reader writes. */
 export function strangers(bytes) {
   const bad = [];
   for (let i = 0; i < bytes.length;) {
@@ -30,7 +35,7 @@ export function strangers(bytes) {
       if (!m) { bad.push({ at: i, what: JSON.stringify(bytes.slice(i, i + 12)) }); i++; continue; }
       i += m[0].length; continue;
     }
-    if (c < 0x20 || (c >= 0x7f && c <= 0x9f)) bad.push({ at: i, what: `U+${c.toString(16).padStart(4, '0')}` });
+    if (c < 0x20 || (c >= 0x7f && c <= 0x9f) || reordersOrHides(c)) bad.push({ at: i, what: `U+${c.toString(16).padStart(4, '0')}` });
     i += c > 0xffff ? 2 : 1;
   }
   return bad;
@@ -97,7 +102,8 @@ test('over the escapes transcript, every view, record and search: no byte acts o
   // what the transcript held is on the screen, inert (read with the reader's own sequences taken out, so that a record's
   // lines, wrapped at the columns, join again)
   const text = out.replace(new RegExp(OWN_SEQ.source.slice(1), 'g'), '');
-  for (const shown of ['␛]52;c;cGF5bG9hZA==\\x07 clipboard', '␛[2J␛[H cleared', '␛[?1049l left', '\\x9b31m csi', '\\x85 nel', 'carriage\\x0d return', 'delete\\x7f', 'nul\\x00', '␛[2JBash', 'peer␛]52;c;b3JpZ2lu\\x07']) {
+  for (const shown of ['␛]52;c;cGF5bG9hZA==\\x07 clipboard', '␛[2J␛[H cleared', '␛[?1049l left', '\\x9b31m csi', '\\x85 nel', 'carriage\\x0d return', 'delete\\x7f', 'nul\\x00', '␛[2JBash', 'peer␛]52;c;b3JpZ2lu\\x07',
+    'reorder \\u202edesserp\\u202c isolate \\u2067ltr\\u2069 embed \\u202ax\\u202c bom\\ufeff ls\\u2028ps\\u2029 tags\\u{e0041}\\u{e0042}', 'Bash\\u202e', 'echo \\u2068x\\u2069\\ufeff', 'out \\u202dy\\u202c\\u2028\\u2029 \\u2066z\\u2069\\u{e0041}', 'done \\u202ederedro\\u202c \\ufeff']) {
     assert.ok(text.includes(shown), `shown as text: ${JSON.stringify(shown)}`);
   }
   assert.equal(t.err(), '', 'nothing on stderr');
@@ -106,9 +112,9 @@ test('over the escapes transcript, every view, record and search: no byte acts o
 test('a folder of projects whose names hold ESC and BEL: shown, not acted on', async () => {
   const base = mkdtempSync(path.join(tmpdir(), 'ltms-reader-esc-'));
   try {
-    const project = path.join(base, 'projects', '-work-\x1b]0;title\x07-esc');
+    const project = path.join(base, 'projects', `-work-\x1b]0;title\x07-esc${String.fromCodePoint(0x202e)}`);
     mkdirSync(project, { recursive: true });
-    cpSync(FILE, path.join(project, '\x1b[2J\x07x-55555555.jsonl'));
+    cpSync(FILE, path.join(project, `\x1b[2J\x07x-55555555${String.fromCodePoint(0x2068)}.jsonl`));
     const t = terminal({ cols: 200, rows: 60 });
     const h = main([path.join(base, 'projects')], { stdin: t.stdin, stdout: t.stdout, stderr: t.stderr, env: {}, proc: t.proc });
     await settle(h);
@@ -121,7 +127,8 @@ test('a folder of projects whose names hold ESC and BEL: shown, not acted on', a
     assert.deepEqual(t.proc.exits, [130]);
     const out = t.out();
     assert.deepEqual(strangers(out), []);
-    assert.ok(out.includes('-work-␛]0;title\\x07-esc'), 'the project\'s name, shown');
+    assert.ok(out.includes('-work-␛]0;title\\x07-esc\\u202e'), 'the project\'s name, shown, its override too (R.F5)');
+    assert.ok(out.includes('x-55555555\\u2068.jsonl'), 'the file\'s name, its isolate shown (R.F5)');
     assert.ok(out.includes('␛[2J\\x07x-5'), 'the session\'s prefix, shown');
     assert.ok(/\x1b\[3[16]m/.test(out), 'colour, with NO_COLOR unset');
   } finally { rmSync(base, { recursive: true, force: true }); }

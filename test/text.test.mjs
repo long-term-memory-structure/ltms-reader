@@ -39,7 +39,7 @@ test('visible: no code point at all comes out as a control (but the tab and the 
   }
   assert.equal(checked, 0x110000 - 0x800);
   const mixed = 'a\x1b[31mred\x1b[0m\x07\u009b2J\u0085\x1b]52;c;SGVsbG8=\x07\x1b]0;title\x1b\\\r\n\tend\u202e';
-  assert.equal(visible(mixed), 'a\u241b[31mred\u241b[0m\\x07\\x9b2J\\x85\u241b]52;c;SGVsbG8=\\x07\u241b]0;title\u241b\\\\x0d\n\tend\u202e');
+  assert.equal(visible(mixed), 'a\u241b[31mred\u241b[0m\\x07\\x9b2J\\x85\u241b]52;c;SGVsbG8=\\x07\u241b]0;title\u241b\\\\x0d\n\tend\\u202e', 'the override at its end shown too (R.F5)');
   assert.equal(visible(visible(mixed)), visible(mixed));
   assert.equal(visible(42), '42', 'a value that is not a string is written as one');
 });
@@ -149,4 +149,30 @@ test('the wide table is what scripts/width-table.mjs writes from the pinned sour
   const r = spawnSync(process.execPath, [path.join(root, 'scripts', 'width-table.mjs'), process.env.LTMS_READER_EAW, '--check'], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /is what .* gives \(\d+ ranges\)/);
+});
+
+// R.F5 (decided, S376): what reorders or hides text is shown as the other controls are: the bidirectional embeddings,
+// overrides and isolates (U+202A-U+202E, U+2066-U+2069), the byte order mark (U+FEFF), the line and paragraph separators
+// (U+2028, U+2029) and the tag characters (U+E0000-U+E007F); the light marks Hebrew uses (LRM U+200E, RLM U+200F, and
+// ALM U+061C) are kept as written. Where they are drawn on a terminal that lays bidirectional text out itself is the
+// right-to-left measurement's, not decided here.
+const REORDER_OR_HIDE = [[0x202a, 0x202e], [0x2066, 0x2069], [0xfeff, 0xfeff], [0x2028, 0x2029], [0xe0000, 0xe007f]];
+test('R.F5: the characters that reorder or hide text, shown as escapes (\\u202e, \\u{e0041}); LRM, RLM and ALM as written', () => {
+  let n = 0;
+  for (const [first, last] of REORDER_OR_HIDE) {
+    for (let cp = first; cp <= last; cp++) {
+      const c = String.fromCodePoint(cp), v = visible(`x${c}y`);
+      const want = cp > 0xffff ? `\\u{${cp.toString(16)}}` : `\\u${cp.toString(16).padStart(4, '0')}`;
+      assert.equal(v, `x${want}y`, `U+${cp.toString(16)}`);
+      assert.equal(visible(v), v, `U+${cp.toString(16)}: a second pass changes nothing`);
+      n++;
+    }
+  }
+  assert.equal(n, 5 + 4 + 1 + 2 + 128);
+  for (const cp of [0x200e, 0x200f, 0x061c]) {
+    const s = `ש${String.fromCodePoint(cp)}b`;
+    assert.equal(visible(s), s, `U+${cp.toString(16)}: as written`);
+  }
+  // and nothing else of these blocks: their neighbours as written
+  for (const cp of [0x2027, 0x202f, 0x2065, 0x206a, 0xfefe, 0xdffff, 0xe0080]) assert.equal(visible(String.fromCodePoint(cp)), String.fromCodePoint(cp), `U+${cp.toString(16)}`);
 });

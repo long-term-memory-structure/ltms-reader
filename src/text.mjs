@@ -4,7 +4,12 @@
 // the clipboard). None reaches the terminal as such: every C0 and C1 control character and DEL, but the new line and the
 // tab, is shown as a visible escape (ESC as ␛, the rest as \xNN), so a transcript cannot move the cursor, set the title,
 // write the clipboard or leave the terminal in another mode. The new line ends a line and the tab becomes spaces (by
-// the callers below); neither is written to the terminal as itself.
+// the callers below); neither is written to the terminal as itself. What reorders or hides text is shown the same way
+// (R.F5, decided S376), as \uXXXX or \u{XXXXX}: the bidirectional embeddings, overrides and isolates (U+202A to U+202E,
+// U+2066 to U+2069), which on a terminal that lays bidirectional text out itself reorder the rest of their row, the
+// reader's own words after them too; the byte order mark (U+FEFF); the line and paragraph separators (U+2028, U+2029);
+// and the tag characters (U+E0000 to U+E007F). The light marks Hebrew and Arabic text use, LRM (U+200E), RLM (U+200F)
+// and ALM (U+061C), are written as they are.
 //
 // Width, by grapheme cluster (Intl.Segmenter): a cluster takes two columns when it holds a wide or fullwidth character
 // (East_Asian_Width W or F: src/width-table.mjs, generated from Unicode's EastAsianWidth.txt), when it is an emoji
@@ -17,14 +22,24 @@
 // terminals that do not, is displayOrder() below; whether it is needed is decided by a measurement on the screen.
 import { WIDE } from './width-table.mjs';
 
-/** C0 but the tab and the new line, DEL, C1. */
-const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
-const hex2 = (c) => c.charCodeAt(0).toString(16).padStart(2, '0');
+/** C0 but the tab and the new line, DEL, C1; and what reorders or hides text: the bidirectional embeddings, overrides
+ *  and isolates, the line and paragraph separators, the byte order mark, the tag characters. */
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028-\u202e\u2066-\u2069\ufeff\u{e0000}-\u{e007f}]/gu;
 
-/** s with every control character but \n and \t as a visible escape: ESC as ␛ (U+241B), the others as \xNN. */
+/** One such character as it is shown: ESC as ␛ (U+241B); the others of C0, DEL and C1 as \xNN; the rest as \uXXXX, or
+ *  \u{XXXXX} past U+FFFF. */
+function shown(c) {
+  if (c === '\x1b') return '\u241b';
+  const cp = c.codePointAt(0);
+  if (cp <= 0xff) return `\\x${cp.toString(16).padStart(2, '0')}`;
+  return cp <= 0xffff ? `\\u${cp.toString(16).padStart(4, '0')}` : `\\u{${cp.toString(16)}}`;
+}
+
+/** s with every control character but \n and \t, and every character that reorders or hides text, as a visible
+ *  escape: ESC as ␛ (U+241B), the others of C0, DEL and C1 as \xNN, the rest as \uXXXX (\u{XXXXX}). */
 export function visible(s) {
   const t = typeof s === 'string' ? s : String(s);
-  return t.replace(CONTROL, (c) => (c === '\x1b' ? '\u241b' : `\\x${hex2(c)}`));
+  return t.replace(CONTROL, shown);
 }
 
 /** Whether a code point is East_Asian_Width W or F (a binary search of the generated ranges). */
