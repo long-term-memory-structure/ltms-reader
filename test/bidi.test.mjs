@@ -515,10 +515,18 @@ test('V7: a space at a break stays at the end of the line it follows (hanging pa
   assert.deepEqual(recordWritten('abcde   fghij', 5).map(([l]) => l), ['abcde', 'fghij']);
   assert.deepEqual(recordWritten('          x', 5).map(([l]) => l), ['     ', 'x']);
   assert.deepEqual(wrap('abcde   fghij', 5), ['abcde', 'fghij']);
+  // a message: the spaces of other kinds after the space it breaks at hang with it, whether the next word fits or not
+  const lines = (s, cols) => wordSpans(s, cols).map(([a, b]) => s.slice(a, b));
+  assert.deepEqual(lines('abc \u3000def ghi', 6), ['abc', 'def', 'ghi']);
+  assert.deepEqual(lines('abcdef  \u3000g h', 6), ['abcdef', 'g h']);
+  assert.deepEqual(lines('abc \u3000def', 20), ['abc \u3000def'], 'inside a line, as they are');
 });
 
 test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80, no line of a record\'s text but its first begins with whitespace, none is wider than the columns but a cluster wider than them alone, and between two lines there is only whitespace (what hangs); a message\'s lines likewise', (t) => {
-  const rnd = randomOf(381), texts = [...fixtureLines(), ...randomParagraphs(1000, 2614), ...randomParagraphs(500, 2615, { bn: true }), '   ', ' a', 'a   ', '\u3000\u3000\u3000', 'a \u3000 b'];
+  // and texts whose words begin with other spaces after a space: an em space, an ideographic space (UAX #14 breaks after
+  // the space; the ones after it hang too, as CSS has a line's other space separators)
+  const others = ['abc \u3000def ghi jkl', 'אבג \u2003\u2003דהו זחט', 'one \u205f two \u1680three', 'שלום \u2009\u200aעולם ומלואו', 'abcdef  \u3000g h'];
+  const rnd = randomOf(381), texts = [...fixtureLines(), ...randomParagraphs(1000, 2614), ...randomParagraphs(500, 2615, { bn: true }), '   ', ' a', 'a   ', '\u3000\u3000\u3000', 'a \u3000 b', ...others];
   let lines = 0, hung = 0, messages = 0;
   for (const text of texts) {
     for (const cols of [1 + rnd(10), 10 + rnd(71)]) {
@@ -538,11 +546,11 @@ test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80
       }
       const end = text.slice(spans[spans.length - 1][1]);
       assert.ok(end === '' || BLANK.test(end), `${JSON.stringify(text)} at ${cols}: after the last line: ${JSON.stringify(end)}`);
-      // a message: wordSpans breaks at spaces; none begins a line, every line within the columns
-      for (const [a, b] of wordSpans(text, cols)) {
+      // a message: wordSpans breaks at spaces; no line but its first begins with whitespace, every line within the columns
+      for (const [i, [a, b]] of wordSpans(text, cols).entries()) {
         messages++;
-        const line = text.slice(a, b);
-        assert.ok(!line.startsWith(' '), `message ${JSON.stringify(text)} at ${cols}: ${JSON.stringify(line)}`);
+        const line = text.slice(a, b), first = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)][0]?.segment ?? '';
+        assert.ok(i === 0 ? !line.startsWith(' ') : !BLANK.test(first), `message ${JSON.stringify(text)} at ${cols}: line ${i}, ${JSON.stringify(line)}`);
         assert.ok(width(line) <= cols || [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)].length === 1, `message ${JSON.stringify(text)} at ${cols}: ${JSON.stringify(line)} is ${width(line)} wide`);
       }
     }

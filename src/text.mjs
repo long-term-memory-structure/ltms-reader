@@ -212,27 +212,38 @@ export function wrap(s, cols) {
 }
 
 /** Where the lines of wrapWords(s, cols) begin and end in s, [start, end) each: a paragraph in lines of at most `cols`
- *  columns, broken at spaces where a line can be, else by columns (lineSpans); a space a line is broken at is in no line
- *  (it hangs at the end of the line before: no line begins with one), and so is whitespace that hangs inside a word cut
- *  by columns, which ends its line. Each line is s.slice(start, end), so that its place in its paragraph is known (W1: a
- *  line is laid out from its paragraph's levels). */
+ *  columns, broken at spaces where a line can be, else by columns (lineSpans). A space a line is broken at is in no line
+ *  (it hangs at the end of the line before), and so is the whitespace (HANGS) after it, at the start of the word that
+ *  begins the next line, and whitespace that hangs inside a word cut by columns, which ends its line: no line but the
+ *  first begins with whitespace (V7, round 5). Each line is s.slice(start, end), so that its place in its paragraph is
+ *  known (W1: a line is laid out from its paragraph's levels). */
 export function wordSpans(s, cols) {
   const out = [];
   // the line being made, where it begins in s, where the next word begins, and whether the line can take it (not when
   // whitespace that hangs ends it)
   let line = '', from = 0, pos = 0, open = true;
-  for (const word of s.split(' ')) {
-    const at = pos;
-    pos += word.length + 1;
+  for (const whole of s.split(' ')) {
+    let at = pos, word = whole;
+    pos += whole.length + 1;
+    if (line === '' && out.length) { const k = blankPrefix(word); at += k; word = word.slice(k); }
     const next = line === '' ? word : `${line} ${word}`;
     if (open && width(next) <= cols) { if (line === '') from = at; line = next; continue; }
     if (line !== '') out.push([from, from + line.length]);
+    if (out.length) { const k = blankPrefix(word); at += k; word = word.slice(k); }
     const pieces = [...lineSpans(word, cols)], [x, y] = pieces.pop();
     for (const [c, d] of pieces) out.push([at + c, at + d]);
     line = word.slice(x, y); from = at + x; open = y === word.length;
   }
   out.push([from, from + line.length]);
   return out;
+}
+
+/** How many code units at the start of s are whitespace that hangs (HANGS), in whole clusters. */
+function blankPrefix(s) {
+  if (s === '' || !HANGS.test(s[0])) return 0;
+  let k = 0;
+  for (const c of clusters(s)) { if (!HANGS.test(c)) break; k += c.length; }
+  return k;
 }
 
 /** The reader's own words (not a transcript's text) in lines of at most `cols` columns, broken at spaces where a
