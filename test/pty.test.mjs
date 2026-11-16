@@ -25,8 +25,9 @@ stty -g > "$LTMS_T/after"
 `;
 const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 // the sequences, written out here rather than taken from the code under test: enter the alternate screen, hide the
-// cursor, wrapping off; and back: styles reset, wrapping on, the cursor shown, the main screen
-const ENTER = '\x1b[?1049h\x1b[?25l\x1b[?7l', LEAVE = '\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l';
+// cursor, wrapping off, bracketed paste on; and back: bracketed paste off, styles reset, wrapping on, the cursor shown,
+// the main screen
+const ENTER = '\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[?2004h', LEAVE = '\x1b[?2004l\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l';
 
 /**
  * Run the reader in a pseudo-terminal of 80 x 24: each step waits for its text (a string, or a regular expression) in

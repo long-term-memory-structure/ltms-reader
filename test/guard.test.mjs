@@ -11,7 +11,7 @@ import { endedBy, guard } from '../src/guard.mjs';
 import { OWN } from './helpers.mjs';
 
 // written out here, not taken from the code under test
-const LEAVE = '\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l';
+const LEAVE = '\x1b[?2004l\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l';
 async function run(fixture, argv, { proc = new EventEmitter(), onChild = null } = {}) {
   const out = [], err = [];
   // Node through a script that keeps no core of a process a signal ends (the planted aborts)

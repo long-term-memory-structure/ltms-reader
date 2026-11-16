@@ -97,6 +97,7 @@ export class App {
     this.tick = null;
     this.doc = null;   // the transcript read last: { key, doc }
     this.quitting = null;
+    this.pasting = false;   // between a paste's start and its end
   }
 
   /** The first views: Projects (and, when one project was given, its sessions), or the one transcript's session. */
@@ -238,10 +239,17 @@ export class App {
   note(text, bad = false) { this.state.note = { text, bad }; }
 
   // ---- keys -----------------------------------------------------------------------------------------------------------
-  /** One keypress, as readline's emitKeypressEvents gives it: the string, and { name, ctrl, meta, shift, sequence }. */
+  /** One keypress, as readline's emitKeypressEvents gives it: the string, and { name, ctrl, meta, shift, sequence }. A
+   *  paste (bracketed by the terminal: readline's paste-start and paste-end) is text: into the line being typed, its new
+   *  lines and tabs as spaces, never submitting it; with no line being typed, nothing (R.F8). Ctrl-C quits even then. */
   key(str, k = {}) {
     if (this.quitting !== null) return;
     if (k.ctrl && k.name === 'c') return this.exit(130);
+    if (k.name === 'paste-start' || k.name === 'paste-end') { this.pasting = k.name === 'paste-start'; return this.changed(); }
+    if (this.pasting) {
+      if (this.state.input && typeof str === 'string' && !k.ctrl && !k.meta) this.inputKey(str.replace(/[\r\n\t]/g, ' '), {});
+      return this.changed();
+    }
     this.state.note = null;
     if (this.state.input) { this.inputKey(str, k); return this.changed(); }
     if (this.state.help) { this.state.help = false; return this.changed(); }

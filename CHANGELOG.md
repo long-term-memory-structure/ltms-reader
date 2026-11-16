@@ -15,7 +15,8 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
 - The keys: ↑ ↓ PgUp PgDn Home End move, Enter or → opens, Esc or ← goes back, `/` searches, `:` opens an address,
   `j` shows a record's JSON, `?` the keys, `q` or Ctrl-C quits.
 - The screen, with no library: raw mode, keypress events, the alternate screen, the cursor hidden, wrapping at the last
-  column off; each frame drawn whole, again on a resize. The terminal is restored on every way out: `q` (exit 0),
+  column off, bracketed paste on (a paste is text, never keys); each frame drawn whole, each row erased first, again on
+  a resize. The terminal is restored on every way out: `q` (exit 0),
   Ctrl-C and SIGINT (130), SIGHUP (129), SIGTERM (143), an uncaught error (1, printed after the restore by its kind and
   its place, not its message). `NO_COLOR` honoured.
 - Text: every C0 and C1 control character and DEL shown as a visible escape (ESC as `␛`, the rest as `\xNN`), so a

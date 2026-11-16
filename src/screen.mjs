@@ -12,10 +12,11 @@ import readline from 'node:readline';
 import { displayOrder, visible } from './text.mjs';
 
 /** The alternate screen, the cursor hidden, no wrapping at the last column (so a cluster a terminal draws wider than it
- *  is counted here cannot scroll the screen). */
-export const ENTER = '\x1b[?1049h\x1b[?25l\x1b[?7l';
-/** Back: styles reset, wrapping on, the cursor shown, the main screen. */
-export const LEAVE = '\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l';
+ *  is counted here cannot scroll the screen), and bracketed paste: the terminal marks a paste, so that its text is
+ *  read as text, never as keys (R.F8). */
+export const ENTER = '\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[?2004h';
+/** Back: bracketed paste off, styles reset, wrapping on, the cursor shown, the main screen. */
+export const LEAVE = '\x1b[?2004l\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l';
 const SGR = Object.freeze({ head: '1', dim: '2', sel: '7', bad: '31', addr: '36' });
 /** The styles that are colours, left out under NO_COLOR; bold, faint and reverse are not colours. */
 const COLOURS = new Set(['bad', 'addr']);

@@ -54,7 +54,9 @@ transcript is opened by its address, or from a search.
 | `?` | the keys |
 | `q` or Ctrl-C | quit |
 
-While a line is typed: Backspace, Ctrl-U to clear it, Enter, Esc to leave it.
+While a line is typed: Backspace, Ctrl-U to clear it, Enter, Esc to leave it. A paste is text (the reader turns on
+the terminal's bracketed paste): pasted into a line, its new lines become spaces and do not run it; elsewhere, nothing
+pasted acts as a key.
 
 ## Your transcripts, and who sees them
 

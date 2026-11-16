@@ -177,3 +177,30 @@ test('a projects folder that cannot be listed: said on the screen, by its path a
     assert.match(`${shut}: EACCES (scandir)`, new RegExp(`^${escaped.join('(?: |)')}$`), `the lines ${JSON.stringify(body)}`);
   } finally { app.dispose(); source.dispose(); chmodSync(shut, 0o755); rmSync(base, { recursive: true, force: true }); }
 });
+
+// R.F8: a paste arrives as keys; with bracketed paste on (ESC[?2004h, as the screen enters) the terminal marks it, and
+// readline gives its start and end as the keys paste-start and paste-end (measured, Node 26)
+test('R.F8: a paste is text: its new lines do not submit the line it is pasted into; outside a line, its keys do nothing', async () => {
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const exits = [];
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC', onExit: (code) => exits.push(code) });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press('/');
+    await k.press('\x1b[200~npm test\rquit the reader?\x1b[201~');
+    assert.deepEqual(exits, [], 'the reader still running');
+    assert.equal(top(app.state).kind, 'projects', 'nothing was searched');
+    assert.equal(frameOf(app)[23], '/ search in every project: npm test quit the reader?', 'the new line as a space, the rest typed');
+    await k.press(KEY.enter);
+    assert.equal(top(app.state).kind, 'search', 'Enter typed after the paste runs it');
+    await k.press(KEY.escape);
+    await k.press('\x1b[200~q\r/x\nj\x1b[201~');
+    assert.deepEqual(exits, [], 'a paste outside a line: its q does not quit');
+    assert.equal(app.state.input, null, 'nor does its / open a line');
+    assert.equal(top(app.state).kind, 'projects', 'nor does its new line open a row');
+    await k.press('q');
+    assert.deepEqual(exits, [0], 'q typed after the paste quits');
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});

@@ -17,8 +17,9 @@ import { top } from '../src/views.mjs';
 import { KEY, OWN, terminal } from './helpers.mjs';
 
 const FILE = path.join(OWN, 'escapes.jsonl');
-/** The reader's own sequences: the alternate screen, the cursor, wrapping, a position, a line erased, and its styles. */
-const OWN_SEQ = /^(?:\x1b\[\?1049[hl]|\x1b\[\?25[hl]|\x1b\[\?7[hl]|\x1b\[\d{1,3};1H|\x1b\[2?K|\x1b\[(?:0|1|2|7|31|36)m)/;
+/** The reader's own sequences: the alternate screen, the cursor, wrapping, bracketed paste, a position, a line erased,
+ *  and its styles. */
+const OWN_SEQ = /^(?:\x1b\[\?1049[hl]|\x1b\[\?25[hl]|\x1b\[\?7[hl]|\x1b\[\?2004[hl]|\x1b\[\d{1,3};1H|\x1b\[2?K|\x1b\[(?:0|1|2|7|31|36)m)/;
 
 /** What reorders or hides text (R.F5): bidirectional embeddings, overrides and isolates, the byte order mark, the line
  *  and paragraph separators, the tag characters. */
@@ -58,9 +59,9 @@ async function press(t, h, bytes) {
 /** Every string in a parsed value, joined. */
 const strings = (v) => (typeof v === 'string' ? v : v && typeof v === 'object' ? Object.values(v).map(strings).join('\n') : '');
 
-test('the screen enters and leaves by these bytes: the alternate screen, the cursor, wrapping; styles reset on the way out', () => {
-  assert.equal(ENTER, '\x1b[?1049h\x1b[?25l\x1b[?7l');
-  assert.equal(LEAVE, '\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l');
+test('the screen enters and leaves by these bytes: the alternate screen, the cursor, wrapping, bracketed paste (R.F8); styles reset on the way out', () => {
+  assert.equal(ENTER, '\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[?2004h');
+  assert.equal(LEAVE, '\x1b[?2004l\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l');
 });
 
 test('the fixture holds what a terminal would act on', () => {
