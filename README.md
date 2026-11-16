@@ -99,7 +99,9 @@ pasted acts as a key.
 - The screen runs in a process of its own, which the command waits for. If that process ends without restoring the
   terminal (Node's memory running out aborts it), the command restores it, then prints what Node said and what happened.
 - A list of sessions waits for `ltms index` to read every transcript of the project (on one machine, 39 s for a project
-  of 385 sessions), and a search for `ltms search`; the screen says what is being read and for how long.
+  of 385 sessions), and a search for `ltms search`; the screen says what is being read and for how long. A list that
+  took 3 s or more is kept: opened again after its files changed, it is shown as it was read, and says when that was
+  and how many files changed since; it is read again when `ltms-reader` starts again.
 - Some clusters are drawn wider by some terminals than by the cluster rule (an Indic conjunct, an emoji sequence a
   terminal does not join); a row then ends early, at the screen's edge.
 

@@ -318,3 +318,28 @@ test('R.F10: a hint in the room left: its last two keys always, the others from 
   assert.equal(hintIn(hint, 10), '? keys  q…');
   assert.equal(hintIn('q or Ctrl-C quits  any other key goes back', 20), 'q or Ctrl-C quits  …');
 });
+
+// R.F2: a project whose ltms index takes 3 s or more is kept (src/engine.mjs AUTO_MS), and when its files change it is
+// answered from what was kept, with what changed; the Sessions view said nothing of it
+test('R.F2: a project\'s sessions answered from the list kept after its files changed: the view says when it was read and how many changed', async () => {
+  const { appendFileSync } = await import('node:fs');
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const app = new App({ source, cols: 200, rows: 24, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press(KEY.enter);
+    let f = frameOf(app);
+    assert.equal(f[0], 'ltms-reader  Sessions  -work-demo');
+    assert.doesNotMatch(f[1], /changed/, 'read now: nothing to say');
+    // as if that reading had taken a minute, as a large project's does; then a session's file grows
+    source.engine.indexCache.get(path.join(r.root, '-work-demo')).value.ms = 60_000;
+    await k.press(KEY.escape);
+    appendFileSync(path.join(r.root, '-work-demo', '11111111-1111-4111-8111-111111111111.jsonl'), '\n');
+    await k.press(KEY.enter);
+    f = frameOf(app);
+    assert.equal(f[0], 'ltms-reader  Sessions  -work-demo');
+    assert.match(f[1], /^this list was read at \d{4}-\d\d-\d\d \d\d:\d\d, and 1 file changed since: it is read again when ltms-reader starts again {2}2 sessions /, f[1]);
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});

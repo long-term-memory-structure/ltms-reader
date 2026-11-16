@@ -192,7 +192,10 @@ export function sessions(state, cols, rows) {
   if (v.error) return frame(state, cols, rows, { title, sub: 'ltms index could not list them', body: errorBody(v.error, cols) });
   if (!d) return frame(state, cols, rows, { title, sub: 'ltms index reads every transcript of the project', body: loadingBody(v, state, 'reading the sessions with ltms index') });
   const c = d.coverage?.files ?? {};
-  const sub = `${plural(d.sessions.length, 'session', 'sessions')}  ${num(c.found)} files found, ${num(c.read)} read, ${num(c.failed)} failed${c.notConversation ? `, ${num(c.notConversation)} with no conversation` : ''}${d.copies?.files ? `; ${plural(d.copies.files, 'identical copy', 'identical copies')} folded` : ''}  ${((d.ms ?? 0) / 1000).toFixed(1)} s`;
+  // a list kept from an earlier reading (src/engine.mjs: one that took AUTO_MS or more is not read again by itself when
+  // a file changes): when it was read, and how many files changed since (R.F2)
+  const kept = d.changed ? `this list was read at ${when(new Date(d.changed.since).toISOString(), state.timeZone)}, and ${plural(d.changed.count, 'file', 'files')} changed since: it is read again when ltms-reader starts again  ` : '';
+  const sub = `${kept}${plural(d.sessions.length, 'session', 'sessions')}  ${num(c.found)} files found, ${num(c.read)} read, ${num(c.failed)} failed${c.notConversation ? `, ${num(c.notConversation)} with no conversation` : ''}${d.copies?.files ? `; ${plural(d.copies.files, 'identical copy', 'identical copies')} folded` : ''}  ${((d.ms ?? 0) / 1000).toFixed(1)} s`;
   const pw = widest(v.rows, 'p', (r) => width(label(r.p)), 8, 26);
   const wide = cols >= 120;
   // each count as wide as its widest, its heading's width at least (R.F9: 12,000 turns read "12,0…" in 5 columns)
