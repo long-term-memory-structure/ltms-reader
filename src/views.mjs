@@ -96,6 +96,16 @@ function frame(state, cols, rows, { title, sub = '', headings = null, body, deta
   return out.slice(0, rows);
 }
 
+const widths = new WeakMap();
+/** The widest of f(row) over a list's rows, at least `min` and at most `max`, by a loop (a list can hold more rows than a
+ *  call can take arguments), counted once per list and kind of column. */
+function widest(rows, tag, f, min, max) {
+  let byTag = widths.get(rows);
+  if (!byTag) { byTag = new Map(); widths.set(rows, byTag); }
+  if (!byTag.has(tag)) { let w = min; for (const r of rows) { const x = f(r); if (x !== null) w = Math.max(w, x); if (w >= max) break; } byTag.set(tag, Math.min(max, w)); }
+  return byTag.get(tag);
+}
+
 /** The first list row in sight: the view's own, moved so that its selected row is in sight. */
 export function topOf(view, n, h) {
   let t = Math.max(0, Math.min(view.top ?? 0, n - h));
@@ -165,7 +175,7 @@ export function sessions(state, cols, rows) {
   if (!d) return frame(state, cols, rows, { title, sub: 'ltms index reads every transcript of the project', body: loadingBody(v, state, 'reading the sessions with ltms index') });
   const c = d.coverage?.files ?? {};
   const sub = `${plural(d.sessions.length, 'session', 'sessions')}  ${num(c.found)} files found, ${num(c.read)} read, ${num(c.failed)} failed${c.notConversation ? `, ${num(c.notConversation)} with no conversation` : ''}${d.copies?.files ? `; ${plural(d.copies.files, 'identical copy', 'identical copies')} folded` : ''}  ${((d.ms ?? 0) / 1000).toFixed(1)} s`;
-  const pw = Math.min(26, Math.max(8, ...v.rows.map((r) => width(label(r.p)))));
+  const pw = widest(v.rows, 'p', (r) => width(label(r.p)), 8, 26);
   const wide = cols >= 120;
   const cellsOf = (r) => [
     [label(r.p), pw, 'left', 'addr'], [when(r.first, state.timeZone), 16], [num(r.turns), 5, 'right'], [num(r.calls), 5, 'right'],
@@ -193,7 +203,7 @@ export function session(state, cols, rows) {
   if (!doc) return frame(state, cols, rows, { title, body: loadingBody(v, state, `reading ${label(v.file)}`) });
   const sv = doc.view, failed = sv.index.failures, calls = sv.index.calls;
   const sub = `${plural(sv.turns.length, 'turn', 'turns')}  ${plural(calls, 'call', 'calls')}  ${num(failed)} failed  ${plural(sv.index.compactions.length, 'compaction', 'compactions')}  ${plural(sv.stats.lines, 'line', 'lines')}${sv.stats.first ? `  ${when(sv.stats.first, state.timeZone)} to ${when(sv.stats.last, state.timeZone)}` : ''}`;
-  const aw = Math.min(26, Math.max(8, ...v.rows.map((r) => width(label(r.ta ?? r.a)))));
+  const aw = widest(v.rows, 'ta', (r) => width(label(r.ta ?? r.a)), 8, 26);
   const h = bodyHeight(rows, true);
   const cellsOf = (r) => (r.kind === 'turn'
     ? [[label(r.ta), aw, 'left', 'addr'], [label(r.ch), 8], [num(r.calls), 5, 'right'], [num(r.failed), 6, 'right', r.failed ? 'bad' : null], [r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.prompt), 0]]
@@ -228,7 +238,7 @@ export function turn(state, cols, rows) {
   const v = top(state), doc = v.doc, t = v.turn;
   const title = `ltms-reader  Turn ${label(t.ta)}  ${v.project === null ? label(v.file) : `${label(v.project)}/${label(v.file)}`}`;
   const sub = `${label(t.ch)}  ${plural(t.calls, 'call', 'calls')}  ${num(t.failed)} failed${t.time ? `  ${when(t.time, state.timeZone)}` : ''}${doc.ekError ? '  (error classes: ltms skeleton failed)' : doc.ek ? '' : '  (error classes: reading)'}`;
-  const aw = Math.min(26, Math.max(8, ...v.rows.map((r) => width(label(r.a)))));
+  const aw = widest(v.rows, 'a', (r) => width(label(r.a)), 8, 26);
   const h = bodyHeight(rows, true);
   const cellsOf = (r) => [[label(r.a), aw, 'left', 'addr'], [r.kind, 10], [itemText(r, doc.ek?.get(r.call ?? r.item)), 0, 'left', r.kind === 'call' && r.ok === false ? 'bad' : r.kind === 'result' || r.kind === 'note' ? 'dim' : null]];
   const body = listBody(v, v.rows, h, cellsOf, cols);
@@ -290,7 +300,7 @@ export function search(state, cols, rows) {
   if (!d) return frame(state, cols, rows, { title, sub: 'ltms search reads every transcript in scope', body: loadingBody(v, state, 'searching with ltms search') });
   const c = d.coverage, shown = c?.shown?.turns ?? d.hits.length;
   const sub = `turns ${num(shown ? d.skip + 1 : 0)} to ${num(d.skip + shown)} of ${num(c?.hits?.turns ?? 0)}  ${((d.ms ?? 0) / 1000).toFixed(1)} s`;
-  const tw = Math.min(26, Math.max(8, ...v.rows.filter((r) => r.kind === 'hit' || r.kind === 'file').map((r) => width(label(r.ta ?? r.p)))));
+  const tw = widest(v.rows, 'tap', (r) => (r.kind === 'hit' || r.kind === 'file' ? width(label(r.ta ?? r.p)) : null), 8, 26);
   const h = bodyHeight(rows, false);
   const cellsOf = (r) => {
     if (r.kind === 'info') return [[r.text, 0, 'left', 'dim']];

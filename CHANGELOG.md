@@ -28,4 +28,6 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
 - The view layer (`src/view.mjs`, `layout.mjs`, `engine.mjs`, `lines.mjs`, `helper.mjs`) moved here from the LTMS
   Reader extension, with its tests; the extension takes it from this package. Since the move, a prompt whose channel is
   an empty word reads `none`, as `ltms skeleton` prints it (the view layer gave an empty string; found by running the
-  views over the core's own test transcripts, `test/fixtures/review/pb-labels.jsonl`).
+  views over the core's own test transcripts, `test/fixtures/review/pb-labels.jsonl`); and a turn of more line numbers
+  than a call takes arguments (about 31,000 tool calls in one turn, on Node 26) no longer stops its session's view with
+  a RangeError.

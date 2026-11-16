@@ -139,7 +139,7 @@ export function wrapWords(s, cols) {
     if (line !== '') out.push(line);
     const pieces = wrap(word, cols);
     line = pieces.pop();
-    out.push(...pieces);
+    for (const piece of pieces) out.push(piece);
   }
   out.push(line);
   return out;

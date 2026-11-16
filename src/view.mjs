@@ -33,6 +33,9 @@ export function clip(s, n) {
 }
 
 const str = (v) => (typeof v === 'string' ? v : undefined);
+/** The least and the most of a list of numbers, by a loop: a turn's lines can be more than a call takes arguments. */
+const least = (xs) => xs.reduce((m, x) => (x < m ? x : m), Infinity);
+const most = (xs) => xs.reduce((m, x) => (x > m ? x : m), -Infinity);
 
 /** A command typed in Claude Code (A.F18): the harness writes it into the prompt's text as markup,
  *  <command-name>/compact</command-name> with <command-args>; its name and arguments, or null for any other text. */
@@ -125,7 +128,7 @@ export function sessionView(input, { name, caps = true }) {
     // address can be found in a turn whose items were cut, or which is not drawn yet
     const calls = items.filter((x) => x.kind === 'call'), lines = [lineOf(p), ...items.flatMap((x) => (x.rline ? [x.line, x.rline] : [x.line])), ...turn.records.map(lineOf)];
     out.push({ ta, a: at(p), line: lineOf(p), ch: inputChannel(pr) || 'none', time: str(pr?.timestamp) ?? null, n: text.length, prompt: clip(text, LIMITS.prompt), command: commandOf(text), records: 1 + turn.records.length,
-      calls: calls.length, failed: calls.filter((x) => x.ok === false).length, from: Math.min(...lines), to: Math.max(...lines), items });
+      calls: calls.length, failed: calls.filter((x) => x.ok === false).length, from: least(lines), to: most(lines), items });
   }
   // A compaction made by /compact (S365, A.F5): Claude Code writes the boundary and its summary first, then the
   // command's own records with the command's earlier time, so the /compact opens the turn after the one that holds its
