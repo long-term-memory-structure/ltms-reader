@@ -161,7 +161,7 @@ pasted acts as a key.
 - A paragraph's levels are resolved once, when a line of it is first drawn, and kept for the last two drawn of 4,096
   characters or more. For R's record (one paragraph of 4,000,000 Hebrew characters), measured on 2026-11-16 on one
   machine, its first frame took 150 to 239 ms on Node 26.13.1 (11 runs), where it took 12 to 23 ms before (11 runs);
-  the levels alone 139 to 153 ms (4 runs), and 143 to 145 on Node 20.20.2 (2 runs); the frames after it as before (a
+  the levels alone 137 to 147 ms (6 runs), and 143 to 145 on Node 20.20.2 (2 runs); the frames after it as before (a
   page at 200 x 60: 9.4 to 14.4 ms in 7 runs, 10.4 to 14.2 before).
 - On Node 20, a long line of text that is not ASCII is laid out about three times slower than on Node 26: Node 20's
   grapheme segmenter is slower, and walked over one long string it costs more at each cluster the longer the string is
