@@ -18,12 +18,13 @@ import { recordLines, top } from '../src/views.mjs';
 import { KEY, deepRecord, keyboard, plainOf } from './helpers.mjs';
 
 /** The lines as the record view made them whole before (44b868f's recordLines, its wrap cutting the same places); each
- *  line of a text with its text line's direction (R1: the paragraph's, for the right-to-left layout). */
+ *  line of a text with its text line's direction (R1: the paragraph's, for the right-to-left layout), and its text line
+ *  and its place in it (W1, round 4: the paragraph it is laid out from). */
 function whole(rec, json, cols) {
   const out = [], seg = (text, style = null, dir = undefined) => (dir === undefined ? { text, style } : { text, style, dir });
   const lbl = (s) => visible(s ?? '').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
   const more = (n) => `... ${n.toLocaleString('en-US')} ${n === 1 ? 'more character' : 'more characters'} not shown`;
-  const text = (s, style = null) => { for (const p of visible(s).split('\n')) { const t = expandTabs(p), d = directionOf(t); for (const l of wrap(t, cols)) out.push([seg(l, style, d)]); } };
+  const text = (s, style = null) => { for (const p of visible(s).split('\n')) { const t = expandTabs(p), d = directionOf(t); let at = 0; for (const l of wrap(t, cols)) { out.push([{ ...seg(l, style, d), par: t, at }]); at += l.length; } } };
   if (json) {
     text(rec.raw.text);
     if (rec.raw.more) out.push([seg(fit(more(rec.raw.more), cols), 'dim')]);

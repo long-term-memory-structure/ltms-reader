@@ -19,13 +19,15 @@
 //
 // Right to left (R1, decided by the measurement of S377 on three terminals): Konsole lays out a line's right-to-left runs
 // itself, with a left-to-right base for the line; Alacritty and VS Code's terminal (xterm.js) draw the text in the order
-// it is written. So there are two modes (displayOrder, below): "reader", in which the reader lays out each paragraph of
-// a screen row itself, by the Unicode Bidirectional Algorithm (src/bidi.mjs), and writes it in visual order; and
-// "terminal", in which the text is written as stored, with a right-to-left mark (RLM) at the end of each right-to-left
-// paragraph, which on Konsole puts the paragraph's end punctuation where it belongs. rtlModeOf picks one by the
-// terminal. A paragraph here is a segment of a row (a list's cell, the reader's own words, a line of a record, whose
-// direction is its text line's); a path or a URL in it is laid out as one left-to-right unit (UAX #9 HL4).
-import { AL, AN, ISO, L as LTR_CLASS, R, classOf, lineLevels, mirrorOf, paragraphLevel, resolveLevels, visualOrder } from './bidi.mjs';
+// it is written. So there are two modes (displayOrder, below): "reader", in which the reader lays the text out itself,
+// by the Unicode Bidirectional Algorithm (src/bidi.mjs), and writes it in visual order; and "terminal", in which the
+// text is written as stored, with a right-to-left mark (RLM) at the end of each right-to-left paragraph, which on Konsole
+// puts the paragraph's end punctuation where it belongs. rtlModeOf picks one by the terminal. A paragraph here is a
+// segment of a row (a list's cell, the reader's own words before it, a line cut to the row's width), or a text a view
+// wraps into lines (a record's text line, a message, an error, the reader's own words), each line of which names it: its
+// levels are resolved once, and each line is reordered from them (W1, round 4; UAX #9 section 3.4: paragraphLine). A path or a
+// URL in a paragraph is laid out as one left-to-right unit (UAX #9 HL4).
+import { AL, AN, BN, ISO, L as LTR_CLASS, R, classOf, classesOf, lineLevels, mirrorOf, paragraphLevel, resolveLevels, visualOrder } from './bidi.mjs';
 import { WIDE } from './width-table.mjs';
 
 /** C0 but the tab and the new line, DEL, C1; and what reorders or hides text: the bidirectional embeddings, overrides
@@ -182,21 +184,31 @@ export function wrap(s, cols) {
   return out;
 }
 
-/** The reader's own words (not a transcript's text) in lines of at most `cols` columns, broken at spaces where a
- *  line can be, else by columns. */
-export function wrapWords(s, cols) {
+/** Where the lines of wrapWords(s, cols) begin and end in s, [start, end) each: a paragraph in lines of at most `cols`
+ *  columns, broken at spaces where a line can be, else by columns; a space a line is broken at is in no line. Each line
+ *  is s.slice(start, end), so that its place in its paragraph is known (W1: a line is laid out from its paragraph's
+ *  levels). */
+export function wordSpans(s, cols) {
   const out = [];
-  let line = '';
+  let line = '', from = 0, pos = 0;   // the line being made, where it begins in s, and where the next word begins
   for (const word of s.split(' ')) {
+    const at = pos;
+    pos += word.length + 1;
     const next = line === '' ? word : `${line} ${word}`;
-    if (width(next) <= cols) { line = next; continue; }
-    if (line !== '') out.push(line);
-    const pieces = wrap(word, cols);
-    line = pieces.pop();
-    for (const piece of pieces) out.push(piece);
+    if (width(next) <= cols) { if (line === '') from = at; line = next; continue; }
+    if (line !== '') out.push([from, from + line.length]);
+    const pieces = [...lineSpans(word, cols)], [x, y] = pieces.pop();
+    for (const [c, d] of pieces) out.push([at + c, at + d]);
+    line = word.slice(x, y); from = at + x;
   }
-  out.push(line);
+  out.push([from, from + line.length]);
   return out;
+}
+
+/** The reader's own words (not a transcript's text) in lines of at most `cols` columns, broken at spaces where a
+ *  line can be, else by columns (wordSpans: each line a slice of s). */
+export function wrapWords(s, cols) {
+  return wordSpans(s, cols).map(([a, b]) => s.slice(a, b));
 }
 
 /** s with each tab as spaces to the next multiple of `tab` columns, counted by width from the start of s. */
@@ -270,39 +282,132 @@ export function pathUnits(text) {
   return out;
 }
 
-/** A path or a URL laid out on its own, left to right, its separators strong (HL2), so that its parts keep their order
- *  and a right-to-left name in it reads right. */
-function unitVisual(text) {
-  const cs = [...clusters(text)];
-  const cps = [], classes = [], first = [];
-  for (const c of cs) {
-    first.push(cps.length);
-    for (const ch of c) { const cp = ch.codePointAt(0); cps.push(cp); classes.push(cp === 0x2f || cp === 0x5c ? LTR_CLASS : classOf(cp)); }
-  }
-  return arrange(cs, null, cps, classes, first, 0);
-}
+/** A cluster as it is drawn at `level`: at an odd one, its first character's mirrored glyph (L4). */
+const drawn = (c, level) => {
+  if (!(level & 1)) return c;
+  const cp = c.codePointAt(0), m = mirrorOf(cp);
+  return m === cp ? c : String.fromCodePoint(m) + c.slice(cp > 0xffff ? 2 : 1);
+};
 
-/** The clusters (and units) of a line in visual order, from their code points' levels: a cluster takes the level of its
- *  first character X9 kept (one X9 removed whole takes the level of the cluster before it); one at an odd level is
- *  drawn with its first character's mirrored glyph (L4). */
-function arrange(cs, units, cps, classes, first, level) {
-  const levels = resolveLevels(cps, classes, level);
-  lineLevels(classes, levels, level);
-  const n = cs.length, at = new Int8Array(n);
-  for (let i = 0; i < n; i++) {
-    const end = i + 1 < n ? first[i + 1] : cps.length;
+/** The clusters of s in visual order by `levels`, the levels of the code units of a text s begins at offset `base` of:
+ *  a cluster at the level of its first character X9 kept (one X9 removed whole at the level of the cluster before it,
+ *  the first at `level`); L2; L4. */
+function ordered(s, levels, base, level) {
+  const cs = [], at = new Int8Array(s.length);
+  let k = base;
+  for (const c of clusters(s)) {
     let v = -1;
-    for (let k = first[i]; k < end && v < 0; k++) v = levels[k];
-    at[i] = v >= 0 ? v : i ? at[i - 1] : level;
+    for (let j = k, e = k + c.length; j < e && v < 0; j++) v = levels[j];
+    at[cs.length] = v >= 0 ? v : cs.length ? at[cs.length - 1] : level;
+    cs.push(c); k += c.length;
   }
   let out = '';
-  for (const i of visualOrder(at)) {
-    if (units?.[i] !== undefined) { out += units[i]; continue; }
-    const c = cs[i];
-    if (at[i] & 1) { const cp = c.codePointAt(0), m = mirrorOf(cp); out += m === cp ? c : String.fromCodePoint(m) + c.slice(cp > 0xffff ? 2 : 1); }
-    else out += c;
-  }
+  for (const i of visualOrder(at, 0, cs.length)) out += drawn(cs[i], at[i]);
   return out;
+}
+
+/** The levels of a path's or a URL's own content, s, laid out on its own, left to right, its separators strong (HL2),
+ *  per code unit; null when nothing in it is right to left (it reads as stored). */
+function unitLevels(s) {
+  if (NO_RTL.test(s)) return null;
+  const classes = classesOf(s);
+  for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c === 0x2f || c === 0x5c) classes[i] = LTR_CLASS; }
+  return resolveLevels(s, classes, 0);
+}
+
+/**
+ * A paragraph's levels, resolved once (W1, round 4; UAX #9 section 3.4: X9, W1 to W7, N0 to N2, I1 and I2 over the whole
+ * paragraph; then each line it is wrapped into is reordered from them, by lineOf, never resolved by itself). `level` is
+ * the paragraph's (0 or 1; null: by P2 and P3). With `units`, each path or URL in it stands as one isolate (ISO, HL4),
+ * and its content is resolved once too, on its own. Returns { text, level, levels, units }: `levels` per code unit
+ * (bidi.mjs resolveLevels: -1 where X9 removed a character, at the second unit of a surrogate pair, and inside a unit
+ * but at its first unit, which holds the unit's level), or null when nothing outside the units reorders; `units`
+ * [{ a, b, inner }], inner the content's levels (unitLevels), or null.
+ */
+function layOut(text, level, units) {
+  if (level !== 1 && NO_RTL.test(text)) return { text, level: 0, levels: null, units: [] };
+  const spans = units ? pathUnits(text) : [], classes = classesOf(text);
+  for (const [a, b] of spans) { classes[a] = ISO; classes.fill(BN, a + 1, b); }
+  let rtl = false;
+  for (let i = 0; i < classes.length && !rtl; i++) { const k = classes[i]; rtl = k === R || k === AL || k === AN; }
+  const p = level ?? paragraphLevel(classes);
+  return { text, level: p, levels: rtl || p === 1 ? resolveLevels(text, classes, p) : null, units: spans.map(([a, b]) => ({ a, b, inner: unitLevels(text.slice(a, b)) })) };
+}
+
+/**
+ * Line [a, b) of a paragraph laid out by layOut (a and b begin clusters), in visual order: L1 over the line (its own
+ * characters' classes, the paragraph's levels), each cluster at the level of its first character X9 kept, L2, L4. A
+ * path's or a URL's part in the line stands in it as one isolate, at the level the unit has in the paragraph, its own
+ * characters in the order of its own levels (a unit the line breaks inside of is drawn in pieces, as an isolate across
+ * a line break is: GNU FriBidi's library agrees, test/bidi.test.mjs).
+ */
+function lineOf(P, a, b) {
+  const { text, level: p, levels, units } = P;
+  let u = 0;
+  while (u < units.length && units[u].b <= a) u++;
+  const piece = (U, s, e) => (U.inner ? ordered(text.slice(s, e), U.inner, s - U.a, 0) : text.slice(s, e));
+  if (!levels) {
+    // nothing outside the units is reordered: the line as stored, each unit's part in its own order
+    let out = '', at = a;
+    for (; u < units.length && units[u].a < b; u++) { const U = units[u], s = Math.max(a, U.a), e = Math.min(b, U.b); out += text.slice(at, s) + piece(U, s, e); at = e; }
+    return at === a ? text.slice(a, b) : out + text.slice(at, b);
+  }
+  // L1: the line's own characters' classes (a unit's first unit ISO, the rest of it passed over), the paragraph's levels
+  const lv = levels.slice(a, b), cl = classesOf(text.slice(a, b));
+  for (let k = u; k < units.length && units[k].a < b; k++) { const s = Math.max(a, units[k].a), e = Math.min(b, units[k].b); cl.fill(BN, s - a, e - a); if (s === units[k].a) cl[s - a] = ISO; }
+  lineLevels(cl, lv, p);
+  // the stretches between units by their clusters, each unit's part as one item at the unit's level; L2
+  const items = [], at = new Int8Array(b - a);
+  for (let i = a; i < b;) {
+    if (u < units.length && i >= units[u].a) {
+      const U = units[u], e = Math.min(b, U.b);
+      at[items.length] = levels[U.a]; items.push({ unit: piece(U, i, e) });
+      i = e; u++; continue;
+    }
+    const end = u < units.length && units[u].a < b ? units[u].a : b;
+    for (const c of clusters(text.slice(i, end))) {
+      let v = -1;
+      for (let k = i - a, e = k + c.length; k < e && v < 0; k++) v = lv[k];
+      at[items.length] = v >= 0 ? v : items.length ? at[items.length - 1] : p;
+      items.push(c); i += c.length;
+    }
+  }
+  let out = '';
+  for (const i of visualOrder(at, 0, items.length)) out += typeof items[i] === 'string' ? drawn(items[i], at[i]) : items[i].unit;
+  return out;
+}
+
+// The paragraphs laid out last: the one before (the lines of a paragraph are laid out one after another), and the last
+// KEEP of at least LONG units (a long paragraph is read a page at a time, page after page: R.F1's record is one line of
+// 4,000,000 characters). What is kept is bounded: KEEP + 1 paragraphs, their levels a byte a code unit.
+const LONG = 4096, KEEP = 2, KEPT = [];
+let LAST = null;
+const same = (e, text, level, units) => e.level === level && e.units === units && e.P.text === text;
+
+/** layOut(text, level, units), from those kept when it is one of them. */
+function paragraphOf(text, level, units) {
+  let e = LAST && same(LAST, text, level, units) ? LAST : KEPT.find((k) => same(k, text, level, units));
+  // found: its text the same characters, perhaps another string, which is kept from now on, so that the next look at
+  // it compares two strings that are one (a string compared with another of its characters is read whole)
+  if (e) e.P.text = text;
+  else e = { level, units, P: layOut(text, level, units) };
+  if (text.length >= LONG && KEPT[0] !== e) {
+    const i = KEPT.indexOf(e);
+    if (i >= 0) KEPT.splice(i, 1);
+    KEPT.unshift(e);
+    if (KEPT.length > KEEP) KEPT.pop();
+  }
+  LAST = e;
+  return e.P;
+}
+
+/** Line [a, b) of the paragraph `text` (its level `level`, 0 or 1; null: by P2 and P3), in visual order, laid out from
+ *  the paragraph's levels (W1): what the screen writes for a line of a wrapped paragraph, in "reader" mode. a and b
+ *  begin clusters. With `units`, each path or URL is one isolate (HL4). */
+export function paragraphLine(text, level, a, b, { units = true } = {}) {
+  a = Math.max(0, a); b = Math.min(b, text.length);
+  if (a >= b) return '';
+  return lineOf(paragraphOf(text, level, units), a, b);
 }
 
 /** The paragraph's level of a text (P2, P3: 1 when its first strong character, a path or a URL passed over, is right to
@@ -335,54 +440,43 @@ function unitEndAt(text, i) {
 }
 
 /**
- * One line of a paragraph (logical order, cut to its columns, visible, its tabs as spaces) in visual order, as a
- * terminal that draws text in the order it is written must get it: UAX #9 over its code points, at the paragraph's
- * level (`level`, or the line's own by P2 and P3 when null), then L1 and L2 over its grapheme clusters, each kept whole
- * and in its own order (a mark after its letter, as a terminal draws it: L3), each at an odd level mirrored (L4). With
- * `units`, each path or URL is laid out on its own, left to right, and stands in the line as one isolate (HL4).
+ * One line that is a paragraph of its own (logical order, cut to its columns, visible, its tabs as spaces) in visual
+ * order, as a terminal that draws text in the order it is written must get it: UAX #9 over its code points, at the
+ * paragraph's level (`level`, or the line's own by P2 and P3 when null), then L1 and L2 over its grapheme clusters, each
+ * kept whole and in its own order (a mark after its letter, as a terminal draws it: L3), each at an odd level mirrored
+ * (L4). With `units`, each path or URL is laid out on its own, left to right, and stands in the line as one isolate
+ * (HL4). A line of a paragraph wrapped into several is laid out by paragraphLine instead, from the paragraph's levels.
  */
 export function visualLine(text, level = null, { units = true } = {}) {
   if (text === '' || (level !== 1 && NO_RTL.test(text))) return text;
-  const spans = units ? pathUnits(text) : [];
-  const cs = [], cps = [], classes = [], first = [], laid = [];
-  let u = 0, any = false;
-  for (let i = 0; i < text.length;) {
-    if (u < spans.length && i === spans[u][0]) {
-      const [a, b] = spans[u++];
-      laid[cs.length] = unitVisual(text.slice(a, b));
-      first.push(cps.length); cs.push(text.slice(a, b)); cps.push(0xfffc); classes.push(ISO);
-      i = b; continue;
-    }
-    const end = u < spans.length ? spans[u][0] : text.length;
-    for (const c of clusters(text.slice(i, end))) {
-      first.push(cps.length); cs.push(c);
-      for (const ch of c) { const cp = ch.codePointAt(0), k = classOf(cp); cps.push(cp); classes.push(k); if (k === R || k === AL || k === AN) any = true; }
-    }
-    i = end;
-  }
-  const p = level ?? paragraphLevel(classes);
-  if (!any && p === 0) return spans.length ? cs.map((c, i) => laid[i] ?? c).join('') : text;
-  return arrange(cs, laid, cps, classes, first, p);
+  return lineOf(layOut(text, level, units), 0, text.length);
 }
 
 /**
- * One screen row's segments ([{ text, style, dir }], already cut to the row's width) as they are written, in `mode`.
- * Each segment is a paragraph: its direction is `dir` when given (0 or 1: a line of a record, whose paragraph is its
- * text line), else its own (P2, P3). Its spaces at either end stay where they are (the columns stay; the text is
- * aligned left). "reader": the rest laid out by visualLine. "terminal": as stored, with an RLM after a right-to-left
- * paragraph's text, so that a terminal that lays the line out with a left-to-right base (Konsole) puts the paragraph's
- * end punctuation at its left (measured on Konsole 26.08.3; a mark at the row's first column it drops).
+ * One screen row's segments ([{ text, style, dir, par, at }], already cut to the row's width) as they are written, in
+ * `mode`. A segment is a paragraph of its own, or a line of one: `par` names the paragraph (its text, of which the
+ * segment's text is the slice at `at`: a line of a record, of a message, of the reader's own words wrapped into lines,
+ * W1). Its direction is `dir` when given (0 or 1: a line's, its paragraph's), else its own (P2, P3). Its spaces at
+ * either end stay where they are (the columns stay; the text is aligned left). "reader": the rest laid out, a line of a
+ * paragraph from the paragraph's levels (paragraphLine), a paragraph of its own by visualLine (a line cut to its
+ * columns is one: R1 (c)). "terminal": as stored, with an RLM after a right-to-left paragraph's text, so that a terminal
+ * that lays the line out with a left-to-right base (Konsole) puts the paragraph's end punctuation at its left (measured
+ * on Konsole 26.08.3; a mark at the row's first column it drops); never after a left-to-right one's.
  */
 export function displayOrder(row, mode = 'reader') {
   if (mode !== 'reader' && mode !== 'terminal') throw new RangeError(`no right-to-left mode ${JSON.stringify(mode)}: the modes are "reader" and "terminal"`);
   let out = null;
   for (let i = 0; i < row.length; i++) {
     const s = row[i], text = s.text;
-    if (s.dir !== 1 && NO_RTL.test(text)) continue;
+    // a line of a paragraph: one whose paragraph holds what the segment's text is, at its place
+    const line = typeof s.par === 'string' && Number.isInteger(s.at) && s.par.startsWith(text, s.at);
+    if (!line && s.dir !== 1 && NO_RTL.test(text)) continue;
     const a = text.length - text.trimStart().length, b = text.trimEnd().length;
     if (a >= b) continue;
-    const core = text.slice(a, b), dir = s.dir ?? directionOf(core);
-    const shown = mode === 'reader' ? visualLine(core, dir) : dir === 1 ? `${core}${RLM}` : core;
+    const core = text.slice(a, b), dir = s.dir ?? (line ? directionOf(s.par) : directionOf(core));
+    let shown;
+    if (mode === 'terminal') shown = dir === 1 ? `${core}${RLM}` : core;
+    else shown = line ? paragraphLine(s.par, dir, s.at + a, s.at + b) : visualLine(core, dir);
     if (shown === core) continue;
     out ??= row.slice();
     out[i] = { ...s, text: text.slice(0, a) + shown + text.slice(b) };

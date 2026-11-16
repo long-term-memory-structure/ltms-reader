@@ -28,7 +28,8 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   Alacritty and VS Code's terminal): in Konsole (`KONSOLE_VERSION`) the text as stored, with an RLM at the end of each
   right-to-left paragraph; in every other terminal the reader lays out each line itself, by the Unicode Bidirectional
   Algorithm (UAX #9, written here from Unicode 17.0.0's data, generated and pinned as the width table is; a path or a
-  URL laid out as one left-to-right unit); `LTMS_READER_BIDI=terminal|reader` chooses.
+  URL laid out as one left-to-right unit; a paragraph wrapped into lines, a record's text line or a message, resolved
+  once and each line reordered from its levels); `LTMS_READER_BIDI=terminal|reader` chooses.
 - A transcript is read in the reader's own process; one over a tenth of Node's memory limit is refused with its size
   and the `NODE_OPTIONS` that would let it be read, in the command that was run, the path given included. A record is
   refused the same way when its view would not fit beside the transcript in Node's memory, by its size and by the JSON

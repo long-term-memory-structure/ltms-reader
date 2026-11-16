@@ -1,14 +1,16 @@
 // src/views.mjs — what the screen shows: one render function per view, (state, columns, rows) → the screen's lines,
-// exactly `rows` of them. A line is a list of segments { text, style, dir }: the text already made visible
+// exactly `rows` of them. A line is a list of segments { text, style, dir, par, at }: the text already made visible
 // (src/text.mjs), one line, cut to its columns (the last line one column short, so nothing is ever written to the
 // screen's last cell); the style one of null, 'head', 'dim', 'sel', 'bad', 'addr'. src/screen.mjs writes them, each
-// segment a paragraph for the right-to-left layout (text.mjs displayOrder: its direction its own, or `dir`, a record
-// line's text line's), so that a transcript's text is a segment of its own, apart from the reader's words before it
-// (a cell given as parts: R1). plain() gives their text, in logical order.
+// segment a paragraph for the right-to-left layout (text.mjs displayOrder: its direction its own, or `dir`), so that a
+// transcript's text is a segment of its own, apart from the reader's words before it (a cell given as parts: R1); or,
+// where a paragraph is wrapped into lines (a record's text line, a message, an error, the reader's own words), a line of
+// one: `par` its paragraph, `at` where the line begins in it, `dir` its direction, so that each line is laid out from
+// the paragraph's levels (W1, round 4). plain() gives their text, in logical order.
 //
 // Every list row begins with its address as ltms prints it (a session's prefix, a turn's id, a record's <prefix>:L<line>),
 // so the address of what is on screen can be given to an agent as it is; the selected row's is also on the last line.
-import { clusters, directionOf, expandTabs, fit, fitParts, lineSpans, visible, width, wrapWords } from './text.mjs';
+import { clusters, directionOf, expandTabs, fit, fitParts, lineSpans, visible, width, wordSpans } from './text.mjs';
 import { prefixOf } from './view.mjs';
 
 export const MIN_COLS = 20, MIN_ROWS = 5;
@@ -36,8 +38,13 @@ export function cell(text, w, align = 'left') {
   return align === 'right' ? gap + t : t + gap;
 }
 const seg = (text, style = null, dir = undefined) => (dir === undefined ? { text, style } : { text, style, dir });
+/** A line of a paragraph: its text, the slice of `par` at `at`; `dir`, the paragraph's direction (W1). */
+const lineSeg = (text, style, dir, par, at) => ({ text, style, dir, par, at });
 /** One line of plain text in `cols` columns, in one style; given as parts (each a paragraph of its own), a segment each. */
 const line = (text, cols, style = null) => (Array.isArray(text) ? fitParts(text, cols).map((t) => seg(t, style)) : [seg(fit(text, cols), style)]);
+/** A paragraph (one line of text: no new line in it) wrapped at spaces into lines of at most `cols` columns (wordSpans),
+ *  each a segment of the paragraph's own, laid out from its levels (W1). */
+const paragraph = (text, cols, style = null) => { const dir = directionOf(text); return wordSpans(text, cols).map(([a, b]) => lineSeg(text.slice(a, b), style, dir, text, a)); };
 
 const formats = new Map();
 /** An ISO time as YYYY-MM-DD HH:MM in the time zone of the state (this machine's when none is set). */
@@ -110,9 +117,10 @@ function frame(state, cols, rows, { title, sub = '', head = null, headings = nul
   out.push(statusLine(state, cols, address, hint));
   if (state.note && !state.input) {
     // a message: on the last line, and on up to two lines above it when it is longer
-    const style = state.note.bad ? 'bad' : null, lines = wrapWords(label(state.note.text), cols - 1);
-    const shown = lines.length > 3 ? [...lines.slice(0, 2), lines.slice(2).join(' ')] : lines;
-    shown.forEach((l, i) => { out[out.length - shown.length + i] = line(l, cols - 1, style); });
+    const style = state.note.bad ? 'bad' : null, lines = paragraph(label(state.note.text), cols - 1, style).map((l) => [l]);
+    // a third line that would not hold the rest is the rest cut, a line laid out by itself (R1 (c))
+    const shown = lines.length > 3 ? [...lines.slice(0, 2), line(lines.slice(2).map(([l]) => l.text).join(' '), cols - 1, style)] : lines;
+    shown.forEach((l, i) => { out[out.length - shown.length + i] = l; });
   }
   return out.slice(0, rows);
 }
@@ -169,8 +177,8 @@ const loadingBody = (view, state, what) => {
   const secs = view.since ? Math.floor(((state.now ?? Date.now()) - view.since) / 1000) : 0;
   return [[seg(`  ${what}${secs >= 1 ? ` (${secs} s)` : ''}`, 'dim')]];
 };
-const errorBody = (text, cols) => wrapWords(label(text), Math.max(1, cols - 2)).map((l) => [seg('  '), seg(l, 'bad')]);
-const textBody = (text, cols, style = 'dim') => text.split('\n').flatMap((p) => wrapWords(expandTabs(visible(p)), Math.max(1, cols - 2))).map((l) => [seg('  '), seg(l, style)]);
+const errorBody = (text, cols) => paragraph(label(text), Math.max(1, cols - 2), 'bad').map((l) => [seg('  '), l]);
+const textBody = (text, cols, style = 'dim') => text.split('\n').flatMap((p) => paragraph(expandTabs(visible(p)), Math.max(1, cols - 2), style)).map((l) => [seg('  '), l]);
 
 function listBody(view, rows, h, toCells, cols) {
   const t = topOf(view, rows.length, h);
@@ -209,7 +217,7 @@ export function sessionsHead(state, v, cols, rows) {
   const d = v.data, c = d.coverage?.files ?? {};
   const counts = `${plural(d.sessions.length, 'session', 'sessions')}  ${num(c.found)} files found, ${num(c.read)} read, ${num(c.failed)} failed${c.notConversation ? `, ${num(c.notConversation)} with no conversation` : ''}${d.copies?.files ? `; ${plural(d.copies.files, 'identical copy', 'identical copies')} folded` : ''}  ${((d.ms ?? 0) / 1000).toFixed(1)} s`;
   const notice = d.changed ? `this list was read at ${when(new Date(d.changed.since).toISOString(), state.timeZone)}, and ${plural(d.changed.count, 'file', 'files')} changed since: it is read again when ltms-reader starts again` : null;
-  const lines = (text, style, whole) => (whole ? wrapWords(text, cols) : [text]).map((l) => line(l, cols, style));
+  const lines = (text, style, whole) => (whole ? paragraph(text, cols, style).map((l) => [l]) : [line(text, cols, style)]);
   const of = (whole) => [...lines(counts, 'dim', whole), ...(notice ? lines(notice, null, whole) : [])];
   const whole = cols >= WHOLE_FROM ? of(true) : null;
   return whole && rows - 4 - whole.length >= 1 ? whole : of(false);
@@ -364,8 +372,9 @@ export class RecordLines {
     }
   }
 
-  /** Lines a to b (all, when not given), as the views' lines: [{ text, style, dir }] each, [] for a blank line; a line of
-   *  a text has its text line's direction (directionOf: the paragraph's, for the right-to-left layout), found once. */
+  /** Lines a to b (all, when not given), as the views' lines: [{ text, style, dir, par, at }] each, [] for a blank line; a
+   *  line of a text is a line of its text line (`par`, from `at`: the paragraph it is laid out from, W1), with its text
+   *  line's direction (directionOf), found once. */
   slice(a = 0, b = this.length) {
     a = Math.max(0, a); b = Math.min(b, this.length);
     if (a >= b) return [];
@@ -373,7 +382,7 @@ export class RecordLines {
     const out = [];
     let i = m * STEP;
     for (const l of this.walk(...this.marks[m])) {
-      if (i >= a) out.push(l.line !== undefined ? (l.line === '' ? [] : [seg(l.line, l.style)]) : [seg(l.text.slice(l.a, l.b), l.style, this.directionOf(l))]);
+      if (i >= a) out.push(l.line !== undefined ? (l.line === '' ? [] : [seg(l.line, l.style)]) : [lineSeg(l.text.slice(l.a, l.b), l.style, this.directionOf(l), l.text, l.a)]);
       if (++i >= b) break;
     }
     return out;
@@ -463,7 +472,7 @@ export const KEYS = [
 export function help(state, cols, rows) {
   const kw = 16;
   const body = [
-    ...KEYS.flatMap(([k, what]) => wrapWords(what, Math.max(1, cols - kw - 4)).map((l, i) => [seg(`  ${cell(i ? '' : k, kw)}`, i ? null : 'addr'), seg(`  ${l}`)])),
+    ...KEYS.flatMap(([k, what]) => paragraph(what, Math.max(1, cols - kw - 4)).map((l, i) => [seg(`  ${cell(i ? '' : k, kw)}`, i ? null : 'addr'), seg('  '), l])),
     [],
     ...textBody('It shows your transcripts\' text, to you, on this terminal\'s alternate screen: nothing it shows is written to stdout, a pipe or a log. It writes no file and uses no network. Its lists are the lines ltms index and ltms search print; a session\'s turns and calls are those ltms skeleton prints.', cols),
   ];

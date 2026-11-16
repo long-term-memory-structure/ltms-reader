@@ -6,14 +6,16 @@
 // What is implemented: the paragraph's level by P2 and P3 (its first strong character, skipping an isolate; none: left
 // to right), or given (HL1); X9, which removes BN (and the embeddings and overrides); the implicit algorithm, W1 to W7,
 // N0 with the paired brackets (BD16, a stack of 63, the brackets matched by their canonical equivalents), N1, N2, I1 and
-// I2, over one isolating run sequence; then for each line L1 and L2; L4's mirrored glyphs are given by mirrorOf. The
-// explicit formatting characters never act: the reader shows them as visible escapes (R.F5), so that none reaches this
-// layout raw; if one does, an embedding, override or pop is removed as X9 removes it, and an isolate's initiator or PDI
-// is a neutral. Checked against Unicode's BidiCharacterTest.txt (every case without an explicit formatting character)
-// and against GNU FriBidi (test/bidi.test.mjs).
+// I2, over one isolating run sequence: the paragraph's levels, resolved once for the whole paragraph; then, for each line
+// the paragraph is wrapped into, L1 and L2 (section 3.4: a line's levels are the paragraph's, never resolved again for
+// the line alone); L4's mirrored glyphs are given by mirrorOf. The explicit formatting characters never act: the reader
+// shows them as visible escapes (R.F5), so that none reaches this layout raw; if one does, an embedding, override or pop
+// is removed as X9 removes it, and an isolate's initiator or PDI is a neutral. Checked against Unicode's
+// BidiCharacterTest.txt (every case without an explicit formatting character) and against GNU FriBidi, its CLI for
+// single lines and its library for wrapped paragraphs (test/bidi.test.mjs).
 //
-// One higher-level protocol (HL4, with HL2 inside it) is the caller's: a stretch of a line laid out on its own, as an
-// isolate would be, stands in the line as one character of the class ISO (src/text.mjs: a path or a URL).
+// One higher-level protocol (HL4, with HL2 inside it) is the caller's: a stretch of a paragraph laid out on its own, as an
+// isolate would be, stands in it as one character of the class ISO (src/text.mjs: a path or a URL).
 import { BRACKETS, BRACKET_EQUIVALENTS, CLASSES, CLASS_RANGES, MIRRORS } from './bidi-table.mjs';
 
 export const L = 0, R = 1, AL = 2, EN = 3, ES = 4, ET = 5, AN = 6, CS = 7, NSM = 8, BN = 9, B = 10, S = 11, WS = 12, ON = 13;
@@ -38,6 +40,21 @@ export function classOf(cp) {
   return L;
 }
 
+/** Each character's class, by code unit (W1, round 4: a paragraph's characters, classed at once): at the first unit of a
+ *  surrogate pair its code point's, at the second BN, which X9 passes over as it passes BN over; a lone surrogate's own. */
+export function classesOf(s) {
+  const n = s.length, out = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff && i + 1 < n) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 0xdc00 && d <= 0xdfff) { out[i] = classOf(((c - 0xd800) << 10) + (d - 0xdc00) + 0x10000); out[++i] = BN; continue; }
+    }
+    out[i] = BMP[c];
+  }
+  return out;
+}
+
 const OPENS = new Map(), CLOSES = new Map(), EQUIV = new Map(), MIRROR = new Map();
 for (let i = 0; i < BRACKETS.length; i += 2) { OPENS.set(BRACKETS[i], BRACKETS[i + 1]); CLOSES.set(BRACKETS[i + 1], BRACKETS[i]); }
 for (let i = 0; i < BRACKET_EQUIVALENTS.length; i += 2) EQUIV.set(BRACKET_EQUIVALENTS[i], BRACKET_EQUIVALENTS[i + 1]);
@@ -49,7 +66,10 @@ const canonical = (cp) => EQUIV.get(cp) ?? cp;
 export const mirrorOf = (cp) => MIRROR.get(cp) ?? cp;
 
 const isStrong = (c) => c === L || c === R || c === AL;
-const removed = (c) => c === BN || c === LRE || c === LRO || c === RLE || c === RLO || c === PDF;
+/** The classes X9 removes, and the neutral and isolate types N1 and N2 resolve (NI), as tables by class: a paragraph's
+ *  levels are resolved over all its characters at once (W1, round 4: R's record is a paragraph of 4,000,000), each looked up. */
+const REMOVED = new Uint8Array(24), NI = new Uint8Array(24);
+for (const c of [BN, LRE, LRO, RLE, RLO, PDF]) REMOVED[c] = 1;
 
 /**
  * The paragraph's level by P2 and P3: 0 when its first strong character (L) is left to right, or it has none; 1 when it
@@ -69,20 +89,30 @@ export function paragraphLevel(classes, from = 0, to = classes.length) {
 
 /** The type a resolved class gives N0, N1 and N2: L, or R for R, EN and AN; -1 for a neutral. */
 const strongOf = (c) => (c === L ? L : c === R || c === EN || c === AN ? R : -1);
-const isNI = (c) => c === B || c === S || c === WS || c === ON || c === LRI || c === RLI || c === FSI || c === PDI || c === ISO;
+for (const c of [B, S, WS, ON, LRI, RLI, FSI, PDI, ISO]) NI[c] = 1;
 
 /**
- * The resolved levels of one paragraph without explicit embeddings: X9, W1 to W7, N0 to N2, I1 and I2. `cps`: its code
- * points; `classes`: their classes (classOf, or ISO where the caller lays a stretch out on its own); `level`: the
- * paragraph's level (paragraphLevel, or given). Returns an Int8Array of levels, -1 where X9 removed the character.
+ * The resolved levels of one paragraph without explicit embeddings: X9, W1 to W7, N0 to N2, I1 and I2. `classes`: each
+ * character's class (classOf, or ISO where the caller lays a stretch out on its own; a place the caller marks BN is
+ * passed over as X9 passes BN over); `cps`: the code points, an array beside `classes`, or a string whose code unit i
+ * begins the character of classes[i] (its code point is read there: the caller marks the second unit of a surrogate
+ * pair BN); `level`: the paragraph's level (paragraphLevel, or given). Returns an Int8Array of levels, -1 where X9
+ * removed the character.
  */
 export function resolveLevels(cps, classes, level) {
-  const n = classes.length, levels = new Int8Array(n).fill(-1);
-  // the isolating run sequence: every character X9 keeps, all at the paragraph's level
-  const idx = [];
-  for (let i = 0; i < n; i++) if (!removed(classes[i])) idx.push(i);
-  const m = idx.length, t = new Uint8Array(m);
-  for (let k = 0; k < m; k++) t[k] = classes[idx[k]];
+  const n = classes.length, levels = new Int8Array(n);
+  const cpAt = typeof cps === 'string' ? (i) => cps.codePointAt(i) : (i) => cps[i];
+  // the isolating run sequence: every character X9 keeps, all at the paragraph's level; idx, where each is (null when X9
+  // removes none: each is where it is)
+  let m = 0;
+  for (let i = 0; i < n; i++) if (!REMOVED[classes[i]]) m++;
+  let idx = null, t;
+  if (m === n) t = new Uint8Array(classes);
+  else {
+    levels.fill(-1);
+    idx = new Int32Array(m); t = new Uint8Array(m);
+    for (let i = 0, k = 0; i < n; i++) if (!REMOVED[classes[i]]) { idx[k] = i; t[k++] = classes[i]; }
+  }
   const e = level & 1 ? R : L, sos = e, eos = e;
   // W1: a nonspacing mark takes the type before it (ON after an isolate's initiator or PDI); sos at the start
   for (let k = 0; k < m; k++) {
@@ -90,12 +120,14 @@ export function resolveLevels(cps, classes, level) {
     const p = k ? t[k - 1] : sos;
     t[k] = p === LRI || p === RLI || p === FSI || p === PDI || p === ISO ? ON : p;
   }
-  // W2: a European number after Arabic letters (the last strong type before it) is an Arabic number; W3: AL is R
+  // W2: a European number after Arabic letters (the last strong type before it) is an Arabic number; W3: AL is R (once
+  // passed, as W2 has read it)
   for (let k = 0, last = sos; k < m; k++) {
-    if (isStrong(t[k])) last = t[k];
-    else if (t[k] === EN && last === AL) t[k] = AN;
+    const c = t[k];
+    if (c === L || c === R) last = c;
+    else if (c === AL) { last = AL; t[k] = R; }
+    else if (c === EN && last === AL) t[k] = AN;
   }
-  for (let k = 0; k < m; k++) if (t[k] === AL) t[k] = R;
   // W4: one separator between two numbers of a kind it joins
   for (let k = 1; k < m - 1; k++) {
     if (t[k] === ES && t[k - 1] === EN && t[k + 1] === EN) t[k] = EN;
@@ -107,22 +139,22 @@ export function resolveLevels(cps, classes, level) {
     if (t[k] !== ET) { k++; continue; }
     let j = k;
     while (j < m && t[j] === ET) j++;
-    if ((k > 0 && t[k - 1] === EN) || (j < m && t[j] === EN)) t.fill(EN, k, j);
+    if ((k > 0 && t[k - 1] === EN) || (j < m && t[j] === EN)) for (let x = k; x < j; x++) t[x] = EN;
     k = j;
   }
-  // W6: the separators and terminators left are neutrals; W7: a European number after L (or sos L) is L
-  for (let k = 0; k < m; k++) if (t[k] === ES || t[k] === ET || t[k] === CS) t[k] = ON;
+  // W6: the separators and terminators left are neutrals; W7: a European number after L (or sos L) is L (W6 makes no
+  // strong type, so one pass does both)
   for (let k = 0, last = sos; k < m; k++) {
-    if (t[k] === L || t[k] === R) last = t[k];
-    else if (t[k] === EN && last === L) t[k] = L;
+    const c = t[k];
+    if (c === ES || c === ET || c === CS) t[k] = ON;
+    else if (c === L || c === R) last = c;
+    else if (c === EN && last === L) t[k] = L;
   }
   // N0: paired brackets (BD16), in the order of their openings
-  const nsm = new Uint8Array(m);
-  for (let k = 0; k < m; k++) nsm[k] = classes[idx[k]] === NSM ? 1 : 0;
   const pairs = [], stack = [];   // the stack: two numbers an entry, a closing bracket and where its opening is
   for (let k = 0; k < m; k++) {
     if (t[k] !== ON) continue;
-    const cp = cps[idx[k]];
+    const cp = cpAt(idx ? idx[k] : k);
     const closing = OPENS.get(cp);
     if (closing !== undefined) {
       if (stack.length === 2 * 63) break;   // no room for a 64th: BD16 stops for the rest of the sequence
@@ -156,21 +188,21 @@ export function resolveLevels(cps, classes, level) {
     }
     t[o] = to; t[c] = to;
     // the nonspacing marks after each bracket (W1 made them ON) take its new type
-    for (const b of [o, c]) for (let k = b + 1; k < m && nsm[k]; k++) t[k] = to;
+    for (const b of [o, c]) for (let k = b + 1; k < m && classes[idx ? idx[k] : k] === NSM; k++) t[k] = to;
   }
   // N1, N2: a run of neutrals between two strong types of one direction takes it; else the embedding direction
   for (let k = 0; k < m;) {
-    if (!isNI(t[k])) { k++; continue; }
+    if (!NI[t[k]]) { k++; continue; }
     let j = k;
-    while (j < m && isNI(t[j])) j++;
+    while (j < m && NI[t[j]]) j++;
     const before = k ? strongOf(t[k - 1]) : sos, after = j < m ? strongOf(t[j]) : eos;
-    t.fill(before === after ? before : e, k, j);
+    for (let x = k, v = before === after ? before : e; x < j; x++) t[x] = v;
     k = j;
   }
   // I1, I2
   for (let k = 0; k < m; k++) {
     const c = t[k];
-    levels[idx[k]] = level & 1 ? (c === L || c === EN || c === AN ? level + 1 : level) : c === R ? level + 1 : c === AN || c === EN ? level + 2 : level;
+    levels[idx ? idx[k] : k] = level & 1 ? (c === L || c === EN || c === AN ? level + 1 : level) : c === R ? level + 1 : c === AN || c === EN ? level + 2 : level;
   }
   return levels;
 }
@@ -178,10 +210,13 @@ export function resolveLevels(cps, classes, level) {
 /**
  * L1 for one line [from, to) of a paragraph: a segment or paragraph separator, the whitespace and isolate formatting
  * characters before it, and those at the line's end, take the paragraph's level (characters X9 removed are passed
- * over, and keep -1). Changes `levels` in place.
+ * over, and keep -1). A stretch laid out on its own (ISO) is not one of them: it stands for an isolate's initiator, its
+ * content and its PDI, and only the PDI, which is never drawn, would take the paragraph's level; where the content is
+ * drawn follows the initiator's level, which L1 leaves as it was (GNU FriBidi's library, the content between LRI and PDI
+ * at a line's end: S378). Changes `levels` in place.
  */
 export function lineLevels(classes, levels, level, from = 0, to = classes.length) {
-  const ws = (c) => c === WS || c === LRI || c === RLI || c === FSI || c === PDI || c === ISO;
+  const ws = (c) => c === WS || c === LRI || c === RLI || c === FSI || c === PDI;
   let trailing = true;
   for (let i = to - 1; i >= from; i--) {
     const c = classes[i];

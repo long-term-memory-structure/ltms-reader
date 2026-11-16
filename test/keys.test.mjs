@@ -462,3 +462,60 @@ test('N2 (R5): a kept list on a screen too low for its whole head: the counts an
     } finally { app.dispose(); }
   }
 });
+
+// ---- W1 (S378, round 4): a message wrapped into lines -------------------------------------------------------------------
+// Every view that wraps text lays each line of a paragraph out from the paragraph's levels (UAX #9 section 3.4), with the
+// paragraph's direction: a message, an error, the reader's own words, as a record's text. Round 3 laid out each line of
+// a message as a paragraph of its own, with its own direction: at 40 columns, a message whose second line begins with a
+// Hebrew word read 'an address is <prefix>:L<line> or) <the word>'. The forms are GNU FriBidi's library's.
+test('W1: a message wrapped into lines, each laid out from its paragraph\'s levels, left to right as the message is: at 40 columns, its second line', async () => {
+  const { frameBytes } = await import('../src/screen.mjs');
+  const { directionOf } = await import('../src/text.mjs');
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const app = new App({ source, cols: 40, rows: 24, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press(':'); await k.press('[1] abc x abc \u2014 abc \u05e2\u05d5\u05dc\u05dd'); await k.press(KEY.enter);
+    const lines = app.lines(), note = lines.slice(-3).map((l) => l[l.length - 1]);
+    // the message's three lines, each a line of the one paragraph, in place
+    const par = note[0].par;
+    assert.ok(typeof par === 'string' && par.startsWith('not an address: [1] abc'), `the message is the paragraph: ${JSON.stringify(note[0])}`);
+    for (const s of note) { assert.equal(s.par, par); assert.equal(par.slice(s.at, s.at + s.text.length), s.text); assert.equal(s.dir, directionOf(par)); }
+    const rows = frameBytes(lines, { cols: 40, rows: 24, colour: false, rtl: 'reader' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).map((x) => x.replace(/\x1b\[[0-9;]*m/g, '').trimEnd());
+    assert.deepEqual(rows.slice(-3), ['not an address: [1] abc x abc \u2014 abc', '\u05dd\u05dc\u05d5\u05e2 (an address is <prefix>:L<line> or', '<prefix>:T<turn>, as ltms prints it)']);
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
+test('W1: every line the views wrap is a line of its paragraph: a message, the keys\' screen, an empty Projects', async () => {
+  const { directionOf } = await import('../src/text.mjs');
+  const check = (lines, what) => {
+    let n = 0;
+    for (const l of lines) for (const s of l) {
+      if (s.par === undefined) continue;
+      n++;
+      assert.equal(s.par.slice(s.at, s.at + s.text.length), s.text, `${what}: ${JSON.stringify(s)}`);
+      assert.equal(s.dir, directionOf(s.par), `${what}: the paragraph's direction`);
+    }
+    return n;
+  };
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const app = new App({ source, cols: 30, rows: 30, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press(KEY.escape);   // a message: "this is the first view: q quits", on two lines at 30 columns
+    assert.ok(check(app.lines(), 'a message') >= 2, 'the message\'s lines');
+    await k.press('?');
+    assert.ok(check(app.lines(), 'the keys') >= 10, 'the keys\' lines');
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+  // an empty folder of projects: what it says, wrapped
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const empty = mkdtempSync(path.join(tmpdir(), 'ltms-reader-empty-'));
+  const s2 = new RootSource({ root: empty });
+  const a2 = new App({ source: s2, cols: 30, rows: 24, timeZone: 'UTC' });
+  try { a2.start(); await a2.idle(); assert.ok(check(a2.lines(), 'no project folders') >= 2, 'its lines'); } finally { a2.dispose(); s2.dispose(); rmSync(empty, { recursive: true, force: true }); }
+});

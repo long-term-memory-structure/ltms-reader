@@ -102,12 +102,16 @@ pasted acts as a key.
     from Konsole, `KONSOLE_VERSION` does not reach the reader unless it is passed on: set `LTMS_READER_BIDI` there.
 
   A paragraph is a cell of a list, the reader's own words before a transcript's text being a paragraph of their own, or
-  a line of a record (its lines share its direction). A long line is cut in logical order, its beginning kept, then
-  laid out. A path or a URL in a line (`/home/...`, `~/...`, `src/...`, `https://...`) is laid out as one left-to-right
-  unit, its parts in order and a Hebrew name in it reading right (UAX #9's higher-level protocol HL4). Each cluster is
-  kept whole, its marks after its letter, as a terminal draws them; the text is aligned left, so the columns stay.
-  Checked against Unicode's conformance test (BidiCharacterTest.txt: every case without an explicit formatting
-  character, which the reader shows as an escape and never applies) and against GNU FriBidi.
+  a text wrapped into lines: a line of a record's text (its lines share its direction), a message, an error. A wrapped
+  paragraph's levels are resolved once, and each of its lines is reordered from them, as UAX #9 lays out a paragraph
+  broken into lines (its section 3.4): a line reads as its words do in the whole paragraph, the comma that ends a line
+  where the sentence has it. A long line of a list is cut in logical order, its beginning kept, then laid out by itself.
+  A path or a URL in a line (`/home/...`, `~/...`, `src/...`, `https://...`) is laid out as one left-to-right unit, its
+  parts in order and a Hebrew name in it reading right (UAX #9's higher-level protocol HL4), in pieces where a line
+  breaks inside it, as an isolate is. Each cluster is kept whole, its marks after its letter, as a terminal draws them;
+  the text is aligned left, so the columns stay. Checked against Unicode's conformance test (BidiCharacterTest.txt:
+  every case without an explicit formatting character, which the reader shows as an escape and never applies) and
+  against GNU FriBidi: its command for a line, its library for a paragraph wrapped into lines.
 - Colour follows [NO_COLOR](https://no-color.org): set, there is none; the selected row is still drawn in reverse.
 
 ## Limits
@@ -146,6 +150,10 @@ pasted acts as a key.
   and how many files changed since; it is read again when `ltms-reader` starts again.
 - Some clusters are drawn wider by some terminals than by the cluster rule (an Indic conjunct, an emoji sequence a
   terminal does not join); a row then ends early, at the screen's edge.
+- A paragraph's levels are resolved once, when a line of it is first drawn, and kept for the last two drawn of 4,096
+  characters or more: for R's record (one paragraph of 4,000,000 Hebrew characters) its first frame took 150 to 155 ms
+  on Node 26.13.1, where it took 12 to 19 before (the levels alone: 139 to 153 ms on Node 26.13.1, 143 on Node 20.20.2);
+  the frames after it as before (a page at 200 x 60: 9.4 to 11.8 ms, 10.4 to 11.4 before).
 - On Node 20, a long line of text that is not ASCII is laid out about three times slower than on Node 26: Node 20's
   grapheme segmenter is slower, and walked over one long string it costs more at each cluster the longer the string is
   (3.4 us a cluster at 10,000 units, 115 at 80,000), so the reader walks a long line 256 units at a time. Measured on
@@ -176,7 +184,9 @@ Linux). `LTMS_READER_FIXTURES=<folder>` adds every `.jsonl` under a folder to th
 `EastAsianWidth.txt`; the bidirectional table's regeneration, and Unicode's conformance test of the algorithm
 (`test/bidi.test.mjs`, which reports how many cases passed and failed), when `LTMS_READER_UCD` names a folder holding
 the pinned files (`scripts/bidi-table.mjs` names each with its sha256); GNU FriBidi's layout of the right-to-left page
-and fixtures is compared with the reader's where `fribidi` is on the PATH (or `LTMS_READER_FRIBIDI` names it):
+and fixtures is compared with the reader's where `fribidi` is on the PATH (or `LTMS_READER_FRIBIDI` names it); and each
+line of paragraphs wrapped into lines (the fixtures', and random ones) with its library's, where `python3` can load
+`libfribidi` (`test/fribidi-lines.py`; `LTMS_READER_LIBFRIBIDI` names the library, `LTMS_READER_PYTHON` the Python):
 
 ```sh
 curl -sS --fail -o EastAsianWidth.txt https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt

@@ -19,7 +19,8 @@ import assert from 'node:assert/strict';
 import * as bidi from '../src/bidi.mjs';
 import { BRACKETS, BRACKET_EQUIVALENTS, CLASSES, CLASS_RANGES, MIRRORS, SOURCE_SHA256, UNICODE_VERSION } from '../src/bidi-table.mjs';
 import { SOURCES, TEST_SOURCE, VERSION, readPinned } from '../scripts/bidi-table.mjs';
-import { expandTabs, pathUnits, visible, visualLine } from '../src/text.mjs';
+import { directionOf, displayOrder, expandTabs, lineSpans, pathUnits, visible, visualLine } from '../src/text.mjs';
+import { RecordLines } from '../src/views.mjs';
 import { FX, OWN, ROOT } from './helpers.mjs';
 
 const UCD = process.env.LTMS_READER_UCD || null;
@@ -185,4 +186,156 @@ test('GNU FriBidi over the S377 page and the Hebrew and mixed fixtures: the read
   assert.ok(at >= 0, 'the path line is read');
   assert.equal(plain[at], 'םויה jsonl.ץבוק/טקיורפ/home/user/ ביתנב רמשנ');
   assert.equal(visualLine(all[at]), 'םויה /home/user/טקיורפ/ץבוק.jsonl ביתנב רמשנ');
+});
+
+// ---- W1 (S378, round 4): a paragraph wrapped into lines --------------------------------------------------------------------
+// UAX #9 section 3.4 resolves a paragraph's levels once (P2, P3, W1 to W7, N0 to N2, I1, I2), then breaks it into lines
+// and reorders each line from those levels (L1, L2, L4). Round 3 resolved each screen line of a wrapped paragraph as a
+// paragraph of its own; round 3's check measured, against FriBidi's library, 535 of 13,832 lines of random paragraphs
+// and 2 of the 27 lines of the Hebrew fixture's long paragraph laid out otherwise, and at 30 columns the record
+// hebrew-e:L9 showed its comma before "graph", not after "scripts". The forms below are those of GNU FriBidi's library
+// (test/fribidi-lines.py), spelled out here.
+const VAYEHI = '\u05e8\u05e7\u05b6\u05d1\u05b9 \u05d9\u05d4\u05b4\u05d9\u05b0\u05d5\u05b7 \u05d1\u05e8\u05b6\u05e2\u05b6 \u05d9\u05d4\u05b4\u05d9\u05b0\u05d5\u05b7';
+const L9 = {
+  30: 'graph that mixes both scripts,',
+  60: `a long paragraph that mixes both scripts, :${VAYEHI}`,
+  61: `a long paragraph that mixes both scripts, :${VAYEHI}`,
+  80: `a long paragraph that mixes both scripts, to be wrapped by co :${VAYEHI}`,
+};
+test('W1: a record\'s paragraph wrapped into lines, each laid out from the paragraph\'s levels: hebrew-e:L9 at 30, 60, 61 and 80 columns, its comma after "scripts"', async () => {
+  const { App } = await import('../src/app.mjs');
+  const { FileSource } = await import('../src/sources.mjs');
+  const { frameBytes } = await import('../src/screen.mjs');
+  const { KEY, keyboard } = await import('./helpers.mjs');
+  const app = new App({ source: new FileSource({ file: path.join(OWN, 'hebrew-english.jsonl') }), cols: 80, rows: 30, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press(':'); await k.press('hebrew-e:L9'); await k.press(KEY.enter);
+    assert.match(app.lines()[0].map((s) => s.text).join(''), /^ltms-reader {2}Record hebrew-e:L9 /);
+    for (const [cols, want] of Object.entries(L9)) {
+      app.resize(Number(cols), 30);
+      const rows = frameBytes(app.lines(), { cols: Number(cols), rows: 30, colour: false, rtl: 'reader' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).map((x) => x.replace(/\x1b\[[0-9;]*m/g, ''));
+      const at = rows.findIndex((x) => x.includes('scripts'));
+      assert.equal(rows[at].trimEnd(), want, `${cols} columns: the row that holds "scripts"`);
+    }
+  } finally { app.dispose(); }
+});
+
+const PYTHON = process.env.LTMS_READER_PYTHON || 'python3';
+const hasLib = spawnSync(PYTHON, ['-I', '-c', "import ctypes, os; ctypes.CDLL(os.environ.get('LTMS_READER_LIBFRIBIDI') or 'libfribidi.so.0')"], { encoding: 'utf8' }).status === 0;
+const LRI = 0x2066, PDI = 0x2069, LRM = 0x200e;
+
+/** A paragraph as FriBidi's library is given it: its code points, with each path or URL the reader lays out as one unit
+ *  between LRI and PDI and each of its separators between two LRMs (HL4, HL2: as the reader makes it, an isolate left
+ *  to right, its separators strong); `drop`, those marks; and for each code unit offset, the first code point index of
+ *  what stands there and the index after its last, the marks before and after it included. */
+function forFribidi(text) {
+  const spans = pathUnits(text), cps = [], drop = [], first = new Int32Array(text.length), end = new Int32Array(text.length);
+  const mark = (cp) => { drop.push(cps.length); cps.push(cp); };
+  for (let i = 0, u = 0; i < text.length;) {
+    const cp = text.codePointAt(i), len = cp > 0xffff ? 2 : 1, inUnit = u < spans.length && i >= spans[u][0];
+    first[i] = cps.length;
+    if (inUnit && i === spans[u][0]) mark(LRI);
+    const sep = inUnit && (cp === 0x2f || cp === 0x5c);
+    if (sep) mark(LRM);
+    cps.push(cp);
+    if (sep) mark(LRM);
+    if (inUnit && i + len === spans[u][1]) { mark(PDI); u++; }
+    end[i] = cps.length; if (len === 2) { first[i + 1] = first[i]; end[i + 1] = end[i]; }
+    i += len;
+  }
+  return { cps, drop, first, end };
+}
+
+/** GNU FriBidi's library's layout of lines of paragraphs ([{ text, level, lines: [[a, b], ...] }], code unit offsets):
+ *  each line's characters in visual order, the marks put in for it left out. */
+function fribidiLines(pars) {
+  const reqs = pars.map(({ text, level, lines }) => {
+    const f = forFribidi(text);
+    return JSON.stringify({ cps: f.cps, level, lines: lines.map(([a, b]) => [f.first[a], f.end[b - 1]]), drop: f.drop });
+  });
+  const r = spawnSync(PYTHON, ['-I', path.join(ROOT, 'test', 'fribidi-lines.py')], { input: `${reqs.join('\n')}\n`, encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 });
+  assert.equal(r.status, 0, `${PYTHON} test/fribidi-lines.py: ${r.stderr}`);
+  const out = r.stdout.trim().split('\n').map((l) => JSON.parse(l).lines.map((cps) => String.fromCodePoint(...cps)));
+  assert.equal(out.length, pars.length);
+  return out;
+}
+
+/** A fixed sequence of pseudo-random whole numbers below k, from `seed` (mulberry32, in 32-bit integers: the linear
+ *  congruence (s * 1103515245 + 12345) % 2^31 in JavaScript's numbers loses its low bits past 2^53 and repeats soon; from
+ *  377, round 3's check drew 147 different paragraph-and-width pairs in 3,000). */
+function randomOf(seed) {
+  let s = seed >>> 0;
+  return (k) => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), s | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return Math.floor((((t ^ (t >>> 14)) >>> 0) / 4294967296) * k);
+  };
+}
+
+/** Paragraphs of Hebrew (some pointed), Arabic, Latin, numbers (European, with separators and terminators, and
+ *  Arabic-Indic), brackets and punctuation, and paths and URLs, the words joined by a space (one in five by none, one in
+ *  twenty by a no-break space); `n` of them, from `seed`. */
+function randomParagraphs(n, seed) {
+  const rnd = randomOf(seed);
+  const pick = (xs) => xs[rnd(xs.length)];
+  const letters = (abc, k) => Array.from({ length: k }, () => pick(abc)).join('');
+  const heb = [...'אבגדהוזחטיכלמנסעפצקרשתךםן'];
+  const ar = [...'ابتجحدرسشعفقكلمنهوي'];
+  const lat = [...'abcdefghijklmnopqrstuvwxyz'], marks = ['\u05b0', '\u05b4', '\u05b7', '\u05b9', '\u05bc', '\u05c1'];
+  const word = () => {
+    const r = rnd(20);
+    if (r < 5) return letters(heb, 2 + rnd(5));
+    if (r < 6) return letters(heb, 2 + rnd(4)).replace(/./g, (c) => (rnd(2) ? c + pick(marks) : c));
+    if (r < 8) return letters(ar, 2 + rnd(5));
+    if (r < 12) return letters(lat, 2 + rnd(6));
+    if (r < 14) return `${rnd(100000)}${rnd(2) ? `${pick(['.', ','])}${rnd(1000)}` : ''}${rnd(4) ? '' : pick(['%', '₪', '$'])}`;
+    if (r < 15) return pick(['٣٤', '١٢٣', '١,٢']);
+    if (r < 17) return pick(['(', ')', '[', ']', '{', '}', '<', '>', ',', '.', ':', ';', '-', '!', '?', '"', '\'', '%', '־', '—']);
+    if (r < 18) return pick([`/srv/${letters(heb, 3)}/${letters(lat, 3)}.txt`, `src/${letters(lat, 4)}.ts`, `~/${letters(heb, 4)}/x`, `https://ex.com/${letters(lat, 3)}`, `./${letters(heb, 3)}`]);
+    return pick([`(${letters(heb, 3)})`, `[${letters(lat, 3)}]`, `${letters(heb, 2)}-${rnd(100)}`, `${rnd(10)}-${letters(heb, 2)}`, `"${letters(heb, 2)} ${letters(lat, 2)}"`]);
+  };
+  return Array.from({ length: n }, () => {
+    let p = word();
+    for (let i = 1, k = 4 + rnd(40); i < k; i++) p += (rnd(5) ? (rnd(20) ? ' ' : '\u00a0') : '') + word();
+    return p;
+  });
+}
+
+/** A paragraph's lines as the record view writes them, "reader" mode: its lines (RecordLines at `cols`), each put in
+ *  order by the screen (displayOrder); with each line's place in the paragraph (lineSpans, as RecordLines cuts it). */
+function recordViewLines(text, cols) {
+  const spans = [...lineSpans(text, cols)], lines = new RecordLines([{ text, style: null }], cols).slice();
+  assert.equal(lines.length, spans.length);
+  return lines.map((l, i) => { assert.equal(l[0].text, text.slice(...spans[i])); return { a: spans[i][0], b: spans[i][1], written: displayOrder(l, 'reader')[0].text }; });
+}
+
+test('W1: wrapped paragraphs, each line as the record view writes it, equal GNU FriBidi\'s library (the paragraph\'s levels resolved once, then each line reordered): the fixtures\' lines at 10 to 80 columns, and 1,500 random paragraphs', { skip: hasLib ? false : `no ${PYTHON} that loads GNU FriBidi's library (libfribidi) here`, timeout: 600_000 }, (t) => {
+  const pars = [];
+  for (const text of fixtureLines()) for (const cols of [10, 20, 30, 40, 60, 80]) pars.push({ text, cols, what: 'fixture' });
+  const rnd = randomOf(378), random = randomParagraphs(1500, 2611);
+  assert.equal(new Set(random).size, random.length, 'the random paragraphs are all different');
+  for (const text of random) pars.push({ text, cols: 10 + rnd(71), what: 'random' });
+  // each line's text between its spaces at either end, which the screen leaves where they are
+  const asked = [], mine = [];
+  for (const p of pars) {
+    const level = directionOf(p.text), lines = [];
+    for (const { a, b, written } of recordViewLines(p.text, p.cols)) {
+      const line = p.text.slice(a, b), s = line.length - line.trimStart().length, e = line.trimEnd().length;
+      if (s >= e) continue;
+      lines.push([a + s, a + e]);
+      mine.push({ what: p.what, cols: p.cols, level, line, reader: written.slice(s, written.length - (line.length - e)) });
+    }
+    asked.push({ text: p.text, level, lines });
+  }
+  const theirs = fribidiLines(asked).flat();
+  assert.equal(theirs.length, mine.length);
+  const count = { fixture: [0, 0], random: [0, 0] }, differ = [];
+  mine.forEach((m, i) => { const ok = m.reader === theirs[i]; count[m.what][ok ? 0 : 1]++; if (!ok) differ.push({ ...m, fribidi: theirs[i] }); });
+  t.diagnostic(`fixtures: ${count.fixture[0] + count.fixture[1]} lines, ${count.fixture[0]} equal to FriBidi's, ${count.fixture[1]} differ; random paragraphs: ${count.random[0] + count.random[1]} lines, ${count.random[0]} equal, ${count.random[1]} differ`);
+  assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's`);
+  // the population is not empty: 881 lines of the fixtures and 4,919 random ones when this was written
+  assert.ok(count.fixture[0] + count.fixture[1] >= 800 && count.random[0] + count.random[1] >= 4000, JSON.stringify(count));
 });

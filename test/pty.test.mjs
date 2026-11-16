@@ -333,3 +333,25 @@ test('R1: LTMS_READER_BIDI set to a mode there is not: refused before the screen
     assert.match(res.out.replace(/\r\n/g, '\n'), /ltms-reader: LTMS_READER_BIDI is "auto": it takes "reader" .* or "terminal" .*; nothing was read\n/);
   } finally { r.dispose(); }
 });
+
+// ---- W1 (S378, round 4): a wrapped paragraph, end to end ------------------------------------------------------------
+/** The rows the terminal received from the reader, each as written after its row's position and erase (styles taken
+ *  out), every frame's. */
+const rowsOf = (out) => readerPart(out).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).map((x) => x.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ''));
+// the Hebrew fixture's record L9, its long paragraph wrapped; the forms are GNU FriBidi's library's (test/bidi.test.mjs)
+const VAYEHI = '\u05e8\u05e7\u05b6\u05d1\u05b9 \u05d9\u05d4\u05b4\u05d9\u05b0\u05d5\u05b7 \u05d1\u05e8\u05b6\u05e2\u05b6 \u05d9\u05d4\u05b4\u05d9\u05b0\u05d5\u05b7';
+test('W1: a record\'s wrapped paragraph, by default (laid out by the reader): hebrew-e:L9 at 30 and 60 columns, each line from the paragraph\'s levels, its comma after "scripts"; q, and the terminal as it was', { skip, timeout: 60_000 }, async () => {
+  const r = makeRoot('ltms-reader-pty-');
+  try {
+    const res = await ptyRun(r, {
+      args: [path.join(OWN, 'hebrew-english.jsonl')],
+      steps: [{ until: '> hebrew-e:T001', send: ':' }, { until: ': address:', send: 'hebrew-e:L9\r' }, { until: 'Record hebrew-e:L9', ...resize(30) }, { until: 'graph that mixes', ...resize(60) }, { until: 'a long paragraph that mixes', send: 'q' }],
+    });
+    assert.equal(res.exit, 0);
+    assert.equal(res.after, res.before, 'stty -g after = before');
+    const rows = rowsOf(res.out).map((x) => x.trimEnd());
+    assert.ok(rows.includes('graph that mixes both scripts,'), `30 columns: ${JSON.stringify(rows.filter((x) => x.includes('scripts')))}`);
+    assert.ok(rows.includes(`a long paragraph that mixes both scripts, :${VAYEHI}`), `60 columns: ${JSON.stringify(rows.filter((x) => x.includes('scripts')))}`);
+    assert.ok(!rows.some((x) => x.startsWith(',')), 'no row begins with the comma');
+  } finally { r.dispose(); }
+});
