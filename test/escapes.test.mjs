@@ -67,6 +67,11 @@ async function press(t, h, bytes) {
 /** Every string in a parsed value, joined. */
 const strings = (v) => (typeof v === 'string' ? v : v && typeof v === 'object' ? Object.values(v).map(strings).join('\n') : '');
 
+test('the screen enters and leaves by these bytes: the alternate screen, the cursor, wrapping; styles reset on the way out', () => {
+  assert.equal(ENTER, '\x1b[?1049h\x1b[?25l\x1b[?7l');
+  assert.equal(LEAVE, '\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l');
+});
+
 test('the fixture holds what a terminal would act on', () => {
   const all = strings(readFileSync(FILE, 'utf8').trim().split('\n').map((l) => JSON.parse(l)));
   for (const [what, re] of [['OSC 52', /\x1b\]52;c;/], ['a title', /\x1b\]0;/], ['the alternate screen', /\x1b\[\?1049[hl]/], ['a cursor move', /\x1b\[10;10H/], ['BEL', /\x07/], ['a reset', /\x1bc/], ['CR', /\r/], ['DEL', /\x7f/], ['BS', /\x08/], ['NUL', /\x00/], ['VT and FF', /\x0b[\s\S]*\x0c|\x0c[\s\S]*\x0b/]]) assert.match(all, re, what);
@@ -197,4 +202,25 @@ test('the window resized: the frame drawn whole again at its new size', async ()
   assert.deepEqual([h.app.state.cols, h.app.state.rows], [120, 40]);
   await press(t, h, 'q');
   assert.deepEqual(strangers(t.out()), []);
+});
+
+test('the writer itself: a control character in a line, from anywhere, goes out visible', async () => {
+  const { frameBytes } = await import('../src/screen.mjs');
+  const lines = [[{ text: 'a\x1b]52;c;eA==\x07b', style: null }, { text: '\u009b2J\nnext\tcol\r', style: 'sel' }], []];
+  const out = frameBytes(lines, { cols: 80, rows: 2, colour: false });
+  assert.deepEqual(strangers(out), []);
+  assert.ok(out.includes('a␛]52;c;eA==\\x07b'));
+  assert.ok(out.includes('\\x9b2J\\nnext\\tcol\\x0d'), 'a new line and a tab inside a line are shown too');
+});
+
+test('Esc alone goes back within a tenth of a second (readline waits half a second unless told)', async () => {
+  const t = terminal();
+  const h = main([FILE], { stdin: t.stdin, stdout: t.stdout, stderr: t.stderr, env: {}, proc: t.proc });
+  await settle(h);
+  await press(t, h, KEY.enter);
+  assert.equal(top(h.app.state).kind, 'turn');
+  t.stdin.write(KEY.escape);
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(top(h.app.state).kind, 'session', 'back after 100 ms');
+  await press(t, h, 'q');
 });

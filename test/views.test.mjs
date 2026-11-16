@@ -1,6 +1,7 @@
 // test/views.test.mjs — the render functions, line by line, at 80 x 24 and at 200 x 60, over ltms's own synthetic
 // transcripts (test/fixtures/ltms, the core's test/fixtures) and the reader's two (test/fixtures/hebrew-english.jsonl,
-// test/fixtures/escapes.jsonl).
+// test/fixtures/escapes.jsonl); and, when LTMS_READER_FIXTURES names a folder, every .jsonl under it at any depth (the
+// core's own test/fixtures, say, with its review/ transcripts, which are not copied here).
 //
 // For every transcript, at both sizes, every page of the session view, of each turn's view, and of each item's record
 // (as text and as JSON): exactly `rows` lines, each within the columns (the last line one column short), no control
@@ -22,9 +23,11 @@ import { FX, HEB, OWN, keyboard, KEY, ltms, makeRoot, plainOf } from './helpers.
 const SIZES = [[80, 24], [200, 60]];
 const CC = /[\u0000-\u001f\u007f-\u009f]/;
 const STYLES = new Set([null, 'head', 'dim', 'sel', 'bad', 'addr']);
+const deep = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? deep(path.join(d, e.name)) : e.isFile() && e.name.endsWith('.jsonl') ? [path.join(d, e.name)] : [])).sort();
 const population = [
   ...readdirSync(FX).filter((n) => n.endsWith('.jsonl')).sort().map((n) => path.join(FX, n)),
-  path.join(OWN, 'hebrew-english.jsonl'), path.join(OWN, 'escapes.jsonl'),
+  path.join(OWN, 'hebrew-english.jsonl'), path.join(OWN, 'escapes.jsonl'), path.join(OWN, 'channels.jsonl'),
+  ...(process.env.LTMS_READER_FIXTURES ? deep(process.env.LTMS_READER_FIXTURES) : []),
 ];
 const label = (s) => visible(String(s)).replace(/\n/g, '\\n').replace(/\t/g, '\\t');
 
@@ -68,7 +71,7 @@ const cellsOf = (text) => text.slice(2).trim().split(/ {2,}/);
 
 for (const file of population) {
   const name = path.basename(file);
-  test(`frames of ${name}, at 80 x 24 and 200 x 60`, async () => {
+  test(`frames of ${path.relative(process.cwd(), file)}, at 80 x 24 and 200 x 60`, async () => {
     const sk = ltms(['skeleton', '--', file]);
     const ix = ltms(['index', '--max', '0', '--', file]).find((l) => l.k === 'session') ?? null;
     const skTurns = sk.filter((l) => l.k === 'turn'), skCalls = sk.filter((l) => l.k === 'call');
@@ -98,7 +101,8 @@ for (const file of population) {
           const t = skTurns.find((x) => x.ta === addressOf(d.text));
           const [, ch, calls, failed] = cellsOf(d.text);
           const mine = skCalls.filter((c) => c.ta === t.ta);
-          if (t.ch !== '(withheld)') assert.equal(ch, t.ch, `${at}: ${t.ta} channel`);
+          // the channel's column is 8 wide: a longer word is read as far as it goes
+          if (t.ch !== '(withheld)') assert.ok(ch === t.ch || (ch.endsWith('\u2026') && t.ch.startsWith(ch.slice(0, -1))), `${at}: ${t.ta} channel ${JSON.stringify(ch)}, ltms skeleton: ${JSON.stringify(t.ch)}`);
           assert.equal(calls, mine.length.toLocaleString('en-US'), `${at}: ${t.ta} calls`);
           assert.equal(failed, mine.filter((c) => c.ok === false).length.toLocaleString('en-US'), `${at}: ${t.ta} failed`);
         }
@@ -121,7 +125,14 @@ for (const file of population) {
           const mine = skCalls.filter((c) => c.ta === t.ta);
           const said = (c) => (c.ok === true ? 'ok' : c.ok === false ? `failed${c.ek ? ` ${c.ek}` : ''}` : 'no result recorded');
           const key = (a, status) => `${a} ${status}`;
-          assert.deepEqual(calls.map((d) => key(addressOf(d.text), cellsOf(d.text)[2] ?? '')).sort(), mine.map((c) => key(c.a, said(c))).sort(), `${at}: ${t.ta}'s calls, ok and error classes`);
+          // a status cut at the screen's edge (a long error class at 80 columns) is read as far as it goes
+          const statusOf = (d) => cellsOf(d.text)[2] ?? '';
+          const shownCalls = calls.map((d) => ({ a: addressOf(d.text), status: statusOf(d) }));
+          const wantCalls = mine.map((c) => ({ a: c.a, status: said(c) }));
+          const byA = (x, y) => (x.a < y.a ? -1 : x.a > y.a ? 1 : x.status < y.status ? -1 : 1);
+          shownCalls.sort(byA); wantCalls.sort(byA);
+          assert.deepEqual(shownCalls.map((x) => x.a), wantCalls.map((x) => x.a), `${at}: ${t.ta}'s calls`);
+          shownCalls.forEach((x, i) => assert.ok(x.status === wantCalls[i].status || (x.status.endsWith('\u2026') && wantCalls[i].status.startsWith(x.status.slice(0, -1))), `${at}: ${x.a}: ${JSON.stringify(x.status)}, ltms skeleton: ${JSON.stringify(wantCalls[i].status)}`));
           assert.deepEqual(results.map((d) => addressOf(d.text)).sort(), mine.filter((c) => c.r).map((c) => c.r).sort(), `${at}: ${t.ta}'s results`);
           for (const d of items) assert.match(addressOf(d.text), /^(?:agent-)?[^\s:]{1,8}:L\d+$/, `${at}: ${t.ta}: a row without its address: ${d.text}`);
 
@@ -146,8 +157,8 @@ for (const file of population) {
                 const shown = all.join(''), want = visible(raw);
                 assert.equal(squash(shown), squash(rv.rec.raw.more ? want.slice(0, shown.length) : want), `${where}: the JSON shown is the line's record`);
               } else {
-                const want = rv.rec.reading.map((p) => `--${label(p.label)}--${visible(p.text)}`).join('');
-                const shown = all.map((l) => (l.startsWith('-- ') && l.endsWith(' --') ? l.replace(/^-- /, '--').replace(/ --$/, '--') : l)).filter((l) => !/^\.\.\. [\d,]+ more characters? not shown$/.test(l)).join('');
+                const want = rv.rec.reading.map((p) => `-- ${label(p.label)} --${visible(p.text)}`).join('');
+                const shown = all.filter((l) => !/^\.\.\. [\d,]+ more characters? not shown$/.test(l)).join('');
                 assert.equal(squash(shown), squash(want), `${where}: the text shown is the record's`);
               }
               await keys.press(KEY.home);
@@ -289,9 +300,10 @@ test('Projects and Sessions over a folder of projects: what ltms index lists, at
   } finally { r.dispose(); }
 });
 
-test('the reader\'s Hebrew fixture is what make-fixtures.mjs writes', async () => {
-  const { HEBREW_ENGLISH, ESCAPES } = await import('./fixtures/make-fixtures.mjs');
+test('the reader\'s own fixtures are what make-fixtures.mjs writes', async () => {
+  const { HEBREW_ENGLISH, ESCAPES, CHANNELS } = await import('./fixtures/make-fixtures.mjs');
   assert.equal(readFileSync(path.join(OWN, 'hebrew-english.jsonl'), 'utf8'), HEBREW_ENGLISH);
   assert.equal(readFileSync(path.join(OWN, 'escapes.jsonl'), 'utf8'), ESCAPES);
+  assert.equal(readFileSync(path.join(OWN, 'channels.jsonl'), 'utf8'), CHANNELS);
   assert.equal(HEB.length, 42);
 });

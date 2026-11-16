@@ -234,7 +234,7 @@ export function turn(state, cols, rows) {
   const body = listBody(v, v.rows, h, cellsOf, cols);
   const r = v.rows[v.sel];
   let detail = '';
-  if (r?.kind === 'call') detail = `${label(r.a)}  call ${label(r.tool)}${r.r ? `  result ${label(r.r)}` : '  no result recorded'}${r.time ? `  ${when(r.time, state.timeZone)}` : ''}`;
+  if (r?.kind === 'call') detail = `${label(r.a)}  call ${label(r.tool)}  ${itemText(r, doc.ek?.get(r.item)).split('  ')[0]}${r.r ? `  result ${label(r.r)}` : ''}${r.time ? `  ${when(r.time, state.timeZone)}` : ''}`;
   else if (r?.kind === 'result') detail = `${label(r.a)}  the result of the call at ${label(r.of)}`;
   else if (r) detail = `${label(r.a)}  ${r.kind}${r.time ? `  ${when(r.time, state.timeZone)}` : ''}`;
   return frame(state, cols, rows, { title, sub, headings: `  ${cell('address', aw)}  ${cell('kind', 10)}  what`, body, detail, address: r?.a ?? null });
@@ -257,7 +257,7 @@ export function recordLines(rec, json, cols) {
     if (!rec.reading.length) out.push([seg('(nothing to read in this record)', 'dim')]);
     rec.reading.forEach((p, i) => {
       if (i) out.push([]);
-      out.push([seg(fit(`-- ${label(p.label)} --`, cols), 'head')]);
+      for (const l of wrap(`-- ${label(p.label)} --`, cols)) out.push([seg(l, 'head')]);   // a long tool name is wrapped, not cut
       if (p.text !== '') text(p.text);
       if (p.more) out.push([seg(fit(`... ${plural(p.more, 'more character', 'more characters')} not shown`, cols), 'dim')]);
     });

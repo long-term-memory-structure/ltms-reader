@@ -1,7 +1,7 @@
 // test/fixtures/make-fixtures.mjs — writes the reader's own synthetic transcripts, in Claude Code's record shapes, with
 // invented text; the output is the same on every run:
 //
-//   node test/fixtures/make-fixtures.mjs     # writes test/fixtures/hebrew-english.jsonl and test/fixtures/escapes.jsonl
+//   node test/fixtures/make-fixtures.mjs     # writes hebrew-english.jsonl, escapes.jsonl and channels.jsonl here
 //
 // hebrew-english.jsonl: Hebrew and English in one text, with niqqud and cantillation, numbers, paths and brackets, a
 // right-to-left mark, wide characters and an emoji: what the screen must cut and wrap by grapheme cluster.
@@ -62,8 +62,20 @@ export const ESCAPES = transcript('55555555-5555-4555-8555-555555555555', [
   { req: 3, blocks: [{ type: 'text', text: `the end ${ESC}[0m${ESC}[?25l${ESC}[?7l${ESC}[?1000h${ESC}[?2004h` }] },
 ]);
 
+// channels.jsonl: prompts whose channel is the record's own word: another agent's ("peer"), an empty one (ltms prints
+// "none"), and one with a long error class's worth of characters
+export const CHANNELS = transcript('66666666-6666-4666-8666-666666666666', [
+  { prompt: 'a peer writes', extra: { origin: { kind: 'peer' } } },
+  { req: 1, blocks: [{ type: 'text', text: 'read' }] },
+  { prompt: 'an empty word', extra: { origin: { kind: '' } } },
+  { req: 2, blocks: [{ type: 'tool_use', id: 'toolu_ch_1', name: 'Bash', input: { command: 'true' } }] },
+  { result: `PreToolUse:Bash hook error: [bash /x/hooks/${'a'.repeat(48)}.sh]: blocked`, error: true, id: 'toolu_ch_1' },
+  { prompt: 'a long word', extra: { origin: { kind: 'a-long-channel-word' } } },
+]);
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   writeFileSync(path.join(here, 'hebrew-english.jsonl'), HEBREW_ENGLISH);
   writeFileSync(path.join(here, 'escapes.jsonl'), ESCAPES);
-  process.stderr.write('wrote test/fixtures/hebrew-english.jsonl and test/fixtures/escapes.jsonl\n');
+  writeFileSync(path.join(here, 'channels.jsonl'), CHANNELS);
+  process.stderr.write('wrote test/fixtures/hebrew-english.jsonl, escapes.jsonl and channels.jsonl\n');
 }

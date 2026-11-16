@@ -9,7 +9,6 @@ import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ENTER, LEAVE } from '../src/screen.mjs';
 import { BIN, KEY, OWN, makeRoot } from './helpers.mjs';
 
 const SCRIPT = process.platform === 'linux' && spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
@@ -22,6 +21,9 @@ echo "<<exit=$?>>"
 stty -g > "$LTMS_T/after"
 `;
 const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+// the sequences, written out here rather than taken from the code under test: enter the alternate screen, hide the
+// cursor, wrapping off; and back: styles reset, wrapping on, the cursor shown, the main screen
+const ENTER = '\x1b[?1049h\x1b[?25l\x1b[?7l', LEAVE = '\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l';
 
 /**
  * Run the reader in a pseudo-terminal of 80 x 24: each step waits for its text (a string, or a regular expression) in

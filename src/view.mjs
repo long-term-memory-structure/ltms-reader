@@ -124,7 +124,7 @@ export function sessionView(input, { name, caps = true }) {
     // counted before any cap, so the page's counts and its failed-only filter see every call; and the turn's lines, so an
     // address can be found in a turn whose items were cut, or which is not drawn yet
     const calls = items.filter((x) => x.kind === 'call'), lines = [lineOf(p), ...items.flatMap((x) => (x.rline ? [x.line, x.rline] : [x.line])), ...turn.records.map(lineOf)];
-    out.push({ ta, a: at(p), line: lineOf(p), ch: inputChannel(pr) ?? 'none', time: str(pr?.timestamp) ?? null, n: text.length, prompt: clip(text, LIMITS.prompt), command: commandOf(text), records: 1 + turn.records.length,
+    out.push({ ta, a: at(p), line: lineOf(p), ch: inputChannel(pr) || 'none', time: str(pr?.timestamp) ?? null, n: text.length, prompt: clip(text, LIMITS.prompt), command: commandOf(text), records: 1 + turn.records.length,
       calls: calls.length, failed: calls.filter((x) => x.ok === false).length, from: Math.min(...lines), to: Math.max(...lines), items });
   }
   // A compaction made by /compact (S365, A.F5): Claude Code writes the boundary and its summary first, then the

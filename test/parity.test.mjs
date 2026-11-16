@@ -68,7 +68,8 @@ for (const file of population) {
       // and the view's own items agree with the index's counts (counted from the items, not from the library's index)
       assert.equal(ours.length, ix.calls, 'calls counted from the items');
       assert.equal(ours.filter((x) => x.ok === false).length, ix.failures, 'failures counted from the items');
-      const marks = view.turns.flatMap((t) => t.items.filter((x) => x.kind === 'compaction').map((x) => x.a));
+      // a compaction before the first prompt is in the session's lead-in, not in a turn's items
+      const marks = [...view.lead, ...view.turns.flatMap((t) => t.items)].filter((x) => x.kind === 'compaction').map((x) => x.a);
       assert.deepEqual(marks.slice().sort(), ix.compactions.map((c) => c.boundary).sort(), 'compaction boundaries among the items');
     }
     totals.files++; totals.turns += cliTurns.length; totals.calls += cliCalls.length; totals.failures += cliCalls.filter((x) => x.ok === false).length; totals.compared++;
