@@ -418,3 +418,47 @@ test('N2: with the notice above the list, a page is the rows in sight less one: 
     assert.ok(f[last - 1].startsWith('> s0000038 '), f[last - 1]);
   } finally { app.dispose(); }
 });
+
+// R5 (S377, round 3): round 2's check planted a defect in N2's fallback (sessionsHead kept the whole head however low
+// the screen: 'return whole ? whole : of(false)') and the suite passed; under it the list's selected row left the
+// screen at 80 x 5 with the short counts and at 80 x 6 with the long ones. On a screen too low to keep the whole head
+// and a row of the list, each of its lines takes one line, cut with …, and the selected row stays in sight.
+test('N2 (R5): a kept list on a screen too low for its whole head: the counts and the notice in sight, and the selected row', async () => {
+  const sessions = Array.from({ length: 40 }, (_, i) => ({ p: `s${String(i).padStart(7, '0')}`, first: '2026-01-01T00:00:00.000Z', last: '2026-01-01T00:00:00.000Z', turns: 1, calls: 0, failures: 0, compactions: [], agents: 0, file: `s${i}.jsonl`, firstPrompt: null, lastReply: null }));
+  const counts = {
+    short: { coverage: { files: { found: 40, read: 40, failed: 0 } }, copies: { files: 0 } },
+    long: { coverage: { files: { found: 43, read: 43, failed: 0, notConversation: 3 } }, copies: { files: 2 } },
+  };
+  for (const [kind, extra] of Object.entries(counts)) {
+    const source = {
+      kind: 'root', rootShown: '/r',
+      projects: () => ({ rootShown: '/r', state: 'dir', projects: [{ name: '-p', transcripts: 40, newest: 0 }], links: 0 }),
+      sessions: () => ({ sessions, ...extra, ms: 60_000, changed: { count: 1, since: Date.UTC(2026, 10, 16, 5, 43) } }),
+      dispose() {},
+    };
+    const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC' });
+    const k = keyboard(app);
+    try {
+      app.start(); await app.idle();
+      await k.press(KEY.enter);
+      await k.press(KEY.down); await k.press(KEY.down);
+      for (const [cols, rows] of [[80, 5], [80, 6], [80, 7], [80, 8], [100, 7], [120, 6], [200, 5]]) {
+        app.resize(cols, rows);
+        // read as drawn (frameOf's last-line rule is not asked here: under 7 rows the frame is cut at the screen's foot)
+        const f = plainOf(app.lines()).map((l) => l.replace(/ +$/, ''));
+        assert.equal(f.length, rows, `${kind} counts, ${cols} x ${rows}: the frame's lines`);
+        assert.ok(f.every((l) => width(l) <= cols), `${kind} counts, ${cols} x ${rows}: no line wider than the screen`);
+        assert.ok(f.some((l) => l.startsWith('> s0000002 ')), `${kind} counts, ${cols} x ${rows}: the selected row in sight: ${JSON.stringify(f)}`);
+        const at = f.findIndex((l) => l.startsWith('  session '));
+        assert.ok(at >= 2, `${kind} counts, ${cols} x ${rows}: the column headings`);
+        const head = f.slice(1, at);
+        assert.ok(head.some((l) => /^\d+ sessions {2}/.test(l)) && head.some((l) => l.startsWith('this list was read at ')), `${kind} counts, ${cols} x ${rows}: the counts and the notice: ${JSON.stringify(head)}`);
+      }
+      // the same counts on a screen high enough: each whole, on as many lines as it takes
+      app.resize(80, 24);
+      const f = frameOf(app);
+      const at = f.findIndex((l) => l.startsWith('  session '));
+      assert.ok(f.slice(1, at).every((l) => !l.endsWith('…')), `${kind} counts, 80 x 24: whole: ${JSON.stringify(f.slice(1, at))}`);
+    } finally { app.dispose(); }
+  }
+});
