@@ -15,7 +15,8 @@
 // (East_Asian_Width W or F: src/width-table.mjs, generated from Unicode's EastAsianWidth.txt), when it is an emoji
 // presentation sequence (an emoji and U+FE0F) or a flag (regional indicators); none when every character in it takes
 // none (combining marks, niqqud and cantillation among them, and format characters); one otherwise. A line is cut by
-// columns, between clusters, never inside one.
+// columns, between clusters, never inside one; a space where it is cut stays at the end of the line before (lineSpans:
+// V7, round 5, as UAX #14 has it).
 //
 // Right to left (R1, decided by the measurement of S377 on three terminals): Konsole lays out a line's right-to-left runs
 // itself, with a left-to-right base for the line; Alacritty and VS Code's terminal (xterm.js) draw the text in the order
@@ -25,8 +26,8 @@
 // puts the paragraph's end punctuation where it belongs. rtlModeOf picks one by the terminal. A paragraph here is a
 // segment of a row (a list's cell, the reader's own words before it, a line cut to the row's width), or a text a view
 // wraps into lines (a record's text line, a message, an error, the reader's own words), each line of which names it: its
-// levels are resolved once, and each line is reordered from them (W1, round 4; UAX #9 section 3.4: paragraphLine). A path or a
-// URL in a paragraph is laid out as one left-to-right unit (UAX #9 HL4).
+// levels are resolved once, and each line is reordered from them, whole (W1, round 4; V7, round 5; UAX #9 section 3.4:
+// paragraphLine). A path or a URL in a paragraph is laid out as one left-to-right unit (UAX #9 HL4).
 import { AL, AN, BN, ISO, L as LTR_CLASS, R, classOf, classesOf, lineLevels, mirrorOf, paragraphLevel, resolveLevels, visualOrder } from './bidi.mjs';
 import { WIDE } from './width-table.mjs';
 
@@ -158,26 +159,52 @@ export function pad(s, cols) {
   return r.text + ' '.repeat(Math.max(0, cols - r.width));
 }
 
+/** Whitespace that hangs at the end of a line (V7, round 5): a cluster made only of the spaces of UAX #9's class WS that
+ *  take a column (U+0020, U+1680, U+2000 to U+200A, U+205F, U+3000: DerivedBidiClass.txt 17.0.0; the form feed and
+ *  U+2028, of the class too, are shown as escapes). UAX #14 keeps a space on the line it follows (LB7, LB18) and does
+ *  not break before the others but after a space (LB12a, LB21); L1 gives those that end a line the paragraph's level. */
+const HANGS = /^[\u0020\u1680\u2000-\u200a\u205f\u3000]+$/;
+
 /** Where the lines of one line of text s (no new line in it) begin and end, [start, end), when it is cut into lines of
  *  at most `cols` columns between clusters, a cluster wider than the columns on a line of its own; from offset `from`,
- *  where a cluster begins. One pair at a time, so that a long text can be laid out without its lines being made. An
- *  empty s is one empty line. */
+ *  where a line begins. Whitespace (HANGS) that does not fit at the end of a line stays at the end of that line, with
+ *  the whitespace after it, as UAX #14 has a space: it hangs there, past the line's columns, and is in no line (nothing
+ *  past the screen is drawn); the next line begins after it, so that no line but the first begins with whitespace (V7,
+ *  round 5: the space that did not fit began the next line). Whitespace that fits ends its line. One pair at a time, so
+ *  that a long text can be laid out without its lines being made. An empty s is one empty line. */
 export function* lineSpans(s, cols, from = 0) {
   const n = Math.max(1, cols);
   if (from >= s.length) { if (from === 0) yield [0, 0]; return; }
-  if (PRINTABLE_ASCII.test(s)) { for (let i = from; i < s.length; i += n) yield [i, Math.min(s.length, i + n)]; return; }
-  let start = from, at = from, w = 0;
+  if (PRINTABLE_ASCII.test(s)) {
+    for (let i = from; i < s.length;) {
+      const e = Math.min(s.length, i + n);
+      yield [i, e];
+      for (i = e; i < s.length && s.charCodeAt(i) === 0x20;) i++;
+    }
+    return;
+  }
+  let start = from, at = from, w = 0, hanging = false;
   for (const c of clusters(from ? s.slice(from) : s)) {
+    if (hanging) {
+      if (HANGS.test(c)) { at += c.length; continue; }
+      hanging = false; start = at; w = 0;
+    }
     const cw = clusterWidth(c);
-    if (w + cw > n && at > start) { yield [start, at]; start = at; w = 0; }
+    if (w + cw > n && at > start) {
+      yield [start, at];
+      if (HANGS.test(c)) { hanging = true; at += c.length; continue; }
+      start = at; w = 0;
+    }
     at += c.length; w += cw;
   }
-  yield [start, s.length];
+  if (!hanging) yield [start, s.length];
 }
 
 /** One line (no new line in it) cut into lines of at most `cols` columns, between clusters; a cluster wider than the
- *  columns goes on a line of its own. The lines join back to s. Each line is a slice of s (a line built by adding
- *  cluster after cluster cost a string object per cluster: 28 MB for a million characters of Hebrew, R.F1). */
+ *  columns goes on a line of its own; whitespace that does not fit at a line's end hangs there, in no line (lineSpans).
+ *  The lines are slices of s, in order, and only that whitespace is between them. Each line is a slice of s (a line
+ *  built by adding cluster after cluster cost a string object per cluster: 28 MB for a million characters of Hebrew,
+ *  R.F1). */
 export function wrap(s, cols) {
   const out = [];
   for (const [a, b] of lineSpans(s, cols)) out.push(s.slice(a, b));
@@ -185,21 +212,24 @@ export function wrap(s, cols) {
 }
 
 /** Where the lines of wrapWords(s, cols) begin and end in s, [start, end) each: a paragraph in lines of at most `cols`
- *  columns, broken at spaces where a line can be, else by columns; a space a line is broken at is in no line. Each line
- *  is s.slice(start, end), so that its place in its paragraph is known (W1: a line is laid out from its paragraph's
- *  levels). */
+ *  columns, broken at spaces where a line can be, else by columns (lineSpans); a space a line is broken at is in no line
+ *  (it hangs at the end of the line before: no line begins with one), and so is whitespace that hangs inside a word cut
+ *  by columns, which ends its line. Each line is s.slice(start, end), so that its place in its paragraph is known (W1: a
+ *  line is laid out from its paragraph's levels). */
 export function wordSpans(s, cols) {
   const out = [];
-  let line = '', from = 0, pos = 0;   // the line being made, where it begins in s, and where the next word begins
+  // the line being made, where it begins in s, where the next word begins, and whether the line can take it (not when
+  // whitespace that hangs ends it)
+  let line = '', from = 0, pos = 0, open = true;
   for (const word of s.split(' ')) {
     const at = pos;
     pos += word.length + 1;
     const next = line === '' ? word : `${line} ${word}`;
-    if (width(next) <= cols) { if (line === '') from = at; line = next; continue; }
+    if (open && width(next) <= cols) { if (line === '') from = at; line = next; continue; }
     if (line !== '') out.push([from, from + line.length]);
     const pieces = [...lineSpans(word, cols)], [x, y] = pieces.pop();
     for (const [c, d] of pieces) out.push([at + c, at + d]);
-    line = word.slice(x, y); from = at + x;
+    line = word.slice(x, y); from = at + x; open = y === word.length;
   }
   out.push([from, from + line.length]);
   return out;
@@ -486,13 +516,15 @@ function blankEdges(text) {
  * One screen row's segments ([{ text, style, dir, par, at }], already cut to the row's width) as they are written, in
  * `mode`. A segment is a paragraph of its own, or a line of one: `par` names the paragraph (its text, of which the
  * segment's text is the slice at `at`: a line of a record, of a message, of the reader's own words wrapped into lines,
- * W1). Its direction is `dir` when given (0 or 1: a line's, its paragraph's), else its own (P2, P3). Its spaces at
- * either end, in whole clusters (blankEdges), stay where they are (the columns stay; the text is aligned left).
- * "reader": the rest laid out, a line of a paragraph from the paragraph's levels (paragraphLine), a paragraph of its own
- * by visualLine (a line cut to its columns is one: R1 (c)). "terminal": as stored, with an RLM after a right-to-left
- * paragraph's text, so that a terminal that lays the line out with a left-to-right base (Konsole) puts the paragraph's
- * end punctuation at its left (measured on Konsole 26.08.3; a mark at the row's first column it drops); never after a
- * left-to-right one's.
+ * W1). Its direction is `dir` when given (0 or 1: a line's, its paragraph's), else its own (P2, P3).
+ * "reader": a line of a paragraph laid out whole from the paragraph's levels (paragraphLine), its whitespace at either
+ * end with the rest, as UAX #9's L1 and L2 lay out a line (V7, round 5: they stayed where they were, and the line's
+ * text differed from UAX #9's); a paragraph of its own (a cell, a line cut to its columns: R1 (c)) laid out by
+ * visualLine but its spaces at either end, in whole clusters (blankEdges), which stay where they are: a cell's are the
+ * cell's padding. Either way the columns stay, and the text is aligned left. "terminal": as stored, with an RLM after a
+ * right-to-left paragraph's text (before the spaces at its end), so that a terminal that lays the line out with a
+ * left-to-right base (Konsole) puts the paragraph's end punctuation at its left (measured on Konsole 26.08.3; a mark at
+ * the row's first column it drops); never after a left-to-right one's.
  */
 export function displayOrder(row, mode = 'reader') {
   if (mode !== 'reader' && mode !== 'terminal') throw new RangeError(`no right-to-left mode ${JSON.stringify(mode)}: the modes are "reader" and "terminal"`);
@@ -502,12 +534,18 @@ export function displayOrder(row, mode = 'reader') {
     // a line of a paragraph: one whose paragraph holds what the segment's text is, at its place
     const line = typeof s.par === 'string' && Number.isInteger(s.at) && s.par.startsWith(text, s.at);
     if (!line && s.dir !== 1 && NO_RTL.test(text)) continue;
+    if (line && mode === 'reader') {
+      if (text === '') continue;
+      const shown = paragraphLine(s.par, s.dir ?? directionOf(s.par), s.at, s.at + text.length);
+      if (shown === text) continue;
+      out ??= row.slice();
+      out[i] = { ...s, text: shown };
+      continue;
+    }
     const [a, b] = blankEdges(text);
     if (a >= b) continue;
     const core = text.slice(a, b), dir = s.dir ?? (line ? directionOf(s.par) : directionOf(core));
-    let shown;
-    if (mode === 'terminal') shown = dir === 1 ? `${core}${RLM}` : core;
-    else shown = line ? paragraphLine(s.par, dir, s.at + a, s.at + b) : visualLine(core, dir);
+    const shown = mode === 'terminal' ? (dir === 1 ? `${core}${RLM}` : core) : visualLine(core, dir);
     if (shown === core) continue;
     out ??= row.slice();
     out[i] = { ...s, text: text.slice(0, a) + shown + text.slice(b) };

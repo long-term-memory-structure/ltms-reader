@@ -13,18 +13,19 @@ import { App } from '../src/app.mjs';
 import { MB, PARSE_PER_BYTE, RECORD_VIEW_PER_BYTE, recordTooLarge } from '../src/reading.mjs';
 import { FileSource } from '../src/sources.mjs';
 import { againOf } from '../src/start.mjs';
-import { directionOf, expandTabs, fit, visible, wrap } from '../src/text.mjs';
+import { directionOf, expandTabs, fit, lineSpans, visible } from '../src/text.mjs';
 import { RecordLines, recordLines, top } from '../src/views.mjs';
 import { KEY, deepRecord, keyboard, plainOf } from './helpers.mjs';
 
-/** The lines as the record view made them whole before (44b868f's recordLines, its wrap cutting the same places); each
- *  line of a text with its text line's direction (R1: the paragraph's, for the right-to-left layout), and its text line
- *  and its place in it (W1, round 4: the paragraph it is laid out from). */
+/** The lines as the record view made them whole before (44b868f's recordLines, cutting where lineSpans cuts: since V7,
+ *  round 5, a space at a break hangs at the end of the line before, in no line); each line of a text with its text
+ *  line's direction (R1: the paragraph's, for the right-to-left layout), and its text line and its place in it (W1,
+ *  round 4: the paragraph it is laid out from). */
 function whole(rec, json, cols) {
   const out = [], seg = (text, style = null, dir = undefined) => (dir === undefined ? { text, style } : { text, style, dir });
   const lbl = (s) => visible(s ?? '').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
   const more = (n) => `... ${n.toLocaleString('en-US')} ${n === 1 ? 'more character' : 'more characters'} not shown`;
-  const text = (s, style = null) => { for (const p of visible(s).split('\n')) { const t = expandTabs(p), d = directionOf(t); let at = 0; for (const l of wrap(t, cols)) { out.push([{ ...seg(l, style, d), par: t, at }]); at += l.length; } } };
+  const text = (s, style = null) => { for (const p of visible(s).split('\n')) { const t = expandTabs(p), d = directionOf(t); for (const [a, b] of lineSpans(t, cols)) out.push([{ ...seg(t.slice(a, b), style, d), par: t, at: a }]); } };
   if (json) {
     text(rec.raw.text);
     if (rec.raw.more) out.push([seg(fit(more(rec.raw.more), cols), 'dim')]);

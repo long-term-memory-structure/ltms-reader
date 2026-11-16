@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 import * as bidi from '../src/bidi.mjs';
 import { BRACKETS, BRACKET_EQUIVALENTS, CLASSES, CLASS_RANGES, MIRRORS, SOURCE_SHA256, UNICODE_VERSION } from '../src/bidi-table.mjs';
 import { SOURCES, TEST_SOURCE, VERSION, readPinned } from '../scripts/bidi-table.mjs';
-import { directionOf, displayOrder, expandTabs, lineSpans, paragraphLine, pathUnits, visible, visualLine } from '../src/text.mjs';
+import { directionOf, displayOrder, expandTabs, lineSpans, paragraphLine, pathUnits, visible, visualLine, width, wordSpans, wrap } from '../src/text.mjs';
 import { RecordLines } from '../src/views.mjs';
 import { FX, OWN, ROOT } from './helpers.mjs';
 
@@ -196,10 +196,12 @@ test('GNU FriBidi over the S377 page and the Hebrew and mixed fixtures: the read
 // hebrew-e:L9 showed its comma before "graph", not after "scripts". The forms below are those of GNU FriBidi's library
 // (test/fribidi-lines.py), spelled out here.
 const VAYEHI = '\u05e8\u05e7\u05b6\u05d1\u05b9 \u05d9\u05d4\u05b4\u05d9\u05b0\u05d5\u05b7 \u05d1\u05e8\u05b6\u05e2\u05b6 \u05d9\u05d4\u05b4\u05d9\u05b0\u05d5\u05b7';
+// At 61 columns the line holds the space after its last word, which ends it: laid out with the line (V7, round 5), at the
+// paragraph's level (L1), it is drawn at the line's left; at 60 that space does not fit, and hangs past the screen.
 const L9 = {
   30: 'graph that mixes both scripts,',
   60: `a long paragraph that mixes both scripts, :${VAYEHI}`,
-  61: `a long paragraph that mixes both scripts, :${VAYEHI}`,
+  61: ` a long paragraph that mixes both scripts, :${VAYEHI}`,
   80: `a long paragraph that mixes both scripts, to be wrapped by co :${VAYEHI}`,
 };
 test('W1: a record\'s paragraph wrapped into lines, each laid out from the paragraph\'s levels: hebrew-e:L9 at 30, 60, 61 and 80 columns, its comma after "scripts"', async () => {
@@ -361,21 +363,20 @@ function recordViewLines(text, cols) {
   return lines.map((l, i) => { assert.equal(l[0].text, text.slice(...spans[i])); return { a: spans[i][0], b: spans[i][1], written: displayOrder(l, 'reader')[0].text }; });
 }
 
-test('W1: wrapped paragraphs, each line as the record view writes it, equal GNU FriBidi\'s library (the paragraph\'s levels resolved once, then each line reordered): the fixtures\' lines at 10 to 80 columns, and 1,500 random paragraphs', { skip: hasLib ? false : `no ${PYTHON} that loads GNU FriBidi's library (libfribidi) here`, timeout: 600_000 }, (t) => {
+test('W1, V7: wrapped paragraphs, each line whole as the record view writes it, equal GNU FriBidi\'s library (the paragraph\'s levels resolved once, then each line reordered): the fixtures\' lines at 10 to 80 columns, and 1,500 random paragraphs', { skip: hasLib ? false : `no ${PYTHON} that loads GNU FriBidi's library (libfribidi) here`, timeout: 600_000 }, (t) => {
   const pars = [], safe = fribidiSafe();
   for (const text of fixtureLines()) for (const cols of [10, 20, 30, 40, 60, 80]) pars.push({ text: safe(text), cols, what: 'fixture' });
   const rnd = randomOf(378), random = [...randomParagraphs(1500, 2611), ...FRIBIDI_FAULT_CASES];
   assert.equal(new Set(random).size, random.length, 'the random paragraphs are all different');
   for (const text of random) pars.push({ text: safe(text), cols: 10 + rnd(71), what: 'random' });
-  // each line's text between its spaces at either end, which the screen leaves where they are
+  // each line whole, its whitespace at either end too: the screen lays a line of a paragraph out whole (V7, round 5)
   const asked = [], mine = [];
   for (const p of pars) {
     const level = directionOf(p.text), lines = [];
     for (const { a, b, written } of recordViewLines(p.text, p.cols)) {
-      const line = p.text.slice(a, b), s = line.length - line.trimStart().length, e = line.trimEnd().length;
-      if (s >= e) continue;
-      lines.push([a + s, a + e]);
-      mine.push({ what: p.what, cols: p.cols, level, line, reader: written.slice(s, written.length - (line.length - e)) });
+      if (a >= b) continue;
+      lines.push([a, b]);
+      mine.push({ what: p.what, cols: p.cols, level, line: p.text.slice(a, b), reader: written });
     }
     asked.push({ text: p.text, level, lines });
   }
@@ -391,7 +392,7 @@ test('W1: wrapped paragraphs, each line as the record view writes it, equal GNU 
 });
 
 // L1, against the same oracle: the lines of the same paragraphs whole, their spaces at either end laid out with the
-// rest (text.mjs paragraphLine, what the screen asks for a line's text between its spaces: here, for the whole line). On
+// rest (text.mjs paragraphLine, what the screen asks for each line of a paragraph, whole since V7, round 5). On
 // a line that ends in a space, L1 decides where the space goes: the paragraph's level, whatever its neighbours across the
 // break resolved it to (round 3's check planted 'l1-off', L1 left out, and nothing failed).
 test('W2 (b): the same lines whole, their spaces at either end included (paragraphLine), equal GNU FriBidi\'s library: L1 gives the whitespace at each line\'s end the paragraph\'s level', { skip: hasLib ? false : `no ${PYTHON} that loads GNU FriBidi's library (libfribidi) here`, timeout: 600_000 }, async (t) => {
@@ -475,4 +476,77 @@ test('V6: a closing bracket right after a nonspacing mark is paired (BD16), as U
   assert.deepEqual(withoutFribidiFault('א (ב x|\u05b7) ג'), { text: 'א (ב x|) ג', left: 1 });
   assert.deepEqual(withoutFribidiFault('[ab\u05b7\u00ad\u05b7] \u05b7(x)\u05b7'), { text: '[ab\u00ad] \u05b7(x)\u05b7', left: 2 });
   assert.deepEqual(withoutFribidiFault('שָׁלוֹם (abc)'), { text: 'שָׁלוֹם (abc)', left: 0 });
+});
+
+// ---- V7 (round 5): a space at a line's end -----------------------------------------------------------------------------
+// Round 4's record view cut a paragraph's lines by columns, and a space that did not fit began the next line; the screen
+// then kept a line's whitespace at either end where it was and laid out the rest. Against UAX #9's L1 and L2 over the
+// whole line (round 4's check's oracle, its reference passing BidiCharacterTest and BidiTest whole), 9,695 of 56,188
+// record lines of its random paragraphs differed, and 2,672 of 59,087 message lines (whose wrap, at spaces, leaves
+// spaces at a line's end): ' the question mark)' was written ' (the question mark', where UAX #9 gives
+// '( the question mark'. Now a space stays at the end of the line it follows, as UAX #14 has it (LB7: no break before a
+// space; LB18: a break after spaces), past the screen's edge where the line is full: there it hangs, and is not drawn;
+// so no line but a paragraph's first begins with one. And each line is laid out whole, its whitespace at either end
+// with the rest: L1 gives the whitespace that ends a line the paragraph's level (in a right-to-left paragraph, the
+// line's left). The forms are the check's oracle's (its compare.py on its uba.py), and FriBidi's library's (test 'W1,
+// V7' above).
+const BLANK = /^[\u0020\u1680\u2000-\u200a\u205f\u3000]+$/;
+/** A record's text at `cols` columns: each line's text, and what the screen writes for it ("reader"). */
+const recordWritten = (text, cols) => new RecordLines([{ text, style: null }], cols).slice().map((l) => (l.length ? [l[0].text, displayOrder(l, 'reader')[0].text] : ['', '']));
+/** A message at `cols` columns, as the views wrap one (wordSpans, each line a line of the message): each line's text,
+ *  and what the screen writes for it. */
+const messageWritten = (text, cols) => { const dir = directionOf(text); return wordSpans(text, cols).map(([a, b]) => [text.slice(a, b), displayOrder([{ text: text.slice(a, b), style: 'bad', dir, par: text, at: a }], 'reader')[0].text]); };
+
+test('V7: a space at a break stays at the end of the line it follows (hanging past the screen where the line is full), and each line is laid out whole: the check\'s two lines, a message, a paragraph\'s first line, a tab', () => {
+  // round 4's check's lines: ' the question mark)' began its line, and ' שלומך?'
+  assert.deepEqual(recordWritten('מה שלומך?\u200f (with RLM after the question mark)', 25), [['מה שלומך?\u200f (with RLM after', 'with RLM after) \u200f?ךמולש המ'], ['the question mark)', '(the question mark']]);
+  assert.deepEqual(recordWritten('12:13  user  מה שלומך?', 15), [['12:13  user  מה', '12:13  user  המ'], ['שלומך?', 'ךמולש?']]);
+  // a message: the space it breaks at is in no line; the spaces before it end their line, at its left in a right-to-left
+  // paragraph
+  assert.deepEqual(messageWritten('אלוהים  second  word', 9), [['אלוהים ', ' םיהולא'], ['second ', ' second'], ['word', 'word']]);
+  // a paragraph's first line keeps the spaces it begins with, where UAX #9 puts them; a space that fits ends its line
+  assert.deepEqual(recordWritten('  שלום עולם', 7), [['  שלום ', ' םולש  '], ['עולם', 'םלוע']]);
+  // a tab's spaces at a break: those that fit end the line, the rest hang
+  assert.deepEqual(recordWritten('אב\tגד', 4), [['אב  ', '  בא'], ['גד', 'דג']]);
+  // the columns: no line wider than the screen, its hanging whitespace not drawn
+  for (const [text, cols] of [['abcde   fghij', 5], ['אבגדה\u3000\u3000\u3000וזחטי', 5], ['          x', 5]]) {
+    for (const [line, written] of recordWritten(text, cols)) { assert.ok(width(line) <= cols, `${JSON.stringify(text)} at ${cols}: ${JSON.stringify(line)}`); assert.equal(width(written), width(line)); }
+  }
+  assert.deepEqual(recordWritten('abcde   fghij', 5).map(([l]) => l), ['abcde', 'fghij']);
+  assert.deepEqual(recordWritten('          x', 5).map(([l]) => l), ['     ', 'x']);
+  assert.deepEqual(wrap('abcde   fghij', 5), ['abcde', 'fghij']);
+});
+
+test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80, no line of a record\'s text but its first begins with whitespace, none is wider than the columns but a cluster wider than them alone, and between two lines there is only whitespace (what hangs); a message\'s lines likewise', (t) => {
+  const rnd = randomOf(381), texts = [...fixtureLines(), ...randomParagraphs(1000, 2614), ...randomParagraphs(500, 2615, { bn: true }), '   ', ' a', 'a   ', '\u3000\u3000\u3000', 'a \u3000 b'];
+  let lines = 0, hung = 0, messages = 0;
+  for (const text of texts) {
+    for (const cols of [1 + rnd(10), 10 + rnd(71)]) {
+      const spans = [...lineSpans(text, cols)];
+      assert.equal(spans[0][0], 0, `${JSON.stringify(text)} at ${cols}: its first line begins it`);
+      for (let i = 0; i < spans.length; i++) {
+        const [a, b] = spans[i], line = text.slice(a, b);
+        lines++;
+        assert.ok(width(line) <= cols || [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)].length === 1, `${JSON.stringify(text)} at ${cols}: ${JSON.stringify(line)} is ${width(line)} wide`);
+        if (i > 0) {
+          const first = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)][0]?.segment ?? '';
+          assert.ok(!BLANK.test(first), `${JSON.stringify(text)} at ${cols}: line ${i} begins with whitespace: ${JSON.stringify(line)}`);
+          const gap = text.slice(spans[i - 1][1], a);
+          assert.ok(gap === '' || BLANK.test(gap), `${JSON.stringify(text)} at ${cols}: between lines ${i - 1} and ${i}: ${JSON.stringify(gap)}`);
+          if (gap) hung++;
+        }
+      }
+      const end = text.slice(spans[spans.length - 1][1]);
+      assert.ok(end === '' || BLANK.test(end), `${JSON.stringify(text)} at ${cols}: after the last line: ${JSON.stringify(end)}`);
+      // a message: wordSpans breaks at spaces; none begins a line, every line within the columns
+      for (const [a, b] of wordSpans(text, cols)) {
+        messages++;
+        const line = text.slice(a, b);
+        assert.ok(!line.startsWith(' '), `message ${JSON.stringify(text)} at ${cols}: ${JSON.stringify(line)}`);
+        assert.ok(width(line) <= cols || [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)].length === 1, `message ${JSON.stringify(text)} at ${cols}: ${JSON.stringify(line)} is ${width(line)} wide`);
+      }
+    }
+  }
+  t.diagnostic(`${texts.length} paragraphs at 2 widths each: ${lines} record lines, ${hung} of them after whitespace that hung at the break before; ${messages} message lines`);
+  assert.ok(lines > 10000 && hung > 1000 && messages > 10000, `${lines} record lines, ${hung} after whitespace that hung, ${messages} message lines`);
 });

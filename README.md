@@ -88,9 +88,10 @@ pasted acts as a key.
   (U+E0000 to U+E007F), as `\u202e`, `\u{e0041}` and so on: an override in a transcript cannot reorder the rest of its
   row. The light marks Hebrew and Arabic text use (U+200E, U+200F, U+061C) are written as they are.
 - **Width by grapheme cluster** (`Intl.Segmenter`): combining marks, niqqud and cantillation take no column of their
-  own; East Asian wide characters and emoji take two. A line is cut by columns, never inside a cluster. The wide
-  characters come from a table generated from Unicode's `EastAsianWidth.txt`, version 17.0.0 (`src/width-table.mjs`,
-  which names the file's sha256; `scripts/width-table.mjs` writes it). Characters of ambiguous width take one column.
+  own; East Asian wide characters and emoji take two. A line is cut by columns, never inside a cluster, and a space
+  where it is cut stays at the end of the line before. The wide characters come from a table generated from Unicode's
+  `EastAsianWidth.txt`, version 17.0.0 (`src/width-table.mjs`, which names the file's sha256; `scripts/width-table.mjs`
+  writes it). Characters of ambiguous width take one column.
 - **Right to left** (Hebrew, Arabic): terminals differ, and the reader follows the terminal. Measured on three
   (S377): Konsole 26.08.3 lays out a line's right-to-left runs itself, with a left-to-right base for the line; Alacritty
   0.17.0 and VS Code 1.146.0's terminal (xterm.js) draw the text in the order it is stored, so that Hebrew reads
@@ -110,7 +111,12 @@ pasted acts as a key.
   a text wrapped into lines: a line of a record's text (its lines share its direction), a message, an error. A wrapped
   paragraph's levels are resolved once, and each of its lines is reordered from them, as UAX #9 lays out a paragraph
   broken into lines (its section 3.4): a line reads as its words do in the whole paragraph, the comma that ends a line
-  where the sentence has it. A long line of a list is cut in logical order, its beginning kept, then laid out by itself.
+  where the sentence has it. Each such line is laid out whole, its spaces at either end with the rest: a space that
+  ends a line takes the paragraph's direction (L1), so that in a right-to-left paragraph it is drawn at the line's
+  left. A record's text is cut into lines by columns, and a message at its spaces; either way a space where a line
+  breaks stays at the end of the line before, as UAX #14 has it, past the screen's edge where that line is full (there
+  it is not drawn), so that no line but a paragraph's first begins with one. A long line of a list is cut in logical
+  order, its beginning kept, then laid out by itself, the spaces at its ends (a cell's padding) where they are.
   A path or a URL in a line (`/home/...`, `~/...`, `src/...`, `https://...`) is laid out as one left-to-right unit, its
   parts in order and a Hebrew name in it reading right (UAX #9's higher-level protocol HL4), in pieces where a line
   breaks inside it, as an isolate is. Each cluster is kept whole, its marks after its letter, as a terminal draws them;

@@ -24,14 +24,16 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
 - Text: every C0 and C1 control character and DEL shown as a visible escape (ESC as `␛`, the rest as `\xNN`), so a
   transcript's escape sequences (OSC 52 among them) never reach the terminal as such; and what reorders or hides text
   (bidirectional embeddings, overrides and isolates, the byte order mark, the line and paragraph separators, tag
-  characters) as `\uXXXX`, while LRM, RLM and ALM are written as they are. Width by grapheme cluster, wide
-  characters and emoji two columns, from a table generated from Unicode's `EastAsianWidth.txt` 17.0.0 (its sha256 in
-  the table); lines cut by columns, never inside a cluster. Right to left, by the terminal (measured on Konsole,
+  characters) as `\uXXXX`, while LRM, RLM and ALM are written as they are. Width by grapheme cluster, wide characters
+  and emoji two columns, from a table generated from Unicode's `EastAsianWidth.txt` 17.0.0 (its sha256 in the table);
+  lines cut by columns, never inside a cluster, a space where a line breaks staying at the end of the line before (UAX
+  #14), so that no line but a paragraph's first begins with one. Right to left, by the terminal (measured on Konsole,
   Alacritty and VS Code's terminal): in Konsole (`KONSOLE_VERSION`) the text as stored, with an RLM at the end of each
   right-to-left paragraph; in every other terminal the reader lays out each line itself, by the Unicode Bidirectional
   Algorithm (UAX #9, written here from Unicode 17.0.0's data, generated and pinned as the width table is; a path or a
   URL laid out as one left-to-right unit; a paragraph wrapped into lines, a record's text line or a message, resolved
-  once and each line reordered from its levels); `LTMS_READER_BIDI=terminal|reader` chooses.
+  once and each line reordered from its levels, whole, its spaces at either end too); `LTMS_READER_BIDI=terminal|reader`
+  chooses.
 - A transcript is read in the reader's own process; one over a tenth of Node's memory limit is refused with its size
   and the `NODE_OPTIONS` that would let it be read, in the command that was run, the path given included. A record is
   refused the same way when its view would not fit beside the transcript in Node's memory, by its size and by the JSON

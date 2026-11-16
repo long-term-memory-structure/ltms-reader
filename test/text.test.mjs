@@ -96,22 +96,33 @@ test('fit: within the columns, with … where it was cut', () => {
   assert.equal(fit('abc', 0), '');
 });
 
-test('wrap: lines of at most the columns, cut between clusters, that join back to the text', () => {
+// V7 (round 5): whitespace that does not fit at the end of a line hangs there (UAX #14: a space stays on the line it
+// follows), in no line: the lines join back to the text but for it, and no line but the first begins with it.
+test('wrap: lines of at most the columns, cut between clusters, that join back to the text but for the whitespace that hangs at a break', () => {
+  const HANG = /[\u0020\u1680\u2000-\u200a\u205f\u3000]/;
+  let hung = 0;
   for (const s of SAMPLES) {
     const b = boundaries(s);
     for (const n of [1, 2, 3, 5, 8, 13, 40, 200]) {
       const lines = wrap(s, n);
-      assert.equal(lines.join(''), s);
       let at = 0;
-      for (const l of lines) {
+      for (const [i, l] of lines.entries()) {
         assert.ok(width(l) <= n || [...SEG.segment(l)].length === 1, `${JSON.stringify(l)} is ${width(l)} wide, over ${n}`);
         assert.ok(l.length > 0);
+        if (i > 0) { const k = at; while (at < s.length && HANG.test(s[at])) at++; if (at > k) hung++; }
+        assert.ok(s.startsWith(l, at), `${JSON.stringify(s)} at ${n}: line ${i}, ${JSON.stringify(l)}, follows what was before it at ${at}`);
+        assert.ok(i === 0 || !HANG.test(l[0]), `${JSON.stringify(s)} at ${n}: line ${i} begins with whitespace`);
         at += l.length;
         assert.ok(b.has(at), `a line ends inside a cluster (at ${at})`);
       }
+      assert.ok(/^[\u0020\u1680\u2000-\u200a\u205f\u3000]*$/.test(s.slice(at)), `${JSON.stringify(s)} at ${n}: after the last line, only whitespace`);
     }
   }
+  assert.ok(hung > 10, `${hung} breaks with whitespace that hung`);
   assert.deepEqual(wrap('', 10), ['']);
+  assert.deepEqual(wrap('ab  cd', 2), ['ab', 'cd']);
+  assert.deepEqual(wrap('ab  cd', 3), ['ab ', 'cd']);
+  assert.deepEqual(wrap('  ab', 1), [' ', 'a', 'b'], 'a paragraph\'s first line begins with its spaces');
 });
 
 test('expandTabs: a tab is spaces to the next multiple of 8 columns, counted by width', () => {
@@ -440,8 +451,8 @@ test('V4: a character X9 removes (a soft hyphen, ZWSP, WJ) is drawn at the level
 // line resolved by itself, as round 3 laid each line out, never needed it (its end is the paragraph's end there, and
 // what is neutral there takes the paragraph's direction): round 3's check planted 'l1-off' and nothing failed. Laid out
 // from its paragraph's levels, a space at a line's end has the level its neighbours across the break give it, and L1
-// decides where it goes. (The screen keeps a segment's spaces at either end where they are, so that what it lays out
-// never ends in one: there, L1 changes nothing.)
+// decides where it goes; the screen lays each line of a paragraph out whole, its spaces at either end too (V7, round 5:
+// it kept them where they were, and L1 changed nothing there).
 test('W2 (b): a line of a paragraph laid out from its levels (paragraphLine): L1 gives the whitespace at the line\'s end the paragraph\'s level', () => {
   // a right-to-left paragraph "abc def": its space, between two L, resolved L (level 2); at the end of the line "abc ",
   // the paragraph's level (1): the line reads " abc", the space at its end in the paragraph's direction, the left

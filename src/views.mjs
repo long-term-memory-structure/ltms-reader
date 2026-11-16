@@ -338,10 +338,11 @@ const STEP = 256;
  * A record's lines at one width, laid out a page at a time (R.F1: a record's lines, made whole and kept at every width
  * a window passed through, ran Node's heap out). The record is a list of pieces: a line of its own (a blank line
  * between parts, a "more characters" line, the empty record's note), or a text laid out by its new lines, each line's
- * tabs as spaces, then by columns between clusters (src/text.mjs lineSpans, as wrap cuts). One pass counts the lines and
- * keeps where every STEP-th begins (its piece, the start of its text line, the offset in that line once its tabs are
- * spaces); slice(a, b) lays out lines a to b from the nearest. What it keeps is the pieces (the record's own strings)
- * and those marks, whatever the lines are.
+ * tabs as spaces, then by columns between clusters, a space at a break hanging at the end of the line before
+ * (src/text.mjs lineSpans, as wrap cuts: V7, round 5). One pass counts the lines and keeps where every STEP-th begins
+ * (its piece, the start of its text line, the offset in that line once its tabs are spaces); slice(a, b) lays out lines
+ * a to b from the nearest. What it keeps is the pieces (the record's own strings) and those marks, whatever the lines
+ * are.
  */
 export class RecordLines {
   constructor(pieces, cols) {
