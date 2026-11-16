@@ -169,6 +169,11 @@ test('a projects folder that cannot be listed: said on the screen, by its path a
     app.start(); await app.idle();
     const f = frameOf(app);
     assert.equal(f[1], 'the projects folder could not be listed');
-    assert.equal(f[2], `  ${shut}: EACCES (scandir)`);
+    // the message takes as many lines as the path needs (TMPDIR's length decides it): each line indented, broken at a
+    // space (which goes) or inside a word (nothing goes), and together the path and the code
+    const body = [];
+    for (let i = 2; f[i] !== ''; i++) { assert.ok(f[i].startsWith('  '), `line ${i + 1}: ${JSON.stringify(f[i])}`); body.push(f[i].slice(2)); }
+    const escaped = body.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    assert.match(`${shut}: EACCES (scandir)`, new RegExp(`^${escaped.join('(?: |)')}$`), `the lines ${JSON.stringify(body)}`);
   } finally { app.dispose(); source.dispose(); chmodSync(shut, 0o755); rmSync(base, { recursive: true, force: true }); }
 });
