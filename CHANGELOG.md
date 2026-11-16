@@ -16,7 +16,8 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   `j` shows a record's JSON, `?` the keys, `q` or Ctrl-C quits.
 - The screen, with no library: raw mode, keypress events, the alternate screen, the cursor hidden, wrapping at the last
   column off, bracketed paste on (a paste is text, never keys); each frame drawn whole, each row erased first, again on
-  a resize; from 20 x 5, the status line (the selected row's address, `? keys`, `q quits`) always the last line drawn.
+  a resize; from 20 x 5, the status line (the selected row's address, `? keys`, `q quits`) always the last line drawn;
+  under it, the size it needs, wrapped over the lines there are.
   The terminal is restored on every way out: `q` (exit 0),
   Ctrl-C and SIGINT (130), SIGHUP (129), SIGTERM (143), an uncaught error (1, printed after the restore by its kind and
   its place, not its message). `NO_COLOR` honoured.

@@ -592,3 +592,30 @@ test('W3: a kept Sessions list (its counts and its notice above the list) at 5 a
     }
   } finally { app.dispose(); }
 });
+
+// Under 20 x 5 the reader draws what it needs and nothing else. It was one line cut to the screen's width, so that under
+// 26 columns the size was cut away ('ltms-reader needs …' at 20 x 4 and 19 x 24): it is wrapped over the lines there are,
+// a size ("20 x 5", the screen's own) kept on one line (the finisher of round 4). The sizes below are those where all of
+// it fits, every width from 7 columns (6 for "20 x 5" and one short); at 20 x 2, its first two lines.
+test('W3: under 20 x 5, the size the reader needs, wrapped over the lines there are: every character of it on the screen, in order, "20 x 5" and the screen\'s own size each on one line, each line one column short of the screen; at 20 x 2 its first two lines; q quits', async () => {
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const exits = [];
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC', onExit: (code) => exits.push(code) });
+  const k = keyboard(app);
+  const frameAt = (cols, rows) => { app.resize(cols, rows); const f = plainOf(app.lines()).map((l) => l.replace(/ +$/, '')); assert.equal(f.length, rows, `${cols} x ${rows}: the frame's lines`); return f; };
+  const sizes = [...Array.from({ length: 13 }, (_, i) => [7 + i, 24]), ...Array.from({ length: 41 }, (_, i) => [[20 + i, 4], [20 + i, 3]]).flat(), [80, 1], [200, 4]];
+  try {
+    app.start(); await app.idle();
+    for (const [cols, rows] of sizes) {
+      const f = frameAt(cols, rows), said = `ltms-reader needs 20 x 5 at least; this is ${cols} x ${rows}`;
+      assert.ok(f.every((l) => width(l) <= cols - 1), `${cols} x ${rows}: each line one column short of the screen: ${JSON.stringify(f)}`);
+      assert.equal(f.join('').replace(/ /g, ''), said.replace(/ /g, ''), `${cols} x ${rows}: what it needs, every character in order: ${JSON.stringify(f)}`);
+      assert.ok(f.some((l) => l.includes('20 x 5')) && f.some((l) => l.includes(`${cols} x ${rows}`)), `${cols} x ${rows}: "20 x 5" and its own size, each on one line: ${JSON.stringify(f)}`);
+    }
+    assert.equal(sizes.length, 13 + 82 + 2);
+    assert.deepEqual(frameAt(20, 2), ['ltms-reader needs', '20 x 5 at least;'], '20 x 2: its first two lines');
+    await k.press('q');
+    assert.deepEqual(exits, [0], 'q quits at 20 x 2');
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});

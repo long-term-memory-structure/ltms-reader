@@ -491,9 +491,15 @@ export function help(state, cols, rows) {
   return frame({ ...state, input: null, note: null }, cols, rows, { title: 'ltms-reader  Keys', sub: 'q quits; any other key goes back', body, detail: '', hint: 'q or Ctrl-C quits  any other key goes back' });
 }
 
-/** A screen too small to use. */
+/** A screen too small to use: the size the reader needs, wrapped over the lines there are, each line one column short of
+ *  the screen (W3: one line cut to the screen's width lost the size under 26 columns), at its spaces but those inside a
+ *  size ("20 x 5", and the screen's own), which stays on one line where it fits; on a screen too small for all of it,
+ *  its first lines. Each line is a line of the message (W1: par, at). */
 export function small(state, cols, rows) {
-  const out = [line(`ltms-reader needs ${MIN_COLS} x ${MIN_ROWS} at least; this is ${cols} x ${rows}`, cols - 1, 'bad')];
+  const w = cols - 1, text = `ltms-reader needs ${MIN_COLS} x ${MIN_ROWS} at least; this is ${cols} x ${rows}`;
+  // where its lines begin and end: the spaces of a size taken as no-break ones (the same length, so the same places)
+  const spans = w >= 1 ? wordSpans(text.replace(/(\d) x (\d)/g, '$1\u00a0x\u00a0$2'), w) : [];
+  const out = spans.map(([a, b]) => [lineSeg(text.slice(a, b), 'bad', 0, text, a)]);
   while (out.length < rows) out.push([]);
   return out.slice(0, Math.max(0, rows));
 }
