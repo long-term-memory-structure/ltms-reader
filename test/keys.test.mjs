@@ -79,7 +79,9 @@ test('keys through every view: move, open, back, search, an address, the keys, J
     assert.equal(f[0], 'ltms-reader  Search "npm test"  in -work-demo');
     // ltms search reads every .jsonl under the folder, at any depth: demo, compacted and demo's agent
     assert.match(f[2], /^ {2}1 matching turn in 1 of 3 files \(3 read, 0 failed\) {2}searched: input, summary,/);
-    assert.match(selected(f), /^> 11111111 {7}2026-01-05 09:03 {2}-work-demo\/11111111-1111-4111-8111-1111/);
+    assert.match(selected(f), /^> 11111111:T003 {2}typed {5}L24 call {2}L25 result {2}L26 call /, 'the first hit selected (R.F7)');
+    await k.press(KEY.up); f = frameOf(app);
+    assert.match(selected(f), /^> 11111111 {7}2026-01-05 09:03 {2}-work-demo\/11111111-1111-4111-8111-1111/, 'its session\'s row above it');
     await k.press(KEY.down); f = frameOf(app);
     assert.match(selected(f), /^> 11111111:T003 {2}typed {5}L24 call {2}L25 result {2}L26 call /);
     await k.press(KEY.enter); f = frameOf(app);
@@ -202,5 +204,28 @@ test('R.F8: a paste is text: its new lines do not submit the line it is pasted i
     assert.equal(top(app.state).kind, 'projects', 'nor does its new line open a row');
     await k.press('q');
     assert.deepEqual(exits, [0], 'q typed after the paste quits');
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
+// R.F7: the README (and the design's Search row): Enter on a search opens the turn at its first match
+test('R.F7: after a search, Enter opens the turn at its first match, its record selected; the session\'s row is one up', async () => {
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press(KEY.enter);   // -work-demo's sessions
+    await k.press('/'); await k.press(typed('npm test')); await k.press(KEY.enter);
+    let f = frameOf(app);
+    assert.equal(f[0], 'ltms-reader  Search "npm test"  in -work-demo');
+    assert.match(selected(f), /^> 11111111:T003 {2}typed /, 'the first hit selected');
+    await k.press(KEY.enter); f = frameOf(app);
+    assert.match(f[0], /^ltms-reader {2}Turn 11111111:T003 /, 'Enter opens the turn');
+    assert.match(selected(f), /^> 11111111:L24 {2}call /, 'at its first match');
+    await k.press(KEY.left); await k.press(KEY.left); f = frameOf(app);
+    assert.match(f[0], /^ltms-reader {2}Search "npm test"/);
+    await k.press(KEY.up); f = frameOf(app);
+    assert.match(selected(f), /^> 11111111 {7}2026-01-05 09:03 /, 'the session\'s row above the hit');
   } finally { app.dispose(); source.dispose(); r.dispose(); }
 });

@@ -224,7 +224,10 @@ export class App {
     try { p = Promise.resolve(this.source.search({ project: v.project, q: v.q, skip: v.skip, max: v.max })); } catch (e) { p = Promise.reject(e); }
     this.track(p.then((r) => {
       v.result = r; v.rows = searchRows(r);
-      v.sel = Math.max(0, v.rows.findIndex((x) => x.kind !== 'info')); v.top = 0;
+      // the first matching turn selected, so that Enter opens it at its first match (R.F7: the session's row above it
+      // was selected, and Enter opened the session)
+      const hit = v.rows.findIndex((x) => x.kind === 'hit');
+      v.sel = hit >= 0 ? hit : Math.max(0, v.rows.findIndex((x) => x.kind !== 'info')); v.top = 0;
     }, (e) => { v.error = message(e); }));
   }
 
