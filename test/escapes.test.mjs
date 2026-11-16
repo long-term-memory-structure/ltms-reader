@@ -17,8 +17,8 @@ import { top } from '../src/views.mjs';
 import { KEY, OWN, terminal } from './helpers.mjs';
 
 const FILE = path.join(OWN, 'escapes.jsonl');
-/** The reader's own sequences: the alternate screen, the cursor, wrapping, a position, an erase, and its styles. */
-const OWN_SEQ = /^(?:\x1b\[\?1049[hl]|\x1b\[\?25[hl]|\x1b\[\?7[hl]|\x1b\[\d{1,3};1H|\x1b\[K|\x1b\[(?:0|1|2|7|31|36)m)/;
+/** The reader's own sequences: the alternate screen, the cursor, wrapping, a position, a line erased, and its styles. */
+const OWN_SEQ = /^(?:\x1b\[\?1049[hl]|\x1b\[\?25[hl]|\x1b\[\?7[hl]|\x1b\[\d{1,3};1H|\x1b\[2?K|\x1b\[(?:0|1|2|7|31|36)m)/;
 
 /** What reorders or hides text (R.F5): bidirectional embeddings, overrides and isolates, the byte order mark, the line
  *  and paragraph separators, the tag characters. */
@@ -216,4 +216,54 @@ test('Esc alone goes back within a tenth of a second (readline waits half a seco
   await new Promise((r) => setTimeout(r, 100));
   assert.equal(top(h.app.state).kind, 'session', 'back after 100 ms');
   await press(t, h, 'q');
+});
+
+// R.F6: a row the reader counts as full width was not erased; a terminal that draws an emoji and VS16 one column wide
+// (wcwidth: U+26A0 one, U+FE0F none) drew it shorter, and the cells after it kept the frame before.
+/** A terminal of `rows` x `cols` cells that draws every code point one column wide but U+FE0F (none), and reads the
+ *  reader's position (CSI r;1H), erase (CSI K, CSI 2K) and style sequences; what it shows, row by row. */
+function narrowEmojiTerminal(cols, rows) {
+  const grid = Array.from({ length: rows }, () => Array(cols).fill(' '));
+  let r = 0, c = 0;
+  return {
+    write(bytes) {
+      for (let i = 0; i < bytes.length;) {
+        const m = /^\x1b\[(?:(\d+);1H|(2?)K|[\d;?]*[A-Za-z])/.exec(bytes.slice(i, i + 16));
+        if (m) {
+          if (m[1]) { r = Number(m[1]) - 1; c = 0; }
+          else if (m[0].endsWith('K')) { for (let k = m[2] ? 0 : c; k < cols; k++) grid[r][k] = ' '; }
+          i += m[0].length; continue;
+        }
+        const ch = String.fromCodePoint(bytes.codePointAt(i));
+        i += ch.length;
+        if (ch === '\ufe0f') continue;
+        if (c < cols) grid[r][c++] = ch;
+      }
+    },
+    screen: () => grid.map((row) => row.join('')),
+  };
+}
+
+test('R.F6: each row is erased whole before it is written: ESC[2K right after its position, full rows and short ones alike', async () => {
+  const { frameBytes } = await import('../src/screen.mjs');
+  const full = [{ text: 'x'.repeat(40), style: null }], short = [{ text: 'y', style: 'dim' }];
+  const out = frameBytes([full, short, [], full], { cols: 40, rows: 4, colour: false });
+  for (let row = 1; row <= 4; row++) assert.ok(out.includes(`\x1b[${row};1H\x1b[2K`), `row ${row}: erased after its position: ${JSON.stringify(out)}`);
+});
+
+test('R.F6: on a terminal that draws an emoji with VS16 one column wide, no cell of the frame before is left', async () => {
+  const { frameBytes } = await import('../src/screen.mjs');
+  const { cut } = await import('../src/text.mjs');
+  const cols = 80, rows = 6;
+  const before = Array.from({ length: rows }, () => [{ text: 'X'.repeat(cols), style: null }]);
+  // U+26A0 U+FE0F and ' check ', cut to the screen's width as the reader counts it: 80 columns, the emoji two each
+  const row = cut('\u26a0\ufe0f check '.repeat(20), cols).text;
+  const after = Array.from({ length: rows }, () => [{ text: row, style: null }]);
+  const term = narrowEmojiTerminal(cols, rows);
+  term.write(frameBytes(before, { cols, rows }));
+  term.write(frameBytes(after, { cols, rows }));
+  const stale = term.screen().filter((l) => l.includes('X'));
+  assert.deepEqual(stale, [], 'rows that keep cells of the frame before');
+  // the model itself: the row is drawn nine columns short there
+  assert.equal(term.screen()[0].trimEnd().length, cols - 9);
 });

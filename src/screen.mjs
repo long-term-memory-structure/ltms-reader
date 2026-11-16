@@ -3,11 +3,13 @@
 // restored on every way out (src/main.mjs calls restore() for q, Ctrl-C, SIGTERM, SIGHUP, SIGINT and an uncaught error,
 // and once more as the process exits). A terminal left raw is the one failure a reader must never have.
 //
-// What it writes is its own escape sequences (ENTER, LEAVE, a cursor position per line, SGR styles, erase to the end of
-// the line) and the text of the lines, each segment passed through visible() once more on its way out, so that no
-// control character, whatever its source, reaches the terminal as one.
+// What it writes is its own escape sequences (ENTER, LEAVE, a cursor position per line and the line erased whole, SGR
+// styles) and the text of the lines, each segment passed through visible() once more on its way out, so that no
+// control character, whatever its source, reaches the terminal as one. Each row is erased before it is written: a
+// terminal that draws a cluster narrower than it is counted here (an emoji and VS16, one column by wcwidth) ends the
+// row early, and nothing of the frame before may stay after it (R.F6).
 import readline from 'node:readline';
-import { displayOrder, visible, width } from './text.mjs';
+import { displayOrder, visible } from './text.mjs';
 
 /** The alternate screen, the cursor hidden, no wrapping at the last column (so a cluster a terminal draws wider than it
  *  is counted here cannot scroll the screen). */
@@ -24,13 +26,12 @@ export const colourFrom = (env) => !(typeof env.NO_COLOR === 'string' && env.NO_
 /** One segment's text as it is written: visible, on one line. */
 const safe = (s) => visible(s).replace(/\n/g, '\\n').replace(/\t/g, '\\t');
 
-/** The bytes of one whole frame: each line at its row, styled, erased to its end when it is shorter than the screen. */
+/** The bytes of one whole frame: each line at its row, the row erased whole first, then the line, styled. */
 export function frameBytes(lines, { cols, rows, colour = true, rtl = 'terminal' }) {
   let out = '';
   for (let i = 0; i < rows; i++) {
     const row = displayOrder(lines[i] ?? [], rtl);
-    out += `\x1b[${i + 1};1H`;
-    let w = 0;
+    out += `\x1b[${i + 1};1H\x1b[2K`;
     // segments of one style next to each other are written as one
     const merged = [];
     for (const s of row) { const last = merged[merged.length - 1]; if (last && (last.style ?? null) === (s.style ?? null)) last.text += s.text; else merged.push({ text: s.text, style: s.style ?? null }); }
@@ -38,9 +39,7 @@ export function frameBytes(lines, { cols, rows, colour = true, rtl = 'terminal' 
       const text = safe(s.text);
       const code = s.style && (colour || !COLOURS.has(s.style)) ? SGR[s.style] : undefined;
       out += code ? `\x1b[${code}m${text}\x1b[0m` : text;
-      w += width(text);
     }
-    if (w < cols) out += '\x1b[K';
   }
   return out;
 }
