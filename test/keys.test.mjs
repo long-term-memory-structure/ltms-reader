@@ -262,3 +262,59 @@ test('R.F11: the keys screen says so: q quits, any other key goes back', async (
     assert.deepEqual(exits, []);
   } finally { app.dispose(); source.dispose(); r.dispose(); }
 });
+
+// R.F10: at the design's 80 x 24, a record's place ("lines a to b of N") and the last line's "q quits" were cut
+test('R.F10: at 80 x 24, every view\'s last line keeps "? keys  q quits" whole, the longest addresses too; a record\'s place is whole', async () => {
+  const { cpSync, mkdirSync } = await import('node:fs');
+  const r = makeRoot();
+  // a project whose folder's name is long, as Claude Code names a deep working directory
+  const long = '-home-someone-work-repositories-company-a-long-project-name';
+  mkdirSync(path.join(r.root, long));
+  cpSync(path.join(r.root, '-work-demo', '11111111-1111-4111-8111-111111111111.jsonl'), path.join(r.root, long, '11111111-1111-4111-8111-111111111111.jsonl'));
+  const source = new RootSource({ root: r.root });
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC' });
+  const k = keyboard(app);
+  // every line looked at, and what it should be; the misses are listed together at the end
+  const seen = [];
+  const look = (what, i, re) => { const l = frameOf(app)[i]; seen.push({ what, line: l, ok: re.test(l) }); };
+  const quits = (address) => new RegExp(`^${address.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} {2}.*\\? keys {2}q quits$`);
+  try {
+    app.start(); await app.idle();
+    top(app.state).sel = top(app.state).rows.findIndex((x) => x.name === long);
+    await k.press(KEY.down); await k.press(KEY.up);
+    look('Projects, a long project name', 23, quits(long));
+    top(app.state).sel = top(app.state).rows.findIndex((x) => x.name === '-work-demo');
+    await k.press(KEY.enter);
+    look('Sessions', 23, quits('22222222'));
+    await k.press(KEY.down); await k.press(KEY.enter);
+    look('a session', 23, quits('11111111:T001'));
+    await k.press(KEY.enter);
+    look('a turn', 23, quits('11111111:L2'));
+    await k.press(KEY.enter);
+    look('a record', 23, quits('11111111:L2'));
+    look('a record\'s place', 1, /^lines 1 to \d+ of \d+ {2}/);
+    await k.press('j');
+    look('a record\'s place, as JSON', 1, /^lines 1 to \d+ of \d+ {2}/);
+    await k.press(':'); await k.press('agent-a0123456:L2'); await k.press(KEY.enter);
+    look('an agent\'s record', 23, quits('agent-a0123456:L2'));
+    await k.press(KEY.left);
+    look('an agent\'s turn', 23, quits('agent-a0123456:L2'));
+    await k.press(KEY.left);
+    look('an agent\'s session', 23, quits('agent-a0123456:T001'));
+    await k.press('/'); await k.press('npm test'); await k.press(KEY.enter);
+    look('Search', 23, quits('11111111:T003'));
+    assert.deepEqual(seen.filter((x) => !x.ok), [], `the lines that are cut, of ${seen.length}`);
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
+test('R.F10: a hint in the room left: its last two keys always, the others from the first as they fit; cut only when the two alone do not fit', async () => {
+  const { hintIn } = await import('../src/views.mjs');
+  const hint = ['j JSON', 'Esc back', 'PgUp PgDn pages', '/ search', ': address', '? keys', 'q quits'];
+  assert.equal(hintIn(hint, 200), 'j JSON  Esc back  PgUp PgDn pages  / search  : address  ? keys  q quits');
+  assert.equal(hintIn(hint, 65), 'j JSON  Esc back  PgUp PgDn pages  / search  ? keys  q quits');
+  assert.equal(hintIn(hint, 33), 'j JSON  Esc back  ? keys  q quits');
+  assert.equal(hintIn(hint, 22), '? keys  q quits');
+  assert.equal(hintIn(hint, 15), '? keys  q quits');
+  assert.equal(hintIn(hint, 10), '? keys  q…');
+  assert.equal(hintIn('q or Ctrl-C quits  any other key goes back', 20), 'q or Ctrl-C quits  …');
+});

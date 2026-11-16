@@ -46,14 +46,25 @@ export function when(iso, timeZone) {
 }
 
 // ---- the frame --------------------------------------------------------------------------------------------------------
+/** Each view's keys on its last line, the first to keep first; "? keys" and "q quits" are always kept (R.F10). */
 const HINTS = {
-  projects: 'Enter opens  / search  : address  ? keys  q quits',
-  sessions: 'Enter opens  Esc back  / search  : address  ? keys  q quits',
-  session: 'Enter opens  Esc back  / search  : address  ? keys  q quits',
-  turn: 'Enter opens the record  Esc back  / search  : address  ? keys  q quits',
-  record: 'PgUp PgDn pages  j JSON  Esc back  / search  : address  ? keys  q quits',
-  search: 'Enter opens  Esc back  / search  : address  ? keys  q quits',
+  projects: ['Enter opens', '/ search', ': address', '? keys', 'q quits'],
+  sessions: ['Enter opens', 'Esc back', '/ search', ': address', '? keys', 'q quits'],
+  session: ['Enter opens', 'Esc back', '/ search', ': address', '? keys', 'q quits'],
+  turn: ['Enter opens the record', 'Esc back', '/ search', ': address', '? keys', 'q quits'],
+  record: ['j JSON', 'Esc back', 'PgUp PgDn pages', '/ search', ': address', '? keys', 'q quits'],
+  search: ['Enter opens', 'Esc back', '/ search', ': address', '? keys', 'q quits'],
 };
+
+/** The keys of a hint that fit in `cols` columns: its last two always (cut only when they alone do not fit), and before
+ *  them as many of the others as fit, from the first (R.F10: at 80 columns, after a long address, the hint was cut and
+ *  "q quits" with it). A hint that is a string is fit as it is. */
+export function hintIn(hint, cols) {
+  if (typeof hint === 'string') return fit(hint, cols);
+  const kept = hint.slice(-2), rest = hint.slice(0, -2), out = [];
+  for (const h of rest) { if (width([...out, h, ...kept].join('  ')) > cols) break; out.push(h); }
+  return fit([...out, ...kept].join('  '), cols);
+}
 
 /** The end of s that fits in `cols` columns, in whole clusters (what is typed last stays in sight). */
 export function tail(s, cols) {
@@ -72,9 +83,10 @@ function statusLine(state, cols, address, hint = HINTS[top(state).kind] ?? '') {
     const room = Math.max(1, w - width(prompt) - 1);
     return [seg(fit(prompt, w)), seg(tail(label(state.input.text), room)), seg(' ', 'sel')];
   }
-  if (!address) return line(hint, w, 'dim');
+  if (!address) return [seg(hintIn(hint, w), 'dim')];
   const a = fit(label(address), w);
-  return [seg(a, 'addr'), seg(fit(`  ${hint}`, w - width(a)), 'dim')];
+  const room = w - width(a) - 2;
+  return room > 0 ? [seg(a, 'addr'), seg(`  ${hintIn(hint, room)}`, 'dim')] : [seg(a, 'addr')];
 }
 
 /** The body's height for a frame with (or without) a line of column headings. */
@@ -345,7 +357,8 @@ export function record(state, cols, rows) {
   const h = bodyHeight(rows, false);
   const t = Math.max(0, Math.min(v.top ?? 0, lines.length - h));
   const kind = [rec.type, rec.subtype].filter(Boolean).map(label).join('/') || '(no type)';
-  const sub = `${kind}${rec.channel ? `  ${label(rec.channel)}` : ''}${rec.time ? `  ${when(rec.time, state.timeZone)}` : ''}  ${plural(rec.bytes, 'byte', 'bytes')} at offset ${num(rec.offset)}  ${v.json ? 'as JSON' : plural(rec.reading.length, 'part', 'parts')}  lines ${num(Math.min(lines.length, t + 1))} to ${num(Math.min(lines.length, t + h))} of ${num(lines.length)}`;
+  // the place first, then whether it is the JSON: at 80 columns the end of the line can be cut, these never (R.F10)
+  const sub = `lines ${num(Math.min(lines.length, t + 1))} to ${num(Math.min(lines.length, t + h))} of ${num(lines.length)}  ${v.json ? 'as JSON' : plural(rec.reading.length, 'part', 'parts')}  ${kind}${rec.channel ? `  ${label(rec.channel)}` : ''}${rec.time ? `  ${when(rec.time, state.timeZone)}` : ''}  ${plural(rec.bytes, 'byte', 'bytes')} at offset ${num(rec.offset)}`;
   return frame(state, cols, rows, { title, sub, body: lines.slice(t, t + h), detail: `${label(rec.a)}  line ${rec.line} of ${label(v.file)}${rec.uuid ? `  uuid ${label(rec.uuid)}` : ''}`, address: rec.a });
 }
 

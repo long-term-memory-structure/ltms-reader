@@ -218,12 +218,12 @@ test('the demo session, its third turn and a record, at 80 x 24, line by line', 
       '  demo.jso:L32  reply       A hook blocked removing the build folder, so it is …',
       ...Array(6).fill(''),
       'demo.jso:L20  prompt  2026-01-05 09:02',
-      'demo.jso:L20  Enter opens the record  Esc back  / search  : address  ? keys  q…',
+      'demo.jso:L20  Enter opens the record  Esc back  / search  ? keys  q quits',
     ]);
     await keys.press(KEY.down + KEY.down + KEY.enter);
     assert.deepEqual(trimmed(app.lines()), [
       'ltms-reader  Record demo.jso:L22  demo.jsonl',
-      'assistant  2026-01-05 09:02  739 bytes at offset 13,921  1 part  lines 1 to 5 o…',
+      'lines 1 to 5 of 5  1 part  assistant  2026-01-05 09:02  739 bytes at offset 13,…',
       '-- tool call: Bash --',
       '{',
       '  "command": "rm -rf ./build",',
@@ -231,7 +231,7 @@ test('the demo session, its third turn and a record, at 80 x 24, line by line', 
       '}',
       ...Array(15).fill(''),
       'demo.jso:L22  line 22 of demo.jsonl  uuid a0000000-0000-4000-8000-000000000022',
-      'demo.jso:L22  PgUp PgDn pages  j JSON  Esc back  / search  : address  ? keys  …',
+      'demo.jso:L22  j JSON  Esc back  PgUp PgDn pages  / search  ? keys  q quits',
     ]);
     await keys.press(KEY.escape);
     assert.equal(trimmed(app.lines())[0], 'ltms-reader  Turn demo.jso:T003  demo.jsonl', 'Esc goes back');
