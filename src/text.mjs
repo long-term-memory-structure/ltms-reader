@@ -128,6 +128,23 @@ export function wrap(s, cols) {
   return out;
 }
 
+/** The reader's own words (not a transcript's text) in lines of at most `cols` columns, broken at spaces where a
+ *  line can be, else by columns. */
+export function wrapWords(s, cols) {
+  const out = [];
+  let line = '';
+  for (const word of s.split(' ')) {
+    const next = line === '' ? word : `${line} ${word}`;
+    if (width(next) <= cols) { line = next; continue; }
+    if (line !== '') out.push(line);
+    const pieces = wrap(word, cols);
+    line = pieces.pop();
+    out.push(...pieces);
+  }
+  out.push(line);
+  return out;
+}
+
 /** s with each tab as spaces to the next multiple of `tab` columns, counted by width from the start of s. */
 export function expandTabs(s, tab = 8) {
   if (!s.includes('\t')) return s;
