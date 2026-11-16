@@ -158,9 +158,10 @@ pasted acts as a key.
 - Some clusters are drawn wider by some terminals than by the cluster rule (an Indic conjunct, an emoji sequence a
   terminal does not join); a row then ends early, at the screen's edge.
 - A paragraph's levels are resolved once, when a line of it is first drawn, and kept for the last two drawn of 4,096
-  characters or more: for R's record (one paragraph of 4,000,000 Hebrew characters) its first frame took 150 to 155 ms
-  on Node 26.13.1, where it took 12 to 19 before (the levels alone: 139 to 153 ms on Node 26.13.1, 143 on Node 20.20.2);
-  the frames after it as before (a page at 200 x 60: 9.4 to 11.8 ms, 10.4 to 11.4 before).
+  characters or more. For R's record (one paragraph of 4,000,000 Hebrew characters), measured on 2026-11-16 on one
+  machine, its first frame took 150 to 239 ms on Node 26.13.1 (11 runs), where it took 12 to 23 ms before (11 runs);
+  the levels alone 139 to 153 ms (4 runs), and 143 to 145 on Node 20.20.2 (2 runs); the frames after it as before (a
+  page at 200 x 60: 9.4 to 14.4 ms in 7 runs, 10.4 to 14.2 before).
 - On Node 20, a long line of text that is not ASCII is laid out about three times slower than on Node 26: Node 20's
   grapheme segmenter is slower, and walked over one long string it costs more at each cluster the longer the string is
   (3.4 us a cluster at 10,000 units, 115 at 80,000), so the reader walks a long line 256 units at a time. Measured on
