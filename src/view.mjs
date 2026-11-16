@@ -86,7 +86,14 @@ export function commandOf(text) {
   const a = /<command-args>([^<]*)<\/command-args>/.exec(text);
   return { name: m[1].trim(), args: clip((a?.[1] ?? '').trim(), 400).text };
 }
-const json = (v, space) => { try { return JSON.stringify(v, null, space) ?? ''; } catch { return '(too large to write out)'; } };
+/** v as JSON ('' for undefined), indented by `space`; "(too large to write out)" when it cannot be written. A value whose
+ *  indented JSON would pass JavaScript's limit on a string's length is measured first (jsonSize) and never handed to
+ *  JSON.stringify, which on Node 20 held some 800 MB before the heap ran out (N3; Node 26 threw at once). Without an
+ *  indent, JSON is no longer than the line the value was read from. */
+const json = (v, space) => {
+  if (space && jsonSize(v, space).units > STRING_MAX_UNITS) return '(too large to write out)';
+  try { return JSON.stringify(v, null, space) ?? ''; } catch { return '(too large to write out)'; }
+};
 
 /** The input field a person looks at first, by tool: the command, the file, the pattern, the address, the task. */
 const INPUT_KEYS = ['command', 'file_path', 'notebook_path', 'path', 'pattern', 'url', 'query', 'skill', 'description', 'prompt', 'subagent_type'];
@@ -306,7 +313,8 @@ export function jsonSize(v, indent) {
  * What recordView writes of the record on `line` (null when no record was parsed on it), in bytes, measured by walking
  * it (jsonSize): the record as JSON (indent 1) and each part shown as JSON (indent 2), whole, before they are clipped;
  * each at one byte a unit, two when it holds a character past U+00FF, as V8 keeps a string; one longer than
- * STRING_MAX_UNITS is never written (JSON.stringify throws; measured: it holds nothing) and counts nothing. N3: JSON is
+ * STRING_MAX_UNITS is never written (json() measures it first, and does not hand it to JSON.stringify) and counts
+ * nothing. N3: JSON is
  * indented once more at each level a value is nested in, so that a list nested 990 deep, on a line of 0.8 MB, is written
  * as 399,389,570 units.
  */

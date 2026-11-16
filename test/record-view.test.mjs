@@ -214,3 +214,21 @@ test("N3: the checker's record (a list nested 990 deep, 400,000 ones): its view'
     assert.equal(recordTooLarge(t.positions[2].bytes, Buffer.byteLength(text), 768 * MB, 'x', V.recordViewBytes(t, 3)), null, 'shown at the setting named');
   } finally { rmSync(own, { recursive: true, force: true }); }
 });
+
+test('N3, Node 20: a part whose JSON would pass the limit on a string\'s length is never handed to JSON.stringify (on Node 20 that held some 800 MB before the heap ran out); it reads "(too large to write out)"', async () => {
+  const V = await import('../src/view.mjs');
+  const { parseTranscript } = await import('#ltms');
+  const { readFileSync } = await import('node:fs');
+  const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-deep-'));
+  try {
+    const file = path.join(own, 'deep.jsonl');
+    deepRecord(file, 990, 400_000);
+    const r = parseTranscript(readFileSync(file, 'utf8')).records[2];
+    const real = JSON.stringify, asked = [];
+    let parts;
+    JSON.stringify = function (v, ...rest) { asked.push(v); return real.call(this, v, ...rest); };
+    try { parts = V.readingOf(r, 4_000_000); } finally { JSON.stringify = real; }
+    assert.ok(!asked.includes(r.toolUseResult), 'the structured part (796,770,118 units at indent 2) was not handed to JSON.stringify');
+    assert.deepEqual(parts.find((p) => p.kind === 'structured'), { kind: 'structured', label: 'tool result, structured', text: '(too large to write out)', more: 0 });
+  } finally { rmSync(own, { recursive: true, force: true }); }
+});

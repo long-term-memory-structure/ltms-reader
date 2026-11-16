@@ -45,7 +45,9 @@ export const RECORD_VIEW_PER_BYTE = 16;
 
 /** What a record's view needs beside the JSON it writes (N3), measured: over six records nested deep (lists 200 to 990
  *  deep, one of Hebrew strings), the view opened, its text and its JSON laid out, at an old space of 9 to 24 MB more
- *  than that JSON (recordViewBytes); Node's heap limit, which this rule reads, is the old space and 96 MB more. */
+ *  than that JSON (recordViewBytes) on Node 26, and of 18 to 73 MB more on Node 20; Node's heap limit, which this rule
+ *  reads, is the old space and 96 MB more on Node 26, 48 on Node 20. At the heap where each failed, on both, the rule
+ *  refuses it. */
 export const BUILT_MARGIN = 96 * MB;
 
 /**
