@@ -3,7 +3,7 @@
 // its name (A: the stranger in the window, B: the adversary, C: the claims reader). The one that drives the page's router
 // (B.F10) stays with the router, in ltms-gui.
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -73,7 +73,9 @@ test('B.F2, C-09: a projects folder that is itself a symbolic link is read; what
   try {
     assert.equal(e.rootState(), 'dir');
     assert.deepEqual(e.projects().projects.map((p) => p.name), [APP]);
-    assert.equal(e.rootShown(), link);
+    // the link as given, not its target; the home folder as ~ when the link is in it, as it is when TMPDIR is in HOME (N7)
+    const h = homedir();
+    assert.equal(e.rootShown(), link.startsWith(`${h}${path.sep}`) ? `~${link.slice(h.length)}` : link);
     assert.equal((await e.index(APP)).sessions.length >= 1, true);
   } finally { e.dispose(); }
 });

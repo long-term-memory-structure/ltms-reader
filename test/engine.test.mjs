@@ -153,7 +153,13 @@ test('the root as the page shows it: the home folder as ~, nothing else rewritte
   assert.equal(new Engine({ root: path.join(h, '.claude', 'projects') }).rootShown(), `~${path.sep}.claude${path.sep}projects`);
   assert.equal(new Engine({ root: h }).rootShown(), '~');
   assert.equal(new Engine({ root: `${h}2${path.sep}projects` }).rootShown(), `${h}2${path.sep}projects`, 'a folder whose name only starts like home is not home');
-  assert.equal(new Engine({ root: path.join(tmpdir(), 'x') }).rootShown(), path.join(tmpdir(), 'x'));
+  // a folder outside the home folder by construction (N7: the temporary folder is inside it when TMPDIR is, and was
+  // then shown, rightly, as ~/...); the temporary folder as the rule shows it, wherever TMPDIR is
+  const outside = path.join(path.parse(h).root, `not-${path.basename(h) || 'home'}`, 'x');
+  assert.ok(outside !== h && !outside.startsWith(`${h}${path.sep}`), `${outside} is outside ${h}`);
+  assert.equal(new Engine({ root: outside }).rootShown(), outside);
+  const t = path.join(tmpdir(), 'x');
+  assert.equal(new Engine({ root: t }).rootShown(), t.startsWith(`${h}${path.sep}`) ? `~${t.slice(h.length)}` : t);
 });
 
 test("the reading process refuses a symbolic link itself, whatever reached it (the engine refuses one first)", async () => {
