@@ -60,3 +60,26 @@ test('a list of 300,000 rows: its columns measured without spreading the rows in
   assert.equal(lines.length, 24);
   assert.match(lines.find((l) => l.startsWith('> ')), /^> abcdefgh:L300000 {2}call {8}ok {2}Bash /);
 });
+
+// R.F9: counts of 10,000 or more were cut in their 5-column cells ("12,0…")
+test('R.F9: counts of 10,000 and more are whole: Sessions\' turns, calls, failed, compactions and agents; a session\'s calls and failed', async () => {
+  const { render } = await import('../src/views.mjs');
+  const counts = { turns: 12_000, calls: 35_000, failures: 1_715, compactions: 10_500, agents: 123_456 };
+  const sessions = { kind: 'sessions', project: '-work-big', data: { sessions: [{}], coverage: { files: { found: 1, read: 1, failed: 0 } }, ms: 3800 }, rows: [{ kind: 'session', p: '71717171', first: '2026-03-01T10:00:00.000Z', last: '2026-03-01T11:00:00.000Z', ...counts, file: '71717171.jsonl', copies: 0 }], sel: 0, top: 0 };
+  for (const cols of [80, 200]) {
+    const lines = plainOf(render({ cols, rows: 24, stack: [sessions], input: null, help: false, note: null, now: 0, timeZone: 'UTC' }, cols, 24));
+    const row = lines.find((l) => l.startsWith('> 71717171'));
+    assert.deepEqual(row.slice(2).trim().split(/ {2,}/).slice(2, 7), ['12,000', '35,000', '1,715', '10,500', '123,456'], `Sessions at ${cols}: ${row}`);
+    const head = lines[2].trim().split(/ {2,}/);
+    assert.deepEqual(head.slice(2, 7), ['turns', 'calls', 'failed', 'compact', 'agents'], `the headings over them at ${cols}: ${lines[2]}`);
+    // each count right-aligned under its heading: the heading ends where the count ends
+    for (const [h, c] of [['turns', '12,000'], ['calls', '35,000'], ['failed', '1,715'], ['compact', '10,500'], ['agents', '123,456']]) assert.equal(lines[2].indexOf(` ${h}`) + 1 + h.length, row.indexOf(` ${c}`) + 1 + c.length, `${h} over ${c}`);
+  }
+  const doc = { view: { turns: [{}], index: { failures: 12_345, calls: 35_000, compactions: [] }, stats: { lines: 70_001, parsed: 70_001, first: '2026-03-01T10:00:00.000Z', last: '2026-03-01T11:00:00.000Z' }, fileKind: 'transcript', problems: { count: 0 } } };
+  const session = { kind: 'session', project: null, file: 'oneturn3.jsonl', doc, rows: [{ kind: 'turn', index: 0, ta: 'oneturn3:T001', a: 'oneturn3:L1', ch: 'typed', calls: 35_000, failed: 12_345, prompt: 'one turn, many calls', command: null, from: 1, to: 70_001, records: 70_001 }], sel: 0, top: 0 };
+  for (const cols of [80, 200]) {
+    const lines = plainOf(render({ cols, rows: 24, stack: [session], input: null, help: false, note: null, now: 0, timeZone: 'UTC' }, cols, 24));
+    const row = lines.find((l) => l.startsWith('> oneturn3:T001'));
+    assert.deepEqual(row.slice(2).trim().split(/ {2,}/).slice(1, 4), ['typed', '35,000', '12,345'], `a session at ${cols}: ${row}`);
+  }
+});

@@ -118,6 +118,9 @@ function widest(rows, tag, f, min, max) {
   return byTag.get(tag);
 }
 
+/** A count column's width: its widest count as shown (f(row), or null for a row without one), its heading's at least. */
+const countWidth = (rows, tag, f, heading) => widest(rows, `count:${tag}`, (r) => { const t = f(r); return t === null ? null : width(t); }, width(heading), 15);
+
 /** The first list row in sight: the view's own, moved so that its selected row is in sight. */
 export function topOf(view, n, h) {
   let t = Math.max(0, Math.min(view.top ?? 0, n - h));
@@ -189,12 +192,17 @@ export function sessions(state, cols, rows) {
   const sub = `${plural(d.sessions.length, 'session', 'sessions')}  ${num(c.found)} files found, ${num(c.read)} read, ${num(c.failed)} failed${c.notConversation ? `, ${num(c.notConversation)} with no conversation` : ''}${d.copies?.files ? `; ${plural(d.copies.files, 'identical copy', 'identical copies')} folded` : ''}  ${((d.ms ?? 0) / 1000).toFixed(1)} s`;
   const pw = widest(v.rows, 'p', (r) => width(label(r.p)), 8, 26);
   const wide = cols >= 120;
+  // each count as wide as its widest, its heading's width at least (R.F9: 12,000 turns read "12,0…" in 5 columns)
+  const agents = (r) => (r.agents === null || r.agents === undefined ? '?' : num(r.agents));
+  const tw = countWidth(v.rows, 'turns', (r) => num(r.turns), 'turns'), cw = countWidth(v.rows, 'calls', (r) => num(r.calls), 'calls');
+  const fw = countWidth(v.rows, 'failures', (r) => num(r.failures), 'failed'), kw = countWidth(v.rows, 'compactions', (r) => num(r.compactions), 'compact');
+  const gw = countWidth(v.rows, 'agents', agents, 'agents');
   const cellsOf = (r) => [
-    [label(r.p), pw, 'left', 'addr'], [when(r.first, state.timeZone), 16], [num(r.turns), 5, 'right'], [num(r.calls), 5, 'right'],
-    [num(r.failures), 6, 'right', r.failures ? 'bad' : null], [num(r.compactions), 7, 'right'], [r.agents === null || r.agents === undefined ? '?' : num(r.agents), 6, 'right'],
+    [label(r.p), pw, 'left', 'addr'], [when(r.first, state.timeZone), 16], [num(r.turns), tw, 'right'], [num(r.calls), cw, 'right'],
+    [num(r.failures), fw, 'right', r.failures ? 'bad' : null], [num(r.compactions), kw, 'right'], [agents(r), gw, 'right'],
     ...(wide ? [[when(r.last, state.timeZone), 16], [`${label(r.file)}${r.copies ? `  +${plural(r.copies, 'identical copy', 'identical copies')}` : ''}`, 0]] : []),
   ];
-  const headings = `  ${cell('session', pw)}  ${cell('started', 16)}  ${cell('turns', 5, 'right')}  ${cell('calls', 5, 'right')}  ${cell('failed', 6, 'right')}  ${cell('compact', 7, 'right')}  ${cell('agents', 6, 'right')}${wide ? `  ${cell('last', 16)}  file` : ''}`;
+  const headings = `  ${cell('session', pw)}  ${cell('started', 16)}  ${cell('turns', tw, 'right')}  ${cell('calls', cw, 'right')}  ${cell('failed', fw, 'right')}  ${cell('compact', kw, 'right')}  ${cell('agents', gw, 'right')}${wide ? `  ${cell('last', 16)}  file` : ''}`;
   const h = bodyHeight(rows, true);
   const body = v.rows.length ? listBody(v, v.rows, h, cellsOf, cols) : textBody('ltms index lists no session here: no transcript in this folder holds a turn.', cols);
   const r = v.rows[v.sel];
@@ -217,8 +225,10 @@ export function session(state, cols, rows) {
   const sub = `${plural(sv.turns.length, 'turn', 'turns')}  ${plural(calls, 'call', 'calls')}  ${num(failed)} failed  ${plural(sv.index.compactions.length, 'compaction', 'compactions')}  ${plural(sv.stats.lines, 'line', 'lines')}${sv.stats.first ? `  ${when(sv.stats.first, state.timeZone)} to ${when(sv.stats.last, state.timeZone)}` : ''}`;
   const aw = widest(v.rows, 'ta', (r) => width(label(r.ta ?? r.a)), 8, 26);
   const h = bodyHeight(rows, true);
+  const turnsOnly = (f) => (r) => (r.kind === 'turn' ? f(r) : null);
+  const cw = countWidth(v.rows, 'calls', turnsOnly((r) => num(r.calls)), 'calls'), fw = countWidth(v.rows, 'failed', turnsOnly((r) => num(r.failed)), 'failed');
   const cellsOf = (r) => (r.kind === 'turn'
-    ? [[label(r.ta), aw, 'left', 'addr'], [label(r.ch), 8], [num(r.calls), 5, 'right'], [num(r.failed), 6, 'right', r.failed ? 'bad' : null], [r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.prompt), 0]]
+    ? [[label(r.ta), aw, 'left', 'addr'], [label(r.ch), 8], [num(r.calls), cw, 'right'], [num(r.failed), fw, 'right', r.failed ? 'bad' : null], [r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.prompt), 0]]
     : r.kind === 'compaction' ? [[label(r.a), aw, 'left', 'addr'], [compactionText(r), 0, 'left', 'dim']]
       : [[label(r.a), aw, 'left', 'addr'], [`${r.kind}  ${preview(r.text)}`, 0, 'left', 'dim']]);
   const empty = `No turns: ltms reads this file as ${label(sv.fileKind)}, ${plural(sv.stats.lines, 'line', 'lines')}, ${plural(sv.stats.parsed, 'record', 'records')} parsed${sv.problems.count ? `, ${plural(sv.problems.count, 'line', 'lines')} not read` : ''}. A session's turns start at its prompts.`;
@@ -228,7 +238,7 @@ export function session(state, cols, rows) {
   if (r?.kind === 'turn') detail = `${label(r.ta)}  prompt ${label(r.a)}  lines ${r.from} to ${r.to}  ${plural(r.records, 'record', 'records')}${r.time ? `  ${when(r.time, state.timeZone)}` : ''}`;
   else if (r?.kind === 'compaction') detail = `boundary ${label(r.a)}${r.summary ? `  summary ${label(r.summary)}` : ''}${r.time ? `  ${when(r.time, state.timeZone)}` : ''}${r.lead ? '  before the first prompt' : ''}`;
   else if (r) detail = `${label(r.a)}  ${r.kind}`;
-  return frame(state, cols, rows, { title, sub, headings: `  ${cell('turn', aw)}  ${cell('channel', 8)}  ${cell('calls', 5, 'right')}  ${cell('failed', 6, 'right')}  prompt`, body, detail, address: r ? (r.ta ?? r.a) : null });
+  return frame(state, cols, rows, { title, sub, headings: `  ${cell('turn', aw)}  ${cell('channel', 8)}  ${cell('calls', cw, 'right')}  ${cell('failed', fw, 'right')}  prompt`, body, detail, address: r ? (r.ta ?? r.a) : null });
 }
 
 // ---- A turn -----------------------------------------------------------------------------------------------------------
