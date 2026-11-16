@@ -15,11 +15,14 @@ export const plain = (lines) => lines.map((l) => l.map((s) => s.text).join(''));
 // ---- text into cells ------------------------------------------------------------------------------------------------
 /** A label on one line: every control character, the new line and the tab included, visible. */
 export const label = (s) => visible(s ?? '').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
-/** The first line of a text that holds anything but blanks, made visible, its tabs as spaces. */
-export function preview(s) {
-  const v = visible(typeof s === 'string' ? s : '');
-  const first = v.split('\n').find((l) => l.trim() !== '') ?? '';
-  return expandTabs(first).trimEnd();
+/** The first line of a text that holds anything but blanks, made visible, its tabs as spaces; with … at its end when
+ *  the view layer's clip cut the text inside that line (`more` units left out: R.F4), so that the row shows it goes on. */
+export function preview(s, more = 0) {
+  const pieces = visible(typeof s === 'string' ? s : '').split('\n');
+  const i = pieces.findIndex((l) => l.trim() !== '');
+  if (i < 0) return more > 0 ? '\u2026' : '';
+  const first = expandTabs(pieces[i]).trimEnd();
+  return more > 0 && i === pieces.length - 1 ? `${first}\u2026` : first;
 }
 const num = (n) => (Number.isFinite(n) ? n.toLocaleString('en-US') : '-');
 const plural = (n, one, many) => `${num(n)} ${n === 1 ? one : many}`;
@@ -228,9 +231,9 @@ export function session(state, cols, rows) {
   const turnsOnly = (f) => (r) => (r.kind === 'turn' ? f(r) : null);
   const cw = countWidth(v.rows, 'calls', turnsOnly((r) => num(r.calls)), 'calls'), fw = countWidth(v.rows, 'failed', turnsOnly((r) => num(r.failed)), 'failed');
   const cellsOf = (r) => (r.kind === 'turn'
-    ? [[label(r.ta), aw, 'left', 'addr'], [label(r.ch), 8], [num(r.calls), cw, 'right'], [num(r.failed), fw, 'right', r.failed ? 'bad' : null], [r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.prompt), 0]]
+    ? [[label(r.ta), aw, 'left', 'addr'], [label(r.ch), 8], [num(r.calls), cw, 'right'], [num(r.failed), fw, 'right', r.failed ? 'bad' : null], [r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.prompt, r.promptMore), 0]]
     : r.kind === 'compaction' ? [[label(r.a), aw, 'left', 'addr'], [compactionText(r), 0, 'left', 'dim']]
-      : [[label(r.a), aw, 'left', 'addr'], [`${r.kind}  ${preview(r.text)}`, 0, 'left', 'dim']]);
+      : [[label(r.a), aw, 'left', 'addr'], [`${r.kind}  ${preview(r.text, r.more)}`, 0, 'left', 'dim']]);
   const empty = `No turns: ltms reads this file as ${label(sv.fileKind)}, ${plural(sv.stats.lines, 'line', 'lines')}, ${plural(sv.stats.parsed, 'record', 'records')} parsed${sv.problems.count ? `, ${plural(sv.problems.count, 'line', 'lines')} not read` : ''}. A session's turns start at its prompts.`;
   const body = v.rows.length ? listBody(v, v.rows, h, cellsOf, cols) : textBody(empty, cols);
   const r = v.rows[v.sel];
@@ -245,15 +248,15 @@ export function session(state, cols, rows) {
 /** What a turn's row says after its address and kind. */
 export function itemText(r, ek) {
   switch (r.kind) {
-    case 'prompt': return `${label(r.ch)}  ${plural(r.n, 'character', 'characters')}  ${r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.text)}`;
+    case 'prompt': return `${label(r.ch)}  ${plural(r.n, 'character', 'characters')}  ${r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.text, r.more)}`;
     case 'call': {
       const status = r.ok === true ? 'ok' : r.ok === false ? `failed${ek ? ` ${label(ek)}` : ''}` : 'no result recorded';
-      return `${status}  ${label(r.tool)}  ${r.inputKey ? `${label(r.inputKey)}: ` : ''}${preview(r.inputText)}`;
+      return `${status}  ${label(r.tool)}  ${r.inputKey ? `${label(r.inputKey)}: ` : ''}${preview(r.inputText, r.inputMore)}`;
     }
-    case 'result': return `${plural(r.n, 'character', 'characters')}  ${preview(r.text)}`;
+    case 'result': return `${plural(r.n, 'character', 'characters')}  ${preview(r.text, r.more)}`;
     case 'compaction': return compactionText(r, false).trim();
-    case 'note': return `${label(r.sub)}  ${r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.text)}`;
-    default: return preview(r.text);
+    case 'note': return `${label(r.sub)}  ${r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.text, r.more)}`;
+    default: return preview(r.text, r.more);
   }
 }
 export function turn(state, cols, rows) {

@@ -22,13 +22,27 @@ export const prefixOf = (name) => (name.startsWith('agent-') ? `agent-${name.sli
  *  strings, joined by new lines; anything else as ''. */
 export const flat = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (typeof x === 'string' ? x : typeof x?.text === 'string' ? x.text : '')).join('\n') : '');
 
-/** At most n UTF-16 units of s, never splitting a surrogate pair, and how many units were left out. */
+const GRAPHEMES = typeof Intl?.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+/** How far back from a limit a cluster's start is looked for: a cluster longer than this is cut where it is found. */
+const LOOK_BACK = 512;
+
+/** At most n UTF-16 units of s, cut where a grapheme cluster begins (R.F4: a cut by units alone left a pointed letter
+ *  without some of its marks, and the page and the screen drew it so), and how many units were left out. The clusters
+ *  are found in the units around n only, so a long text is not segmented whole. Without Intl.Segmenter, never inside a
+ *  surrogate pair. */
 export function clip(s, n) {
   if (typeof s !== 'string') return { text: '', more: 0 };
   if (s.length <= n) return { text: s, more: 0 };
-  let k = n;
-  const c = s.charCodeAt(k - 1);
-  if (c >= 0xd800 && c <= 0xdbff) k--;
+  let k = Math.max(0, n);
+  if (GRAPHEMES) {
+    const from = Math.max(0, k - LOOK_BACK);
+    let last = from;
+    for (const { index } of GRAPHEMES.segment(s.slice(from, Math.min(s.length, k + 16)))) { if (from + index > k) break; last = from + index; }
+    k = last;
+  } else {
+    const c = s.charCodeAt(k - 1);
+    if (c >= 0xd800 && c <= 0xdbff) k--;
+  }
   return { text: s.slice(0, k), more: s.length - k };
 }
 

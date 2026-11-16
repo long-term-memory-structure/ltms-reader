@@ -36,4 +36,5 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   an empty word reads `none`, as `ltms skeleton` prints it (the view layer gave an empty string; found by running the
   views over the core's own test transcripts, `test/fixtures/review/pb-labels.jsonl`); and a turn of more line numbers
   than a call takes arguments (about 31,000 tool calls in one turn, on Node 26) no longer stops its session's view with
-  a RangeError.
+  a RangeError; and a text the view layer clips (a prompt, an input, a result, a reply) is cut where a grapheme cluster
+  begins, never between a letter and its marks, and its row ends with … when the clip cut its first line.

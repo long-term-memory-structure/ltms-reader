@@ -37,14 +37,14 @@ export function sessionRows(view) {
         const s = next?.kind === 'summary' ? next : null;
         out.push({ kind: 'compaction', a: x.a, line: x.line, summary: s?.a ?? null, sline: s?.line ?? null, trigger: x.trigger, pre: x.pre, post: x.post, time: x.time, by: x.by?.ta ?? null, lead });
       } else if (x.kind === 'summary' && !(items[i - 1]?.kind === 'compaction' || out.some((r) => r.summary === x.a))) {
-        out.push({ kind: 'summary', a: x.a, line: x.line, text: x.text, time: x.time, lead });
+        out.push({ kind: 'summary', a: x.a, line: x.line, text: x.text, more: x.more ?? 0, time: x.time, lead });
       }
     });
     return out;
   };
   rows.push(...pairs(view.lead, true));
   view.turns.forEach((t, i) => {
-    rows.push({ kind: 'turn', index: i, ta: t.ta, a: t.a, line: t.line, ch: t.ch, calls: t.calls, failed: t.failed, prompt: t.prompt.text, command: t.command, n: t.n, time: t.time, from: t.from, to: t.to, records: t.records });
+    rows.push({ kind: 'turn', index: i, ta: t.ta, a: t.a, line: t.line, ch: t.ch, calls: t.calls, failed: t.failed, prompt: t.prompt.text, promptMore: t.prompt.more, command: t.command, n: t.n, time: t.time, from: t.from, to: t.to, records: t.records });
     rows.push(...pairs(t.items, false));
   });
   return rows;
@@ -52,16 +52,16 @@ export function sessionRows(view) {
 
 /** The rows of a turn view: its prompt, then its items in the order they were written; a call's result right after it. */
 export function turnRows(t) {
-  const rows = [{ kind: 'prompt', a: t.a, line: t.line, ch: t.ch, n: t.n, text: t.prompt.text, command: t.command, time: t.time }];
+  const rows = [{ kind: 'prompt', a: t.a, line: t.line, ch: t.ch, n: t.n, text: t.prompt.text, more: t.prompt.more, command: t.command, time: t.time }];
   t.items.forEach((x, i) => {
     if (x.kind === 'call') {
-      rows.push({ kind: 'call', item: x, a: x.a, line: x.line, tool: x.tool, ok: x.ok, inputKey: x.input.key, inputText: x.input.text, r: x.r, time: x.time });
-      if (x.r) rows.push({ kind: 'result', call: x, a: x.r, line: x.rline, n: x.n, text: x.result?.text ?? '', of: x.a, ok: x.ok });
+      rows.push({ kind: 'call', item: x, a: x.a, line: x.line, tool: x.tool, ok: x.ok, inputKey: x.input.key, inputText: x.input.text, inputMore: x.input.more, r: x.r, time: x.time });
+      if (x.r) rows.push({ kind: 'result', call: x, a: x.r, line: x.rline, n: x.n, text: x.result?.text ?? '', more: x.result?.more ?? 0, of: x.a, ok: x.ok });
     } else if (x.kind === 'compaction') {
       const next = t.items.slice(i + 1).find((y) => y.kind === 'compaction' || y.kind === 'summary');
       rows.push({ kind: 'compaction', a: x.a, line: x.line, trigger: x.trigger, pre: x.pre, post: x.post, summary: next?.kind === 'summary' ? next.a : null, time: x.time, by: x.by?.ta ?? null });
     } else {
-      rows.push({ kind: x.kind, a: x.a, line: x.line, text: x.text, sub: x.sub, command: x.command ?? null, time: x.time });
+      rows.push({ kind: x.kind, a: x.a, line: x.line, text: x.text, more: x.more ?? 0, sub: x.sub, command: x.command ?? null, time: x.time });
     }
   });
   return rows;
