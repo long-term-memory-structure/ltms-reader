@@ -295,3 +295,41 @@ test("N3: the checker's record nested 990 deep (a line of 0.8 MB) at --max-old-s
     assert.equal(again.after, again.before, 'stty -g after = before');
   } finally { r.dispose(); }
 });
+
+// ---- R1 (S377, round 3): right to left, end to end ------------------------------------------------------------------------
+// The Hebrew fixture's first prompt, opened as a record, as the terminal receives it: laid out by the reader by default
+// (every terminal but Konsole), as stored with an RLM after it under Konsole (KONSOLE_VERSION), LTMS_READER_BIDI over
+// both; a value LTMS_READER_BIDI does not take is refused before the screen opens. The two forms are spelled out with
+// escapes here, the visual one as test/bidi.test.mjs's oracles give it.
+const STORED = '\u05d1\u05b0\u05bc\u05e8\u05b5\u05d0\u05e9\u05b4\u05c1\u05d9\u05ea: read src/\u05de\u05d5\u05d3\u05d5\u05dc.ts (line 12) and fix [the bug] in \u05e4\u05d5\u05e0\u05e7\u05e6\u05d9\u05d4() \u2014 3.14 > 2';
+const LAID_OUT = '2 < 3.14 \u2014 ()\u05d4\u05d9\u05e6\u05e7\u05e0\u05d5\u05e4 read src/\u05dc\u05d5\u05d3\u05d5\u05de.ts (line 12) and fix [the bug] in :\u05ea\u05d9\u05e9\u05b4\u05c1\u05d0\u05e8\u05b5\u05d1\u05b0\u05bc';
+for (const [what, env, want] of [
+  ['by default (no Konsole): laid out by the reader', {}, LAID_OUT],
+  ['under Konsole (KONSOLE_VERSION): as stored, with an RLM after it', { KONSOLE_VERSION: '260803' }, `${STORED}\u200f`],
+  ['under Konsole with LTMS_READER_BIDI=reader: laid out by the reader', { KONSOLE_VERSION: '260803', LTMS_READER_BIDI: 'reader' }, LAID_OUT],
+  ['LTMS_READER_BIDI=terminal: as stored, with an RLM after it', { LTMS_READER_BIDI: 'terminal' }, `${STORED}\u200f`],
+]) {
+  test(`R1: a Hebrew record ${what}; q, and the terminal as it was`, { skip, timeout: 60_000 }, async () => {
+    const r = makeRoot('ltms-reader-pty-');
+    try {
+      const res = await ptyRun(r, { args: [path.join(OWN, 'hebrew-english.jsonl')], env, steps: [{ until: '> hebrew-e:T001', send: KEY.enter }, { until: 'Turn hebrew-e:T001', send: KEY.enter }, { until: 'Record hebrew-e:L1', send: 'q' }] });
+      assert.equal(res.exit, 0);
+      assert.equal(res.after, res.before, 'stty -g after = before');
+      const shown = readerPart(res.out).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
+      assert.ok(shown.includes(want), `the record's line as the terminal received it: ${JSON.stringify(shown.slice(shown.indexOf('Record hebrew-e:L1'), shown.indexOf('Record hebrew-e:L1') + 400))}`);
+      const other = want === LAID_OUT ? STORED : LAID_OUT;
+      assert.ok(!shown.includes(other), 'and not in the other form');
+    } finally { r.dispose(); }
+  });
+}
+
+test('R1: LTMS_READER_BIDI set to a mode there is not: refused before the screen opens, exit 2, the terminal as it was', { skip, timeout: 60_000 }, async () => {
+  const r = makeRoot('ltms-reader-pty-');
+  try {
+    const res = await ptyRun(r, { args: [path.join(OWN, 'hebrew-english.jsonl')], env: { LTMS_READER_BIDI: 'auto' }, steps: [] });
+    assert.equal(res.exit, 2);
+    assert.equal(res.after, res.before, 'stty -g after = before');
+    assert.ok(!res.out.includes(ENTER), 'the screen never opened');
+    assert.match(res.out.replace(/\r\n/g, '\n'), /ltms-reader: LTMS_READER_BIDI is "auto": it takes "reader" .* or "terminal" .*; nothing was read\n/);
+  } finally { r.dispose(); }
+});

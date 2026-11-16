@@ -13,16 +13,17 @@ import { App } from '../src/app.mjs';
 import { MB, PARSE_PER_BYTE, RECORD_VIEW_PER_BYTE, recordTooLarge } from '../src/reading.mjs';
 import { FileSource } from '../src/sources.mjs';
 import { againOf } from '../src/start.mjs';
-import { expandTabs, fit, visible, wrap } from '../src/text.mjs';
+import { directionOf, expandTabs, fit, visible, wrap } from '../src/text.mjs';
 import { recordLines, top } from '../src/views.mjs';
 import { KEY, deepRecord, keyboard, plainOf } from './helpers.mjs';
 
-/** The lines as the record view made them whole before (44b868f's recordLines, its wrap cutting the same places). */
+/** The lines as the record view made them whole before (44b868f's recordLines, its wrap cutting the same places); each
+ *  line of a text with its text line's direction (R1: the paragraph's, for the right-to-left layout). */
 function whole(rec, json, cols) {
-  const out = [], seg = (text, style = null) => ({ text, style });
+  const out = [], seg = (text, style = null, dir = undefined) => (dir === undefined ? { text, style } : { text, style, dir });
   const lbl = (s) => visible(s ?? '').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
   const more = (n) => `... ${n.toLocaleString('en-US')} ${n === 1 ? 'more character' : 'more characters'} not shown`;
-  const text = (s, style = null) => { for (const p of visible(s).split('\n')) for (const l of wrap(expandTabs(p), cols)) out.push([seg(l, style)]); };
+  const text = (s, style = null) => { for (const p of visible(s).split('\n')) { const t = expandTabs(p), d = directionOf(t); for (const l of wrap(t, cols)) out.push([seg(l, style, d)]); } };
   if (json) {
     text(rec.raw.text);
     if (rec.raw.more) out.push([seg(fit(more(rec.raw.more), cols), 'dim')]);
@@ -30,7 +31,7 @@ function whole(rec, json, cols) {
     if (!rec.reading.length) out.push([seg(fit('(nothing to read in this record)', cols), 'dim')]);
     rec.reading.forEach((p, i) => {
       if (i) out.push([]);
-      for (const l of wrap(`-- ${lbl(p.label)} --`, cols)) out.push([seg(l, 'head')]);
+      text(`-- ${lbl(p.label)} --`, 'head');
       if (p.text !== '') text(p.text);
       if (p.more) out.push([seg(fit(more(p.more), cols), 'dim')]);
     });

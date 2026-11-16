@@ -7,7 +7,9 @@
 // styles) and the text of the lines, each segment passed through visible() once more on its way out, so that no
 // control character, whatever its source, reaches the terminal as one. Each row is erased before it is written: a
 // terminal that draws a cluster narrower than it is counted here (an emoji and VS16, one column by wcwidth) ends the
-// row early, and nothing of the frame before may stay after it (R.F6).
+// row early, and nothing of the frame before may stay after it (R.F6). Each row's segments are put in the order the
+// right-to-left mode writes them (text.mjs displayOrder, R1): laid out by the reader, or as stored for a terminal that
+// lays bidirectional text out itself.
 import readline from 'node:readline';
 import { displayOrder, visible } from './text.mjs';
 
@@ -27,8 +29,9 @@ export const colourFrom = (env) => !(typeof env.NO_COLOR === 'string' && env.NO_
 /** One segment's text as it is written: visible, on one line. */
 const safe = (s) => visible(s).replace(/\n/g, '\\n').replace(/\t/g, '\\t');
 
-/** The bytes of one whole frame: each line at its row, the row erased whole first, then the line, styled. */
-export function frameBytes(lines, { cols, rows, colour = true, rtl = 'terminal' }) {
+/** The bytes of one whole frame: each line at its row, the row erased whole first, then the line, styled; its segments in
+ *  the order the right-to-left mode `rtl` writes them ("reader" or "terminal"). */
+export function frameBytes(lines, { cols, rows, colour = true, rtl = 'reader' }) {
   let out = '';
   for (let i = 0; i < rows; i++) {
     const row = displayOrder(lines[i] ?? [], rtl);
@@ -47,10 +50,10 @@ export function frameBytes(lines, { cols, rows, colour = true, rtl = 'terminal' 
 
 /**
  * Take the terminal: raw mode, keypress events on `input`, the alternate screen. onKey(str, key) for each key;
- * onResize() when the window's size changes. Returns { draw(lines, cols, rows), restore(), size() }; restore() may be
- * called any number of times, and from any way out.
+ * onResize() when the window's size changes; `rtl` the right-to-left mode. Returns { draw(lines, cols, rows), restore(),
+ * size() }; restore() may be called any number of times, and from any way out.
  */
-export function openScreen({ input, output, colour = true, onKey, onResize }) {
+export function openScreen({ input, output, colour = true, rtl = 'reader', onKey, onResize }) {
   let open = true, dead = false;
   const write = (s) => { if (dead) return; try { output.write(s); } catch { dead = true; } };
   const onError = () => { dead = true; };
@@ -64,7 +67,7 @@ export function openScreen({ input, output, colour = true, onKey, onResize }) {
   return {
     get open() { return open; },
     size: () => ({ cols: output.columns || 80, rows: output.rows || 24 }),
-    draw(lines, cols, rows) { if (open) write(frameBytes(lines, { cols, rows, colour })); },
+    draw(lines, cols, rows) { if (open) write(frameBytes(lines, { cols, rows, colour, rtl })); },
     restore() {
       if (!open) return;
       open = false;

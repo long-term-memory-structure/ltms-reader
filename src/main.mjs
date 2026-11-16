@@ -11,7 +11,7 @@ import { App } from './app.mjs';
 import { openScreen, colourFrom } from './screen.mjs';
 import { FileSource, RootSource } from './sources.mjs';
 import { USAGE, againOf, notTerminal, parseArgs, startOf } from './start.mjs';
-import { visible } from './text.mjs';
+import { rtlModeOf, visible } from './text.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const version = () => JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -28,8 +28,9 @@ export function errorReport(e, where = null) {
 
 /**
  * What the command does before its screen opens: the help, the version, a usage error, and the refusals (stdin or
- * stdout not a terminal, a path that is none of the three ways in), each written, and its exit code returned; or, when
- * the screen is to open, { a: the arguments, start: what to open }. Only isTTY is read of stdin and stdout.
+ * stdout not a terminal, LTMS_READER_BIDI set to a mode there is not, a path that is none of the three ways in), each
+ * written, and its exit code returned; or, when the screen is to open, { a: the arguments, start: what to open, rtl: the
+ * right-to-left mode }. Only isTTY is read of stdin and stdout.
  */
 export function before(argv, { stdin = process.stdin, stdout = process.stdout, stderr = process.stderr, env = process.env } = {}) {
   const a = parseArgs(argv);
@@ -38,9 +39,11 @@ export function before(argv, { stdin = process.stdin, stdout = process.stdout, s
   if (a.usage) { stderr.write(`ltms-reader: ${a.usage}\n${USAGE}`); return 2; }
   const tty = notTerminal(stdin, stdout);
   if (tty) { stderr.write(tty); return 2; }
+  const rtl = rtlModeOf(env);
+  if (rtl.refused) { stderr.write(visible(`ltms-reader: ${rtl.refused}; nothing was read\n`)); return 2; }
   const start = startOf(a.path, { env, home: homedir() });
   if (start.refused) { stderr.write(`ltms-reader: ${start.refused}\n`); return 2; }
-  return { a, start };
+  return { a, start, rtl: rtl.mode };
 }
 
 /**
@@ -52,7 +55,7 @@ export function before(argv, { stdin = process.stdin, stdout = process.stdout, s
 export function main(argv, { stdin = process.stdin, stdout = process.stdout, stderr = process.stderr, env = process.env, proc = process } = {}) {
   const b = before(argv, { stdin, stdout, stderr, env });
   if (typeof b === 'number') return b;
-  const { a, start } = b;
+  const { a, start, rtl } = b;
 
   // a refusal of a transcript too large names the command that was run, with what it was given
   const again = againOf(a.path);
@@ -80,7 +83,7 @@ export function main(argv, { stdin = process.stdin, stdout = process.stdout, std
   if (proc.channel) { proc.on('disconnect', () => finish(129)); try { proc.channel.unref(); } catch {} }
 
   const draw = () => { if (screen && app) { const { cols, rows } = screen.size(); app.state.cols = cols; app.state.rows = rows; screen.draw(app.lines(), cols, rows); } };
-  screen = openScreen({ input: stdin, output: stdout, colour: colourFrom(env), onKey: (str, k) => app?.key(str, k ?? {}), onResize: () => draw() });
+  screen = openScreen({ input: stdin, output: stdout, colour: colourFrom(env), rtl, onKey: (str, k) => app?.key(str, k ?? {}), onResize: () => draw() });
   const { cols, rows } = screen.size();
   app = new App({ source, cols, rows, onChange: draw, onExit: (code) => finish(code) });
   app.start({ project: start.project ?? null });

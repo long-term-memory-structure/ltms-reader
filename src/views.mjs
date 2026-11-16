@@ -1,11 +1,14 @@
 // src/views.mjs — what the screen shows: one render function per view, (state, columns, rows) → the screen's lines,
-// exactly `rows` of them. A line is a list of segments { text, style }: the text already made visible (src/text.mjs),
-// one line, cut to its columns (the last line one column short, so nothing is ever written to the screen's last cell);
-// the style one of null, 'head', 'dim', 'sel', 'bad', 'addr'. src/screen.mjs writes them; plain() gives their text.
+// exactly `rows` of them. A line is a list of segments { text, style, dir }: the text already made visible
+// (src/text.mjs), one line, cut to its columns (the last line one column short, so nothing is ever written to the
+// screen's last cell); the style one of null, 'head', 'dim', 'sel', 'bad', 'addr'. src/screen.mjs writes them, each
+// segment a paragraph for the right-to-left layout (text.mjs displayOrder: its direction its own, or `dir`, a record
+// line's text line's), so that a transcript's text is a segment of its own, apart from the reader's words before it
+// (a cell given as parts: R1). plain() gives their text, in logical order.
 //
 // Every list row begins with its address as ltms prints it (a session's prefix, a turn's id, a record's <prefix>:L<line>),
 // so the address of what is on screen can be given to an agent as it is; the selected row's is also on the last line.
-import { clusters, expandTabs, fit, lineSpans, visible, width, wrapWords } from './text.mjs';
+import { clusters, directionOf, expandTabs, fit, fitParts, lineSpans, visible, width, wrapWords } from './text.mjs';
 import { prefixOf } from './view.mjs';
 
 export const MIN_COLS = 20, MIN_ROWS = 5;
@@ -32,9 +35,9 @@ export function cell(text, w, align = 'left') {
   const t = fit(text, w), gap = ' '.repeat(Math.max(0, w - width(t)));
   return align === 'right' ? gap + t : t + gap;
 }
-const seg = (text, style = null) => ({ text, style });
-/** One line of plain text in `cols` columns, in one style. */
-const line = (text, cols, style = null) => [seg(fit(text, cols), style)];
+const seg = (text, style = null, dir = undefined) => (dir === undefined ? { text, style } : { text, style, dir });
+/** One line of plain text in `cols` columns, in one style; given as parts (each a paragraph of its own), a segment each. */
+const line = (text, cols, style = null) => (Array.isArray(text) ? fitParts(text, cols).map((t) => seg(t, style)) : [seg(fit(text, cols), style)]);
 
 const formats = new Map();
 /** An ISO time as YYYY-MM-DD HH:MM in the time zone of the state (this machine's when none is set). */
@@ -136,8 +139,9 @@ export function topOf(view, n, h) {
   return Math.max(0, t);
 }
 
-/** A list row from its cells ([text, columns, align, style]), the last cell taking what is left; the selected row marked
- *  with > and drawn in reverse across the whole width. */
+/** A list row from its cells ([text, columns, align, style]), the last cell taking what is left (its text may be parts,
+ *  each a segment: the reader's words, then a transcript's text); the selected row marked with > and drawn in reverse
+ *  across the whole width. */
 function listRow(cells, cols, selected) {
   const out = [seg(selected ? '> ' : '  ')];
   let used = 2;
@@ -148,6 +152,7 @@ function listRow(cells, cols, selected) {
     if (sep) { out.push(seg(fit(sep, room))); used += width(sep); }
     const flex = last && w === 0;   // a last cell of no width takes what is left
     const cw = flex ? Math.max(0, cols - used) : Math.min(w, cols - used);
+    if (flex && Array.isArray(text)) { for (const t of fitParts(text, cw)) { out.push(seg(t, style)); used += width(t); } return; }
     const t = flex ? fit(text, cw) : cell(text, cw, align);
     out.push(seg(t, style));
     used += width(t);
@@ -259,7 +264,7 @@ export function session(state, cols, rows) {
   const cellsOf = (r) => (r.kind === 'turn'
     ? [[label(r.ta), aw, 'left', 'addr'], [label(r.ch), 8], [num(r.calls), cw, 'right'], [num(r.failed), fw, 'right', r.failed ? 'bad' : null], [r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.prompt, r.promptMore), 0]]
     : r.kind === 'compaction' ? [[label(r.a), aw, 'left', 'addr'], [compactionText(r), 0, 'left', 'dim']]
-      : [[label(r.a), aw, 'left', 'addr'], [`${r.kind}  ${preview(r.text, r.more)}`, 0, 'left', 'dim']]);
+      : [[label(r.a), aw, 'left', 'addr'], [[`${r.kind}  `, preview(r.text, r.more)], 0, 'left', 'dim']]);
   const empty = `No turns: ltms reads this file as ${label(sv.fileKind)}, ${plural(sv.stats.lines, 'line', 'lines')}, ${plural(sv.stats.parsed, 'record', 'records')} parsed${sv.problems.count ? `, ${plural(sv.problems.count, 'line', 'lines')} not read` : ''}. A session's turns start at its prompts.`;
   const body = v.rows.length ? listBody(v, v.rows, h, cellsOf, cols) : textBody(empty, cols);
   const r = v.rows[v.sel];
@@ -271,27 +276,31 @@ export function session(state, cols, rows) {
 }
 
 // ---- A turn -----------------------------------------------------------------------------------------------------------
-/** What a turn's row says after its address and kind. */
-export function itemText(r, ek) {
+/** What a turn's row says after its address and kind, as parts: the reader's words, then the transcript's text, each a
+ *  paragraph of its own (R1). */
+export function itemParts(r, ek) {
+  const text = (t, more) => [preview(t, more)];
   switch (r.kind) {
-    case 'prompt': return `${label(r.ch)}  ${plural(r.n, 'character', 'characters')}  ${r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.text, r.more)}`;
+    case 'prompt': return [`${label(r.ch)}  ${plural(r.n, 'character', 'characters')}  `, ...(r.command ? [`${label(r.command.name)} ${label(r.command.args)}`] : text(r.text, r.more))];
     case 'call': {
       const status = r.ok === true ? 'ok' : r.ok === false ? `failed${ek ? ` ${label(ek)}` : ''}` : 'no result recorded';
-      return `${status}  ${label(r.tool)}  ${r.inputKey ? `${label(r.inputKey)}: ` : ''}${preview(r.inputText, r.inputMore)}`;
+      return [`${status}  ${label(r.tool)}  ${r.inputKey ? `${label(r.inputKey)}: ` : ''}`, ...text(r.inputText, r.inputMore)];
     }
-    case 'result': return `${plural(r.n, 'character', 'characters')}  ${preview(r.text, r.more)}`;
-    case 'compaction': return compactionText(r, false).trim();
-    case 'note': return `${label(r.sub)}  ${r.command ? `${label(r.command.name)} ${label(r.command.args)}` : preview(r.text, r.more)}`;
-    default: return preview(r.text, r.more);
+    case 'result': return [`${plural(r.n, 'character', 'characters')}  `, ...text(r.text, r.more)];
+    case 'compaction': return [compactionText(r, false).trim()];
+    case 'note': return [`${label(r.sub)}  `, ...(r.command ? [`${label(r.command.name)} ${label(r.command.args)}`] : text(r.text, r.more))];
+    default: return text(r.text, r.more);
   }
 }
+/** What a turn's row says after its address and kind, as one string. */
+export const itemText = (r, ek) => itemParts(r, ek).join('');
 export function turn(state, cols, rows) {
   const v = top(state), doc = v.doc, t = v.turn;
   const title = `ltms-reader  Turn ${label(t.ta)}  ${v.project === null ? label(v.file) : `${label(v.project)}/${label(v.file)}`}`;
   const sub = `${label(t.ch)}  ${plural(t.calls, 'call', 'calls')}  ${num(t.failed)} failed${t.time ? `  ${when(t.time, state.timeZone)}` : ''}${doc.ekError ? '  (error classes: ltms skeleton failed)' : doc.ek ? '' : '  (error classes: reading)'}`;
   const aw = widest(v.rows, 'a', (r) => width(label(r.a)), 8, 26);
   const h = bodyHeight(rows, true);
-  const cellsOf = (r) => [[label(r.a), aw, 'left', 'addr'], [r.kind, 10], [itemText(r, doc.ek?.get(r.call ?? r.item)), 0, 'left', r.kind === 'call' && r.ok === false ? 'bad' : r.kind === 'result' || r.kind === 'note' ? 'dim' : null]];
+  const cellsOf = (r) => [[label(r.a), aw, 'left', 'addr'], [r.kind, 10], [itemParts(r, doc.ek?.get(r.call ?? r.item)), 0, 'left', r.kind === 'call' && r.ok === false ? 'bad' : r.kind === 'result' || r.kind === 'note' ? 'dim' : null]];
   const body = listBody(v, v.rows, h, cellsOf, cols);
   const r = v.rows[v.sel];
   let detail = '';
@@ -319,7 +328,7 @@ export class RecordLines {
     this.pieces = pieces;
     this.cols = cols;
     this.marks = [];
-    this.last = null;   // the text line laid out last, its tabs as spaces: { p, at, text }
+    this.last = null;   // the text line laid out last, its tabs as spaces: { p, at, text, dir }
     let n = 0;
     for (const l of this.walk(0, 0, 0)) { if (n % STEP === 0) this.marks.push([l.p, l.at, l.k]); n++; }
     this.length = n;
@@ -329,6 +338,12 @@ export class RecordLines {
   textLine(p, at, end) {
     if (this.last?.p !== p || this.last.at !== at) this.last = { p, at, text: expandTabs(this.pieces[p].text.slice(at, end)) };
     return this.last.text;
+  }
+
+  /** The direction of the text line a line of it is in (the one laid out last, as walk() lays them out). */
+  directionOf(l) {
+    if (this.last?.text === l.text) return (this.last.dir ??= directionOf(l.text));
+    return directionOf(l.text);
   }
 
   /** The lines from a mark (piece p, its text line at `at`, offset k in it): { p, at, k, text, a, b, style } each, where
@@ -349,7 +364,8 @@ export class RecordLines {
     }
   }
 
-  /** Lines a to b (all, when not given), as the views' lines: [{ text, style }] each, [] for a blank line. */
+  /** Lines a to b (all, when not given), as the views' lines: [{ text, style, dir }] each, [] for a blank line; a line of
+   *  a text has its text line's direction (directionOf: the paragraph's, for the right-to-left layout), found once. */
   slice(a = 0, b = this.length) {
     a = Math.max(0, a); b = Math.min(b, this.length);
     if (a >= b) return [];
@@ -357,7 +373,7 @@ export class RecordLines {
     const out = [];
     let i = m * STEP;
     for (const l of this.walk(...this.marks[m])) {
-      if (i >= a) out.push(l.line !== undefined ? (l.line === '' ? [] : [seg(l.line, l.style)]) : [seg(l.text.slice(l.a, l.b), l.style)]);
+      if (i >= a) out.push(l.line !== undefined ? (l.line === '' ? [] : [seg(l.line, l.style)]) : [seg(l.text.slice(l.a, l.b), l.style, this.directionOf(l))]);
       if (++i >= b) break;
     }
     return out;

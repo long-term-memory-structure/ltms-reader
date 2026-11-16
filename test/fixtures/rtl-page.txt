@@ -1,0 +1,39 @@
+== mode: terminal (as stored) ==
+
+-- bare lines --
+ןןןששש
+abc ןןןששש def
+ןןן (ששש)
+ןןן ששש?
+The quick brown fox jumps over the lazy dog.
+שלום עולם, זהו משפט בעברית.
+בְּרֵאשִׁית וְשָׁלוֹם עֲלֵיכֶם
+The word שלום means peace.
+הפקודה ls מציגה את הקבצים.
+בשנת 2026 היו 1,234 קבצים ו-3.5 גיגה.
+נשמר בנתיב /home/user/פרויקט/קובץ.jsonl היום
+הוא אמר (בשקט) [שלום] {עולם} <ok>
+מה שלומך?
+אמרתי לו: "hello world" והוא ענה.
+מה שלומך?‏ (with RLM after the question mark)
+C++ ‎היא שפה (with LRM before the Hebrew)
+abc אבג 123 דהו def
+
+-- as a listing row: time, kind, text --
+12:01  user  ןןןששש
+12:02  user  abc ןןןששש def
+12:03  user  ןןן (ששש)
+12:04  user  ןןן ששש?
+12:05  user  The quick brown fox jumps over the lazy dog.
+12:06  user  שלום עולם, זהו משפט בעברית.
+12:07  user  בְּרֵאשִׁית וְשָׁלוֹם עֲלֵיכֶם
+12:08  user  The word שלום means peace.
+12:09  user  הפקודה ls מציגה את הקבצים.
+12:10  user  בשנת 2026 היו 1,234 קבצים ו-3.5 גיגה.
+12:11  user  נשמר בנתיב /home/user/פרויקט/קובץ.jsonl היום
+12:12  user  הוא אמר (בשקט) [שלום] {עולם} <ok>
+12:13  user  מה שלומך?
+12:14  user  אמרתי לו: "hello world" והוא ענה.
+12:15  user  מה שלומך?‏ (with RLM after the question mark)
+12:16  user  C++ ‎היא שפה (with LRM before the Hebrew)
+12:17  user  abc אבג 123 דהו def

@@ -1,7 +1,7 @@
 // test/text.test.mjs — what of a transcript's text reaches the terminal (src/text.mjs): every control character but the
 // new line and the tab made visible; widths by grapheme cluster, with the wide table generated from Unicode's
-// EastAsianWidth.txt (src/width-table.mjs); lines cut and wrapped by columns, never inside a cluster; the one right-to-
-// left mode, "terminal". Cluster boundaries are checked against Intl.Segmenter itself, which defines them.
+// EastAsianWidth.txt (src/width-table.mjs); lines cut and wrapped by columns, never inside a cluster; the two right-to-
+// left modes (R1), by the terminal. Cluster boundaries are checked against Intl.Segmenter itself, which defines them.
 //
 // The table's regeneration from its source runs when LTMS_READER_EAW names the pinned EastAsianWidth.txt; without it,
 // that one test is skipped and says so.
@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RTL_MODES, cut, displayOrder, expandTabs, fit, isWide, visible, width, wrap } from '../src/text.mjs';
+import { RTL_MODES, clusterWidth, cut, directionOf, displayOrder, expandTabs, fit, fitParts, isWide, pathUnits, rtlModeOf, visible, visualLine, width, wrap } from '../src/text.mjs';
 import { SOURCE_SHA256, SOURCE_URL, UNICODE_VERSION, WIDE } from '../src/width-table.mjs';
 import { SHA256, VERSION } from '../scripts/width-table.mjs';
 
@@ -123,12 +123,97 @@ test('expandTabs: a tab is spaces to the next multiple of 8 columns, counted by 
   assert.equal(expandTabs('no tab'), 'no tab');
 });
 
-test('right to left: the one mode is "terminal", the text in the order it is written; any other mode is refused', () => {
-  assert.deepEqual(RTL_MODES, ['terminal']);
-  const row = [{ text: 'demo.jso:L2 ', style: 'addr' }, { text: '\u05e9\u05dc\u05d5\u05dd (1) world', style: null }];
-  assert.equal(displayOrder(row, 'terminal'), row);
-  assert.equal(displayOrder(row), row);
-  assert.throws(() => displayOrder(row, 'reader'), /"terminal"/);
+// ---- R1 (S377, round 3): right to left ---------------------------------------------------------------------------------
+// Hebrew is written here as it is stored (logical order); each visual form expected is spelled out as the screen gets it.
+const SEG2 = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const clustersOf = (s) => [...SEG2.segment(s)].map((x) => x.segment);
+
+test('R1: the mode by the terminal: Konsole (KONSOLE_VERSION) gets the text as stored, every other terminal the reader\'s layout; LTMS_READER_BIDI chooses, and a value it does not take is refused', () => {
+  assert.deepEqual(RTL_MODES, ['reader', 'terminal']);
+  assert.deepEqual(rtlModeOf({}), { mode: 'reader', by: 'default' });
+  assert.deepEqual(rtlModeOf({ TERM_PROGRAM: 'vscode' }), { mode: 'reader', by: 'default' });
+  assert.deepEqual(rtlModeOf({ KONSOLE_VERSION: '260803' }), { mode: 'terminal', by: 'KONSOLE_VERSION' });
+  assert.deepEqual(rtlModeOf({ KONSOLE_VERSION: '' }), { mode: 'reader', by: 'default' });
+  assert.deepEqual(rtlModeOf({ KONSOLE_VERSION: '260803', LTMS_READER_BIDI: 'reader' }), { mode: 'reader', by: 'LTMS_READER_BIDI' });
+  assert.deepEqual(rtlModeOf({ LTMS_READER_BIDI: 'terminal' }), { mode: 'terminal', by: 'LTMS_READER_BIDI' });
+  assert.deepEqual(rtlModeOf({ LTMS_READER_BIDI: '', KONSOLE_VERSION: '1' }), { mode: 'terminal', by: 'KONSOLE_VERSION' });
+  assert.match(rtlModeOf({ LTMS_READER_BIDI: 'auto' }).refused, /^LTMS_READER_BIDI is "auto": it takes "reader" .* or "terminal" /);
+  assert.throws(() => displayOrder([], 'auto'), /the modes are "reader" and "terminal"/);
+});
+
+test('R1: a line in visual order: a right-to-left paragraph reversed by clusters, its marks after their letters, its brackets mirrored, its numbers left to right', () => {
+  assert.equal(visualLine('\u05de\u05d4 \u05e9\u05dc\u05d5\u05de\u05da?'), '?\u05da\u05de\u05d5\u05dc\u05e9 \u05d4\u05de');
+  assert.equal(visualLine('\u05d4\u05d5\u05d0 \u05d0\u05de\u05e8 (\u05d1\u05e9\u05e7\u05d8) [\u05e9\u05dc\u05d5\u05dd] {\u05e2\u05d5\u05dc\u05dd} <ok>'), '<ok> {\u05dd\u05dc\u05d5\u05e2} [\u05dd\u05d5\u05dc\u05e9] (\u05d8\u05e7\u05e9\u05d1) \u05e8\u05de\u05d0 \u05d0\u05d5\u05d4');
+  assert.equal(visualLine('\u05d1\u05e9\u05e0\u05ea 2026 \u05d4\u05d9\u05d5 1,234 \u05e7\u05d1\u05e6\u05d9\u05dd \u05d5-3.5 \u05d2\u05d9\u05d2\u05d4.'), '.\u05d4\u05d2\u05d9\u05d2 3.5-\u05d5 \u05dd\u05d9\u05e6\u05d1\u05e7 1,234 \u05d5\u05d9\u05d4 2026 \u05ea\u05e0\u05e9\u05d1');
+  assert.equal(visualLine('The word \u05e9\u05dc\u05d5\u05dd means peace.'), 'The word \u05dd\u05d5\u05dc\u05e9 means peace.');
+  // a pointed word: its clusters reversed, each letter keeping its marks after it, as a terminal draws them (L3)
+  const pointed = '\u05e9\u05b8\u05c1\u05dc\u05d5\u05b9\u05dd';
+  assert.deepEqual(clustersOf(visualLine(pointed)), clustersOf(pointed).reverse());
+  // a cluster whose characters resolve to two levels takes its first one's: a Hebrew letter and a spacing mark of class L
+  // (U+0903) stay one cluster, with the letter, in its right-to-left run (by code point the mark would leave it)
+  assert.equal(visualLine('x באः'), 'x אःב');
+  // nothing right to left in it: the same string
+  const ascii = 'abc (def) 12 [x]';
+  assert.equal(visualLine(ascii), ascii);
+  // the paragraph's level given: an English line of a right-to-left paragraph keeps its words' order, its full stop left
+  assert.equal(visualLine('abc def.', 1), '.abc def');
+  assert.equal(directionOf('  \u05e9\u05dc\u05d5\u05dd abc'), 1);
+  assert.equal(directionOf('abc \u05e9\u05dc\u05d5\u05dd'), 0);
+  assert.equal(directionOf('12 34 !'), 0);
+});
+
+test('R1 (HL4): a path or a URL is laid out as one left-to-right unit: its parts in order, a Hebrew name in it reading right', () => {
+  const line = '\u05e0\u05e9\u05de\u05e8 \u05d1\u05e0\u05ea\u05d9\u05d1 /home/user/\u05e4\u05e8\u05d5\u05d9\u05e7\u05d8/\u05e7\u05d5\u05d1\u05e5.jsonl \u05d4\u05d9\u05d5\u05dd';
+  assert.deepEqual(pathUnits(line).map(([a, b]) => line.slice(a, b)), ['/home/user/\u05e4\u05e8\u05d5\u05d9\u05e7\u05d8/\u05e7\u05d5\u05d1\u05e5.jsonl']);
+  assert.equal(visualLine(line), '\u05dd\u05d5\u05d9\u05d4 /home/user/\u05d8\u05e7\u05d9\u05d5\u05e8\u05e4/\u05e5\u05d1\u05d5\u05e7.jsonl \u05d1\u05d9\u05ea\u05e0\u05d1 \u05e8\u05de\u05e9\u05e0');
+  // without the units, the algorithm's own result for the path: scrambled (GNU FriBidi gives the same: test/bidi.test.mjs)
+  assert.equal(visualLine(line, null, { units: false }), '\u05dd\u05d5\u05d9\u05d4 jsonl.\u05e5\u05d1\u05d5\u05e7/\u05d8\u05e7\u05d9\u05d5\u05e8\u05e4/home/user/ \u05d1\u05d9\u05ea\u05e0\u05d1 \u05e8\u05de\u05e9\u05e0');
+  for (const [text, units] of [
+    ['\u05e8\u05d0\u05d4 src/\u05de\u05d5\u05d3\u05d5\u05dc.ts:12, \u05d5\u05e2\u05db\u05e9\u05d9\u05d5', ['src/\u05de\u05d5\u05d3\u05d5\u05dc.ts:12']],
+    ['see https://he.wikipedia.org/wiki/x.', ['https://he.wikipedia.org/wiki/x']],
+    ['(/tmp/a b) ~/x ./y ../z C:\\dir\\f', ['/tmp/a', '~/x', './y', '../z', 'C:\\dir\\f']],
+    ['--file=/srv/f.txt;', ['/srv/f.txt']],
+    ['(see /tmp/x) and [./y]', ['/tmp/x', './y']],
+    ['/tmp/f(1) "/srv/q"', ['/tmp/f(1)', '/srv/q']],
+    ['\u05d5/\u05d0\u05d5, 50 / 50, a / b', []],
+  ]) assert.deepEqual(pathUnits(text).map(([a, b]) => text.slice(a, b)), units, text);
+  assert.equal(visualLine('\u05e8\u05d0\u05d4 src/\u05de\u05d5\u05d3\u05d5\u05dc.ts:12, \u05d5\u05e2\u05db\u05e9\u05d9\u05d5'), '\u05d5\u05d9\u05e9\u05db\u05e2\u05d5 ,src/\u05dc\u05d5\u05d3\u05d5\u05de.ts:12 \u05d4\u05d0\u05e8');
+  // its direction: a path is passed over, as an isolate's content is (P2)
+  assert.equal(directionOf('/home/user/x \u05d4\u05d9\u05d5\u05dd'), 1);
+  assert.equal(directionOf('/home/user/\u05e4\u05e8\u05d5\u05d9\u05e7\u05d8'), 0);
+});
+
+test('R1: a row\'s segments, each a paragraph: "reader" lays each out in place, its spaces at either end where they are; "terminal" writes it as stored, with an RLM after a right-to-left one', () => {
+  const row = [{ text: '> ', style: 'sel' }, { text: 'demo.jso:L2', style: 'addr' }, { text: '  ' }, { text: '\u05de\u05d4 \u05e9\u05dc\u05d5\u05de\u05da?   ', style: null }, { text: 'abc', style: 'dim' }];
+  const r = displayOrder(row, 'reader');
+  assert.deepEqual(r.map((s) => s.text), ['> ', 'demo.jso:L2', '  ', '?\u05da\u05de\u05d5\u05dc\u05e9 \u05d4\u05de   ', 'abc']);
+  assert.deepEqual(r.map((s) => s.style), row.map((s) => s.style));
+  const t = displayOrder(row, 'terminal');
+  assert.deepEqual(t.map((s) => s.text), ['> ', 'demo.jso:L2', '  ', '\u05de\u05d4 \u05e9\u05dc\u05d5\u05de\u05da?\u200f   ', 'abc']);
+  // a row with nothing right to left in it is the same row
+  const plainRow = [{ text: 'abc  ', style: null }, { text: 'x', style: 'dim' }];
+  assert.equal(displayOrder(plainRow, 'reader'), plainRow);
+  assert.equal(displayOrder(plainRow, 'terminal'), plainRow);
+  // a record's line: its text line's direction given; an English line of a Hebrew paragraph
+  assert.deepEqual(displayOrder([{ text: 'abc def.', style: null, dir: 1 }], 'reader').map((s) => s.text), ['.abc def']);
+  assert.deepEqual(displayOrder([{ text: 'abc def.', style: null, dir: 1 }], 'terminal').map((s) => s.text), ['abc def.\u200f']);
+  // the columns stay: every segment as wide as it was
+  for (const mode of RTL_MODES) assert.deepEqual(displayOrder(row, mode).map((s) => width(s.text)), row.map((s) => width(s.text)), mode);
+});
+
+test('R1: the parts of a cell cut in logical order, between clusters of the whole, with \u2026 at the end of the last part shown', () => {
+  const parts = ['user  12 characters  ', '\u05de\u05d4 \u05e9\u05dc\u05d5\u05de\u05da \u05d4\u05d9\u05d5\u05dd?'];
+  assert.equal(fitParts(parts, 200), parts);
+  assert.deepEqual(fitParts(parts, 26), ['user  12 characters  ', '\u05de\u05d4 \u05e9\u2026']);
+  assert.deepEqual(fitParts(parts, 21), ['user  12 characters \u2026']);
+  assert.deepEqual(fitParts(parts, 22), ['user  12 characters  ', '\u2026']);
+  assert.deepEqual(fitParts(parts, 0), []);
+  for (let n = 1; n < 40; n++) assert.ok(width(fitParts(parts, n).join('')) <= n, `${n}`);
+});
+
+test('R1: a mirrored glyph is as wide as the character it stands for', async () => {
+  const { MIRRORS } = await import('../src/bidi-table.mjs');
+  for (let i = 0; i < MIRRORS.length; i += 2) assert.equal(clusterWidth(String.fromCodePoint(MIRRORS[i + 1])), clusterWidth(String.fromCodePoint(MIRRORS[i])), `U+${MIRRORS[i].toString(16)}`);
 });
 
 test(`the wide table: merged, sorted ranges from EastAsianWidth.txt ${VERSION}, its sha256 recorded`, () => {

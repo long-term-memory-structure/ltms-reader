@@ -86,10 +86,28 @@ pasted acts as a key.
   own; East Asian wide characters and emoji take two. A line is cut by columns, never inside a cluster. The wide
   characters come from a table generated from Unicode's `EastAsianWidth.txt`, version 17.0.0 (`src/width-table.mjs`,
   which names the file's sha256; `scripts/width-table.mjs` writes it). Characters of ambiguous width take one column.
-- **Right to left:** the text is written in the order it is stored, and the terminal lays it out. Terminals differ:
-  Konsole lays out bidirectional text itself; Alacritty, kitty and VS Code's terminal show the stored order. Whether
-  the reader should lay out each line itself (the Unicode Bidirectional Algorithm) for terminals that do not is being
-  measured; until then, this is the one mode.
+- **Right to left** (Hebrew, Arabic): terminals differ, and the reader follows the terminal. Measured on three
+  (S377): Konsole 26.08.3 lays out a line's right-to-left runs itself, with a left-to-right base for the line; Alacritty
+  0.17.0 and VS Code 1.146.0's terminal (xterm.js) draw the text in the order it is stored, so that Hebrew reads
+  backwards there unless the reader lays it out. So:
+  - in Konsole (`KONSOLE_VERSION` set), the text is written as stored (mode `terminal`), with a right-to-left mark
+    (RLM) at the end of each right-to-left paragraph, which on Konsole puts the paragraph's end punctuation where it
+    belongs;
+  - in every other terminal, the reader lays out each line itself (mode `reader`), by the Unicode Bidirectional
+    Algorithm (UAX #9, Unicode 17.0.0, written in this package: the implicit algorithm with paired brackets, its lines
+    reordered and mirrored, a paragraph's direction from its first strong character), and writes it in visual order;
+  - `LTMS_READER_BIDI=terminal` or `LTMS_READER_BIDI=reader` chooses, over both. No other terminal was measured (kitty,
+    VTE's, as in GNOME Terminal, mlterm, WezTerm, foot, iTerm2, Windows Terminal and the rest are not): one that lays
+    bidirectional text out itself wants `terminal`, one that draws the stored order `reader`, the default. Over ssh
+    from Konsole, `KONSOLE_VERSION` does not reach the reader unless it is passed on: set `LTMS_READER_BIDI` there.
+
+  A paragraph is a cell of a list, the reader's own words before a transcript's text being a paragraph of their own, or
+  a line of a record (its lines share its direction). A long line is cut in logical order, its beginning kept, then
+  laid out. A path or a URL in a line (`/home/...`, `~/...`, `src/...`, `https://...`) is laid out as one left-to-right
+  unit, its parts in order and a Hebrew name in it reading right (UAX #9's higher-level protocol HL4). Each cluster is
+  kept whole, its marks after its letter, as a terminal draws them; the text is aligned left, so the columns stay.
+  Checked against Unicode's conformance test (BidiCharacterTest.txt: every case without an explicit formatting
+  character, which the reader shows as an escape and never applies) and against GNU FriBidi.
 - Colour follows [NO_COLOR](https://no-color.org): set, there is none; the selected row is still drawn in reverse.
 
 ## Limits
@@ -145,7 +163,8 @@ Linux). `LTMS_READER_FIXTURES=<folder>` adds every `.jsonl` under a folder to th
 `test/fixtures`, say). The width table's regeneration is checked when `LTMS_READER_EAW` names the pinned
 `EastAsianWidth.txt`; the bidirectional table's regeneration, and Unicode's conformance test of the algorithm
 (`test/bidi.test.mjs`, which reports how many cases passed and failed), when `LTMS_READER_UCD` names a folder holding
-the pinned files (`scripts/bidi-table.mjs` names each with its sha256):
+the pinned files (`scripts/bidi-table.mjs` names each with its sha256); GNU FriBidi's layout of the right-to-left page
+and fixtures is compared with the reader's where `fribidi` is on the PATH (or `LTMS_READER_FRIBIDI` names it):
 
 ```sh
 curl -sS --fail -o EastAsianWidth.txt https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt
