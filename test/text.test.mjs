@@ -415,6 +415,26 @@ test('W2 (a): "terminal" writes an RLM after a right-to-left paragraph\'s text a
   for (const t of RTL_HEBREW) assert.deepEqual(written(rows(t, 1)), [`> demo.jso:L2  ${t}${RLM}`, `${t}${RLM}`, `${t}${RLM}`, `${t}${RLM}`], `right to left: ${t}`);
 });
 
+// V7 (round 5): in "reader" a line of a paragraph is laid out whole from its paragraph; in "terminal" it is written as
+// stored, with an RLM after it when its paragraph, not the line itself, is right to left. Round 4's check's
+// 'line-own-dir' (a line takes its own direction) was caught by the reader's layout only; once that layout took the
+// paragraph's direction on a path of its own (V7), the mutant changed "terminal" alone, and every test passed.
+test('V7: in "terminal", a line of a paragraph takes its paragraph\'s direction, not its own: an RLM after a left-to-right line of a right-to-left paragraph, none after a right-to-left line of a left-to-right one', () => {
+  const rtl = 'שלום world and more', ltr = 'hello שלום עולם';
+  assert.equal(directionOf(rtl), 1); assert.equal(directionOf('world and more'), 0);
+  assert.equal(directionOf(ltr), 0); assert.equal(directionOf('שלום עולם'), 1);
+  for (const dir of [undefined, 1]) {
+    const seg = { text: 'world and more', style: null, par: rtl, at: 5, ...(dir === undefined ? {} : { dir }) };
+    assert.equal(displayOrder([seg], 'terminal')[0].text, 'world and more\u200f', `dir ${dir}`);
+    assert.equal(displayOrder([seg], 'reader')[0].text, 'world and more', `dir ${dir}`);
+  }
+  for (const dir of [undefined, 0]) {
+    const seg = { text: 'שלום עולם', style: null, par: ltr, at: 6, ...(dir === undefined ? {} : { dir }) };
+    assert.equal(displayOrder([seg], 'terminal')[0].text, 'שלום עולם', `dir ${dir}`);
+    assert.equal(displayOrder([seg], 'reader')[0].text, 'םלוע םולש', `dir ${dir}`);
+  }
+});
+
 // V4 (round 5): two defects round 4's check planted passed every test: 'removed-at-p', a cluster X9 removes whole (a soft
 // hyphen, ZWSP, WJ: class BN) drawn at the paragraph's level instead of the level of the item before it in the line (in
 // its population 4,081 lines changed, 3,242 visibly: a soft hyphen moved across a Hebrew word), and 'l1-bn-stops', a
