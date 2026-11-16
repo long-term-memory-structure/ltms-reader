@@ -1,6 +1,6 @@
 // src/main.mjs — the command: its arguments, the refusals made before anything is read, then the screen until a way
-// out, and the terminal restored on each: q (exit 0), Ctrl-C (130), SIGINT (130), SIGHUP (129), SIGTERM (143), and an
-// uncaught error (1), which is printed after the restore. An error is printed by its kind and where it happened in this
+// out, and the terminal restored on each: q (exit 0), Ctrl-C (130), SIGINT (130), SIGHUP (129), SIGTERM (143), the
+// command's process gone (129, as a hang-up: N5), and an uncaught error (1), which is printed after the restore. An error is printed by its kind and where it happened in this
 // package, not by its message, which could quote a transcript (ltms's own rule); a refusal of this package's own (a file
 // too large, a name refused) is printed whole: it holds paths and sizes, never a transcript's text.
 import { readFileSync } from 'node:fs';
@@ -73,6 +73,11 @@ export function main(argv, { stdin = process.stdin, stdout = process.stdout, std
   proc.on('uncaughtException', (e) => finish(1, e));
   proc.on('unhandledRejection', (e) => finish(1, e));
   proc.on('exit', () => { try { screen?.restore(); } catch {} });
+  // run by the command (src/guard.mjs), this process has an IPC channel to it, which closes when the command's process
+  // is gone, by SIGKILL too, which nothing there can answer (N5): the terminal is restored here, and this process ends.
+  // The channel is unref'd, so that it keeps nothing running; the exit puts back the terminal's modes as they were when
+  // this process started, even where the shell has taken the terminal back (Node blocks SIGTTOU for that).
+  if (proc.channel) { proc.on('disconnect', () => finish(129)); try { proc.channel.unref(); } catch {} }
 
   const draw = () => { if (screen && app) { const { cols, rows } = screen.size(); app.state.cols = cols; app.state.rows = rows; screen.draw(app.lines(), cols, rows); } };
   screen = openScreen({ input: stdin, output: stdout, colour: colourFrom(env), onKey: (str, k) => app?.key(str, k ?? {}), onResize: () => draw() });

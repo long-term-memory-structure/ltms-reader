@@ -182,6 +182,35 @@ test('every way out restores the terminal: q, Ctrl-C, SIGTERM, SIGHUP, SIGINT, a
   }
 });
 
+// N5 (S377): SIGKILL of the command's own process left the screen's process raw until the terminal hung up. The command
+// opens an IPC channel to it; when the command's process is gone, the channel closes, and the screen restores the
+// terminal and ends, as on SIGHUP. The channel is unref'd: it keeps nothing running.
+test("N5: the command's process gone (its IPC channel closed): the terminal restored, raw mode off, exit 129; nothing on stderr", async () => {
+  const t = terminal();
+  t.proc.channel = { unrefs: 0, unref() { this.unrefs++; } };
+  const h = main([FILE], { stdin: t.stdin, stdout: t.stdout, stderr: t.stderr, env: {}, proc: t.proc });
+  await settle(h);
+  await press(t, h, KEY.enter);
+  t.proc.emit('disconnect');
+  await settle(h);
+  assert.deepEqual(t.proc.exits, [129], 'exit 129');
+  assert.deepEqual(t.stdin.raw, [true, false], 'raw mode off');
+  assert.ok(t.out().endsWith(LEAVE), 'the terminal restored last');
+  assert.equal(t.err(), '', 'nothing on stderr: the pipe to the command is gone');
+  assert.equal(t.proc.channel.unrefs, 1, 'the channel unref\'d once: it keeps nothing running');
+});
+
+test("N5: without a channel (the screen run by itself), nothing is watched", async () => {
+  const t = terminal();
+  const h = main([FILE], { stdin: t.stdin, stdout: t.stdout, stderr: t.stderr, env: {}, proc: t.proc });
+  await settle(h);
+  t.proc.emit('disconnect');
+  await settle(h);
+  assert.deepEqual(t.proc.exits, [], 'still running');
+  await press(t, h, 'q');
+  assert.deepEqual(t.proc.exits, [0]);
+});
+
 test('the window resized: the frame drawn whole again at its new size', async () => {
   const t = terminal();
   const h = main([FILE], { stdin: t.stdin, stdout: t.stdout, stderr: t.stderr, env: {}, proc: t.proc });

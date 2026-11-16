@@ -104,7 +104,9 @@ pasted acts as a key.
   terminal (Node's memory running out aborts it), the command restores it, then prints what Node said and what happened.
   An error in the command's own process (a module loaded through `NODE_OPTIONS` or `--import` that throws, say) ends the
   screen by its own way out (SIGTERM; if it has not ended within 2 s, SIGKILL, and the command restores the terminal),
-  then is printed after the restore, and the command exits with 1.
+  then is printed after the restore, and the command exits with 1. If the command's own process is killed (SIGKILL),
+  the screen's process learns of it (an IPC channel between the two closes), restores the terminal and ends; if both
+  are killed at once (a whole cgroup, as systemd-oomd does), nothing is left to restore it.
 - A list of sessions waits for `ltms index` to read every transcript of the project (on one machine, 39 s for a project
   of 385 sessions), and a search for `ltms search`; the screen says what is being read and for how long. A list that
   took 3 s or more is kept: opened again after its files changed, it is shown as it was read, and says when that was

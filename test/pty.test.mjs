@@ -21,6 +21,7 @@ ulimit -c 0
 echo "<<tty=$(tty)>>"
 sh -c 'echo "<<pid=$$>>"; exec "$@"' sh "$LTMS_NODE" $LTMS_NODE_ARGS "$LTMS_BIN" "$@"
 echo "<<exit=$?>>"
+[ -z "$LTMS_GO" ] || while [ ! -e "$LTMS_T/go" ]; do sleep 0.05; done
 stty -g > "$LTMS_T/after"
 `;
 const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
@@ -167,6 +168,43 @@ for (const [what, plant, kind] of [['an Error thrown', 'error', 'TypeError'], ['
     } finally { r.dispose(); }
   });
 }
+
+// ---- N5 (S377): the command's own process killed (SIGKILL) --------------------------------------------------------------
+// Nothing can run in a process SIGKILL ends: the screen's process must notice that the command's is gone. Here the shell
+// takes stty -g "after" only once the screen's process has ended (LTMS_GO: it waits for the file go, which the test
+// writes then, or after 5 s): before the repair it lived on, raw, until the terminal hung up.
+const childrenOf = (pid) => { try { return readFileSync(`/proc/${pid}/task/${pid}/children`, 'utf8').split(/\s+/).filter(Boolean).map(Number); } catch { return []; } };
+/** Whether a process runs (a zombie, ended and not yet reaped, does not). */
+const running = (pid) => { try { return !/^\d+ \(.*\) Z /.test(readFileSync(`/proc/${pid}/stat`, 'utf8')); } catch { return false; } };
+
+test("N5: SIGKILL to the command's own process: the screen's process notices, restores the terminal and ends", { skip, timeout: 60_000 }, async () => {
+  const r = makeRoot('ltms-reader-pty-');
+  let screen = 0, gone = Promise.resolve(null);
+  try {
+    const res = await ptyRun(r, {
+      args: [path.join(OWN, 'hebrew-english.jsonl')], env: { LTMS_GO: '1' },
+      steps: [{ until: '> hebrew-e:T001', act: ({ pid }) => {
+        [screen = 0] = childrenOf(pid);
+        process.kill(pid, 'SIGKILL');
+        gone = (async () => {
+          const t0 = Date.now();
+          while (screen && running(screen) && Date.now() - t0 < 5000) await new Promise((x) => setTimeout(x, 10));
+          const ms = screen && !running(screen) ? Date.now() - t0 : null;
+          writeFileSync(path.join(r.base, 'go'), '');
+          return ms;
+        })();
+      } }],
+    });
+    const ms = await gone;
+    assert.ok(screen > 0, "the screen's process, a child of the command's");
+    assert.notEqual(ms, null, "the screen's process ended within 5 s of the command's SIGKILL");
+    assert.equal(res.exit, 137, 'the shell saw SIGKILL: 128 + 9');
+    assert.equal(res.after, res.before, 'stty -g after = before');
+    const at = res.out.lastIndexOf(LEAVE);
+    assert.ok(at > res.out.indexOf(ENTER), 'the terminal restored');
+    assert.ok(!/\x1b\[\d+;1H/.test(res.out.slice(at)), 'no frame drawn after the restore');
+  } finally { if (screen && running(screen)) process.kill(screen, 'SIGKILL'); r.dispose(); }
+});
 
 // ---- R.F1: no transcript leaves the terminal raw ------------------------------------------------------------------------
 /** R's transcript (R.F1): a prompt, a call, its result of 4,000,000 Hebrew characters with Claude Code's structured copy

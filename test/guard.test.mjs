@@ -112,3 +112,10 @@ test("a signal that could not be sent (Node's ChildProcess emits 'error' for it)
   assert.equal(r.code, 143, "the screen's own exit code");
   assert.equal(r.err, 'waiting\ngot SIGTERM\n', 'and nothing said of a start that failed');
 });
+
+// ---- N5 (S377): the command's own process killed (SIGKILL) ----------------------------------------------------------------
+test("N5: the screen's process has an IPC channel to the command, by which it learns that the command's process is gone; it keeps nothing running", async () => {
+  const r = await run('channel.mjs', []);
+  assert.equal(r.err, 'channel object\n');
+  assert.equal(r.code, 0, 'it ended by itself: the channel kept nothing running');
+});

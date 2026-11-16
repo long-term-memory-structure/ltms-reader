@@ -20,6 +20,12 @@
 // restore, by the error's kind and place, not its message (src/main.mjs errorReport), and ends with 1. N1 (S377): Node's
 // own report of such an error, its message with it, was written on the alternate screen while the frame was up, and the
 // screen's own report went to a pipe no one read. Everything this process writes to stderr is made visible.
+//
+// Nothing runs in this process when SIGKILL ends it: the screen's process learns of it by an IPC channel this process
+// opens to it, which the kernel closes when this process is gone, and then restores the terminal and ends
+// (src/main.mjs). N5 (S377): it lived on, raw, until the terminal hung up. Measured: the channel's disconnect, and the
+// end of a socketpair on fd 3, each reached a child 3 to 4 ms after its parent's SIGKILL, on Node 26.13.1 and 20.20.2,
+// and neither kept an idle child running once unref'd; the channel needs no flag to say it is there (process.channel).
 import { spawn } from 'node:child_process';
 import { writeSync } from 'node:fs';
 import { constants } from 'node:os';
@@ -59,7 +65,7 @@ export function endedBy(signal, said, argv, heapLimit = getHeapStatistics().heap
 export function guard(argv, { execPath = process.execPath, execArgv = process.execArgv, env = process.env, proc = process, entry = SCREEN_PROCESS, out = (s) => writeSync(1, s), err = (s) => writeSync(2, s), onChild = null, stopWait = STOP_WAIT } = {}) {
   return new Promise((resolve) => {
     let child;
-    try { child = spawn(execPath, [...execArgv, entry, ...argv], { stdio: ['inherit', 'inherit', 'pipe'], env }); }
+    try { child = spawn(execPath, [...execArgv, entry, ...argv], { stdio: ['inherit', 'inherit', 'pipe', 'ipc'], env }); }
     catch (e) { try { err(`ltms-reader: the screen's process could not start (${visible(e?.code ?? e?.name ?? 'error')}); nothing was read\n`); } catch {} resolve(1); return; }
     onChild?.(child);
     let said = '';
