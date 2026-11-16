@@ -482,7 +482,9 @@ export const KEYS = [
   ['q or Ctrl-C', 'quit'],
 ];
 export function help(state, cols, rows) {
-  const kw = 16;
+  // the key column: 16 wide, and one column narrower at MIN_COLS (20), where 16 left a key's words no column within the
+  // screen (V2, round 5: its lines took 21); its longest key ('Enter or Right') takes 14
+  const kw = Math.min(16, cols - 5);
   const body = [
     ...KEYS.flatMap(([k, what]) => paragraph(what, Math.max(1, cols - kw - 4)).map((l, i) => [seg(`  ${cell(i ? '' : k, kw)}`, i ? null : 'addr'), seg('  '), l])),
     [],

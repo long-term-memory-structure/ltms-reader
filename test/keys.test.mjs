@@ -263,6 +263,34 @@ test('R.F11: the keys screen says so: q quits, any other key goes back', async (
   } finally { app.dispose(); source.dispose(); r.dispose(); }
 });
 
+// V2 (round 5): the keys screen gave each key's words max(1, cols - 16 - 4) columns beside a key column of 16, so that
+// at 20 columns, the narrowest the reader draws, its lines took 2 + 16 + 2 + 1 = 21 (round 4's check: 55 of 55 frames
+// at 20 columns, heights 5 to 59; the same at b0ff6ac). Every size the reader draws, the keys screen within it.
+test('V2: the keys screen at every size from 20 x 5 to 200 x 60: no line wider than the screen, the last one column short of it', async () => {
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press('?');
+    let frames = 0;
+    const wide = [];
+    for (let cols = 20; cols <= 200; cols++) {
+      for (let rows = 5; rows <= 60; rows++) {
+        app.resize(cols, rows);
+        const f = plainOf(app.lines());
+        assert.equal(f.length, rows, `${cols} x ${rows}: the frame's lines`);
+        assert.equal(f[0], 'ltms-reader  Keys', `${cols} x ${rows}: the keys screen`);
+        f.forEach((l, i) => { if (width(l) > (i === rows - 1 ? cols - 1 : cols)) wide.push(`${cols} x ${rows}, line ${i + 1}: ${width(l)} columns: ${JSON.stringify(l)}`); });
+        frames++;
+      }
+    }
+    assert.equal(frames, 181 * 56);
+    assert.deepEqual(wide.slice(0, 3), [], `${wide.length} lines wider than the screen, in ${new Set(wide.map((w) => w.split(',')[0])).size} frames of ${frames}`);
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
 // R.F10: at the design's 80 x 24, a record's place ("lines a to b of N") and the last line's "q quits" were cut
 test('R.F10: at 80 x 24, every view\'s last line keeps "? keys  q quits" whole, the longest addresses too; a record\'s place is whole', async () => {
   const { cpSync, mkdirSync } = await import('node:fs');
