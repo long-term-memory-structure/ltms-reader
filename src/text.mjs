@@ -82,9 +82,32 @@ const SEG = typeof Intl?.Segmenter === 'function' ? new Intl.Segmenter(undefined
 const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
 const ASCII_AND_TABS = /^[\t\x20-\x7e]*$/;
 
-/** The grapheme clusters of s, in order. Without Intl.Segmenter, each code point with the zero-width ones after it. */
+/** The units of the slices a long text is segmented in (R4: on Node 20, each step of Intl.Segmenter's iteration costs
+ *  in proportion to the length of the string it walks, so that walking one string is quadratic: 3.4 us a cluster at
+ *  10,000 units, 115 at 80,000; R.F1's line of 4,000,000 Hebrew characters was not laid out in ten minutes). */
+export const SLICE = 256;
+
+/**
+ * The grapheme clusters of s, in order: those Intl.Segmenter gives the whole text. A text longer than SLICE units is
+ * segmented a slice at a time, from a boundary of the whole text: every cluster of a slice but its last is the whole
+ * text's (a boundary depends only on the text before it, from a boundary on, and on the code point at it, and a slice
+ * never ends inside a surrogate pair), and the next slice begins where that last cluster begins; a slice that holds one
+ * cluster only is made twice as long until it holds two, or reaches the text's end. Without Intl.Segmenter, each code
+ * point with the zero-width ones after it.
+ */
 export function* clusters(s) {
-  if (SEG) { for (const { segment } of SEG.segment(s)) yield segment; return; }
+  if (SEG && s.length <= SLICE) { for (const { segment } of SEG.segment(s)) yield segment; return; }
+  if (SEG) {
+    for (let a = 0, n = SLICE; a < s.length;) {
+      let e = Math.min(s.length, a + n);
+      if (e < s.length && s.charCodeAt(e - 1) >= 0xd800 && s.charCodeAt(e - 1) <= 0xdbff) e++;
+      if (e === s.length) { for (const { segment } of SEG.segment(a ? s.slice(a) : s)) yield segment; return; }
+      let held = null, at = 0;
+      for (const { segment, index } of SEG.segment(s.slice(a, e))) { if (held !== null) yield held; held = segment; at = index; }
+      if (at > 0) { a += at; n = SLICE; } else n *= 2;
+    }
+    return;
+  }
   let cur = '';
   for (const ch of s) {
     if (cur !== '' && (zeroWidth(ch, ch.codePointAt(0)) || ch === '\ufe0f')) { cur += ch; continue; }

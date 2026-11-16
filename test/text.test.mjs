@@ -176,3 +176,34 @@ test('R.F5: the characters that reorder or hide text, shown as escapes (\\u202e,
   // and nothing else of these blocks: their neighbours as written
   for (const cp of [0x2027, 0x202f, 0x2065, 0x206a, 0xfefe, 0xdffff, 0xe0080]) assert.equal(visible(String.fromCodePoint(cp)), String.fromCodePoint(cp), `U+${cp.toString(16)}`);
 });
+
+// ---- R4 (S377, round 3): Node 20 --------------------------------------------------------------------------------------
+// On Node 20 (20.20.2, ICU 78.2), each step of Intl.Segmenter's iteration costs in proportion to the length of the string
+// it walks: 3.4 us a cluster at 10,000 units, 115 at 80,000, so that a record's long line was never laid out (R.F1's pty
+// test at 512 MB: 'no Record oooooooo:L3 within 120000 ms'). clusters() walks a long text a slice at a time.
+test('R4: the clusters of a long text are those Intl.Segmenter gives the whole text, slices of it notwithstanding', async () => {
+  const { clusters, SLICE } = await import('../src/text.mjs');
+  const cp = (...x) => String.fromCodePoint(...x);
+  let seed = 2004;
+  const rnd = (k) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % k; };
+  const atoms = ['a', ' ', '\n', '\r\n', '́', 'ָ', 'ש', '‍', cp(0x1f468), cp(0x1f1ee), '️', 'क', '्', '؀', cp(0x110bd), 'ᄀ', 'ᅡ', '가', '漢', cp(0x1f44d), cp(0x1f3fd), '©', '\ud800', '\udc00'];
+  for (let i = 0; i < 400; i++) {
+    let s = '';
+    const len = SLICE - 10 + rnd(2500);
+    while (s.length < len) { const a = atoms[rnd(atoms.length)]; s += a.repeat(rnd(6) === 0 ? 1 + rnd(700) : 1); }
+    assert.deepEqual([...clusters(s)], [...SEG.segment(s)].map((x) => x.segment), `text ${i} (seed 2004), ${s.length} units`);
+  }
+});
+
+test('R4: walking the clusters of 160,000 units of Hebrew, pointed and plain, takes under 2 s', async () => {
+  const { clusters } = await import('../src/text.mjs');
+  for (const unit of ['אבג ', 'שִׁ ']) {
+    const s = unit.repeat(160_000 / unit.length);
+    const t0 = performance.now();
+    let n = 0;
+    for (const _ of clusters(s)) n++;
+    const ms = performance.now() - t0;
+    assert.equal(n, unit === 'אבג ' ? 160_000 : 80_000);
+    assert.ok(ms < 2000, `${JSON.stringify(unit)} x ${160_000 / unit.length}: ${Math.round(ms)} ms`);
+  }
+});

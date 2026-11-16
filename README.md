@@ -116,6 +116,11 @@ pasted acts as a key.
   and how many files changed since; it is read again when `ltms-reader` starts again.
 - Some clusters are drawn wider by some terminals than by the cluster rule (an Indic conjunct, an emoji sequence a
   terminal does not join); a row then ends early, at the screen's edge.
+- On Node 20, a long line of text that is not ASCII is laid out about three times slower than on Node 26: Node 20's
+  grapheme segmenter is slower, and walked over one long string it costs more at each cluster the longer the string is
+  (3.4 us a cluster at 10,000 units, 115 at 80,000), so the reader walks a long line 256 units at a time. Measured on
+  R's record of 4,000,000 Hebrew characters at 80 columns: its lines counted in 6.7 s on Node 20.20.2, against 2.0 s on
+  Node 26.13.1 (an ASCII record of the same size: 57 and 61 ms).
 
 Exit status: 0 after `q`; 130 after Ctrl-C or SIGINT; 129 after SIGHUP; 143 after SIGTERM; 1 after an internal error;
 2 when it is refused before the screen opens (not a terminal, a usage error, a path that is not a folder or a `.jsonl`);
