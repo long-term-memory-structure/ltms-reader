@@ -404,6 +404,38 @@ test('W2 (a): "terminal" writes an RLM after a right-to-left paragraph\'s text a
   for (const t of RTL_HEBREW) assert.deepEqual(written(rows(t, 1)), [`> demo.jso:L2  ${t}${RLM}`, `${t}${RLM}`, `${t}${RLM}`, `${t}${RLM}`], `right to left: ${t}`);
 });
 
+// V4 (round 5): two defects round 4's check planted passed every test: 'removed-at-p', a cluster X9 removes whole (a soft
+// hyphen, ZWSP, WJ: class BN) drawn at the paragraph's level instead of the level of the item before it in the line (in
+// its population 4,081 lines changed, 3,242 visibly: a soft hyphen moved across a Hebrew word), and 'l1-bn-stops', a
+// character X9 removed ending the whitespace at a line's end, so that L1 left it at its resolved level (202 lines: an em
+// space moved across an Arabic word before U+2060). No paragraph of the tests held one. These forms are GNU FriBidi's
+// library's too (test/fribidi-lines.py, its paragraph's levels resolved once, then the line reordered), checked when
+// this was written: the same nine lines.
+const BN_CASES = [
+  // [paragraph, its level, [line start, line end], the line in visual order]: a removed character inside a run of the
+  // other direction stays inside it ('removed-at-p')
+  ['abc שלום\u00adעולם def', 0, [0, 17], 'abc םלוע\u00adםולש def'],
+  ['abc שלום\u200bעולם def', 0, [0, 17], 'abc םלוע\u200bםולש def'],
+  ['abc שלום\u2060עולם def', 0, [0, 17], 'abc םלוע\u2060םולש def'],
+  ['שלום abc\u00addef עולם', 1, [0, 17], 'םלוע abc\u00addef םולש'],
+  // whitespace, then a removed character, at a line's end: the whitespace at the paragraph's level ('l1-bn-stops')
+  ['abc \u2060def', 1, [0, 5], '\u2060 abc'],
+  ['abc \u00addef', 1, [0, 5], '\u00ad abc'],
+  ['abc مرحبا\u2003\u2060ملف def', 0, [0, 11], 'abc ابحرم\u2003\u2060'],
+  ['abc مرحبا\u2003\u2060ملف def', 0, [11, 18], 'فلم def'],
+  ['abc \u2060def', 1, [5, 8], 'def'],
+];
+test('V4: a character X9 removes (a soft hyphen, ZWSP, WJ) is drawn at the level of the item before it in its line, never at the paragraph\'s; and it does not end the whitespace at a line\'s end (L1): a line of a paragraph, a line the screen writes, a cell', () => {
+  for (const [par, level, [a, b], want] of BN_CASES) {
+    assert.equal(paragraphLine(par, level, a, b), want, `${JSON.stringify(par)} [${a}, ${b})`);
+    // the line as the screen writes it: a line of its paragraph (par, at), its direction given
+    assert.equal(displayOrder([{ text: par.slice(a, b), style: null, dir: level, par, at: a }], 'reader')[0].text, want, `the screen: ${JSON.stringify(par)} [${a}, ${b})`);
+    // a whole paragraph, as a cell is (a paragraph of its own)
+    if (a === 0 && b === par.length) assert.equal(visualLine(par, level), want, `a cell: ${JSON.stringify(par)}`);
+  }
+  assert.equal(BN_CASES.length, 9);
+});
+
 // L1 (UAX #9): on each line, the whitespace at its end (and before a segment separator) takes the paragraph's level. A
 // line resolved by itself, as round 3 laid each line out, never needed it (its end is the paragraph's end there, and
 // what is neutral there takes the paragraph's direction): round 3's check planted 'l1-off' and nothing failed. Laid out

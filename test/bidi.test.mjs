@@ -277,9 +277,23 @@ function randomOf(seed) {
 
 /** Paragraphs of Hebrew (some pointed), Arabic, Latin, numbers (European, with separators and terminators, and
  *  Arabic-Indic), brackets and punctuation, and paths and URLs, the words joined by a space (one in five by none, one in
- *  twenty by a no-break space); `n` of them, from `seed`. */
-function randomParagraphs(n, seed) {
+ *  twenty by a no-break space); `n` of them, from `seed`. With `bn` (V4, round 5), characters X9 removes that are
+ *  grapheme clusters of their own (a soft hyphen, ZWSP, WJ: class BN, each a control to the segmenter) inside one word
+ *  in four and in one join in three, before, after or between spaces, so that lines end in whitespace and one of them
+ *  (ZWNJ and ZWJ are BN too, but join the cluster before them, which the reader keeps whole and FriBidi does not know);
+ *  without it, the paragraphs round 4 drew. */
+function randomParagraphs(n, seed, { bn = false } = {}) {
   const rnd = randomOf(seed);
+  const BN = ['\u00ad', '\u200b', '\u2060'];
+  // inside a word, between two of its clusters, never before a mark (which would then be a cluster of its own)
+  const inWord = (w) => {
+    if (!bn || rnd(4)) return w;
+    const cs = [...w], at = [];
+    for (let i = 1; i <= cs.length; i++) if (i === cs.length || !/\p{M}/u.test(cs[i])) at.push(i);
+    cs.splice(at[rnd(at.length)], 0, BN[rnd(BN.length)]);
+    return cs.join('');
+  };
+  const join = (j) => (!bn || rnd(3) ? j : pick([`${j} ${BN[rnd(BN.length)]}`, `${BN[rnd(BN.length)]}${j}`, ` ${BN[rnd(BN.length)]} `, `${j}${BN[rnd(BN.length)]}${BN[rnd(BN.length)]}`]));
   const pick = (xs) => xs[rnd(xs.length)];
   const letters = (abc, k) => Array.from({ length: k }, () => pick(abc)).join('');
   const heb = [...'אבגדהוזחטיכלמנסעפצקרשתךםן'];
@@ -298,8 +312,8 @@ function randomParagraphs(n, seed) {
     return pick([`(${letters(heb, 3)})`, `[${letters(lat, 3)}]`, `${letters(heb, 2)}-${rnd(100)}`, `${rnd(10)}-${letters(heb, 2)}`, `"${letters(heb, 2)} ${letters(lat, 2)}"`]);
   };
   return Array.from({ length: n }, () => {
-    let p = word();
-    for (let i = 1, k = 4 + rnd(40); i < k; i++) p += (rnd(5) ? (rnd(20) ? ' ' : '\u00a0') : '') + word();
+    let p = inWord(word());
+    for (let i = 1, k = 4 + rnd(40); i < k; i++) p += join(rnd(5) ? (rnd(20) ? ' ' : '\u00a0') : '') + inWord(word());
     return p;
   });
 }
@@ -362,4 +376,38 @@ test('W2 (b): the same lines whole, their spaces at either end included (paragra
   assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's`);
   // the population is not empty: 6,503 lines, 704 of them ending in a space, when this was written
   assert.ok(mine.length >= 4000 && ending >= 500, `${mine.length} lines, ${ending} ending in a space`);
+});
+
+// V4 (round 5): round 4's check planted 'removed-at-p' (a cluster X9 removes drawn at the paragraph's level) and
+// 'l1-bn-stops' (a character X9 removed ending the whitespace at a line's end), and every test passed: no paragraph here
+// held a character of class BN. Random paragraphs that hold them (randomParagraphs' bn), each line whole laid out from
+// its paragraph's levels (paragraphLine), against the same oracle, the removed characters left out of both lines: where
+// to draw a character X9 removed is each implementation's (UAX #9 section 5.2). FriBidi's library gives it the level of
+// the character before it in the paragraph, across the line's start, and counts it in the whitespace at a line's end;
+// the reader, the level of the item before it in the line (the first, the paragraph's), as test/text.test.mjs's known
+// answers pin it. Either defect moves the characters around it, which this sees.
+test('V4: random paragraphs holding characters X9 removes (a soft hyphen, ZWSP, WJ), each line whole (paragraphLine): the rest of the line in the order of GNU FriBidi\'s library', { skip: hasLib ? false : `no ${PYTHON} that loads GNU FriBidi's library (libfribidi) here`, timeout: 600_000 }, async (t) => {
+  const { paragraphLine } = await import('../src/text.mjs');
+  const rnd = randomOf(380), pars = randomParagraphs(1500, 2613, { bn: true }).map((text) => ({ text, cols: 10 + rnd(71) }));
+  const BN = /[\u00ad\u200b\u2060]/, END = /\s[\u00ad\u200b\u2060]+$/;
+  const asked = [], mine = [];
+  let holding = 0, ending = 0;
+  for (const p of pars) {
+    const level = directionOf(p.text), lines = [...lineSpans(p.text, p.cols)].filter(([a, b]) => a < b);
+    for (const [a, b] of lines) {
+      const line = p.text.slice(a, b);
+      mine.push({ line, level, reader: paragraphLine(p.text, level, a, b) });
+      if (BN.test(line)) holding++;
+      if (END.test(line)) ending++;
+    }
+    asked.push({ text: p.text, level, lines });
+  }
+  const theirs = fribidiLines(asked).flat();
+  assert.equal(theirs.length, mine.length);
+  const removed = (s) => s.replace(/[\u00ad\u200b\u2060]/g, '');
+  const differ = mine.map((m, i) => ({ ...m, fribidi: theirs[i] })).filter((m) => removed(m.reader) !== removed(m.fribidi));
+  const whole = mine.filter((m, i) => m.reader === theirs[i]).length;
+  t.diagnostic(`${mine.length} lines, ${holding} holding a character X9 removes, ${ending} ending in whitespace and one or more of them: ${mine.length - differ.length} equal to FriBidi's but for where those are (${whole} with them too), ${differ.length} differ`);
+  assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's`);
+  assert.ok(holding >= 1000 && ending >= 30, `${mine.length} lines, ${holding} holding one, ${ending} ending in whitespace and one`);
 });
