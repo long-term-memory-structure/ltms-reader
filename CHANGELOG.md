@@ -33,8 +33,9 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   LB21a); a message's space at a break hangs, and a message ends with its last word.
   Right to left, one layout for every terminal (measured on Alacritty, Konsole, tmux and VS Code's terminal): the
   reader lays out each line itself, by the Unicode Bidirectional Algorithm (UAX #9, written here from Unicode 17.0.0's
-  data, generated and pinned as the width table is; a path or a URL laid out as one left-to-right unit; a paragraph
-  wrapped into lines, a record's text line or a message, resolved once and each line reordered from its levels, whole,
+  data, generated and pinned as the width table is; a letter's marks kept after it, a mark after a soft hyphen, ZWSP or
+  WJ too; a path or a URL laid out as one left-to-right unit; a paragraph wrapped into lines, a record's text line or
+  a message, resolved once and each line reordered from its levels, whole,
   its spaces at either end too), and writes a line that holds right-to-left text inside a left-to-right override (LRO
   after its first grapheme cluster that takes a column, never at the line's first column; PDF at its end), so that a
   terminal that lays text out itself keeps that order;

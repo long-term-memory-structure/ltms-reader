@@ -139,10 +139,11 @@ pasted acts as a key.
   order, its beginning kept, then laid out by itself, the spaces at its ends (a cell's padding) where they are.
   A path or a URL in a line (`/home/...`, `~/...`, `src/...`, `https://...`) is laid out as one left-to-right unit, its
   parts in order and a Hebrew name in it reading right (UAX #9's higher-level protocol HL4), in pieces where a line
-  breaks inside it, as an isolate is. Each cluster is kept whole, its marks after its letter, as a terminal draws them;
-  the text is aligned left, so the columns stay. Checked against Unicode's conformance test (BidiCharacterTest.txt:
-  every case without an explicit formatting character, which the reader shows as an escape and never applies) and
-  against GNU FriBidi: its command for a line, its library for a paragraph wrapped into lines.
+  breaks inside it, as an isolate is. Each cluster is kept whole, its marks after its letter, as a terminal draws them,
+  and so is a mark after characters UAX #9 removes (a soft hyphen, ZWSP, WJ: clusters of their own), with the letter
+  before them; the text is aligned left, so the columns stay. Checked against Unicode's conformance test
+  (BidiCharacterTest.txt: every case without an explicit formatting character, which the reader shows as an escape and
+  never applies) and against GNU FriBidi: its command for a line, its library for a paragraph wrapped into lines.
 - Colour follows [NO_COLOR](https://no-color.org): set, there is none; the selected row is still drawn in reverse.
 
 ## Limits

@@ -29,7 +29,7 @@
 // wraps into lines (a record's text line, a message, an error, the reader's own words), each line of which names it: its
 // levels are resolved once, and each line is reordered from them, whole (W1, round 4; V7, round 5; UAX #9 section 3.4:
 // paragraphLine). A path or a URL in a paragraph is laid out as one left-to-right unit (UAX #9 HL4).
-import { AL, AN, BN, ISO, L as LTR_CLASS, R, classOf, classesOf, lineLevels, mirrorOf, paragraphLevel, resolveLevels, visualOrder } from './bidi.mjs';
+import { AL, AN, BN, ISO, L as LTR_CLASS, NSM, R, classOf, classesOf, lineLevels, mirrorOf, paragraphLevel, resolveLevels, visualOrder } from './bidi.mjs';
 import { WIDE } from './width-table.mjs';
 
 /** C0 but the tab and the new line, DEL, C1; and what reorders or hides text: the bidirectional embeddings, overrides
@@ -403,18 +403,47 @@ const drawn = (c, level) => {
   return m === cp ? c : String.fromCodePoint(m) + c.slice(cp > 0xffff ? 2 : 1);
 };
 
+/** Whether a grapheme cluster is nonspacing marks alone (each of class NSM). */
+const marksAlone = (c) => { for (const ch of c) if (classOf(ch.codePointAt(0)) !== NSM) return false; return true; };
+
+/**
+ * Items of a stretch of text, in order, each laid out whole (Z5, round 7): put by add(item, v), v the level of the
+ * item's first character X9 kept, or -1 where X9 removed them all (`levelOf(c)`, for each cluster c, in order). Each item
+ * is a grapheme cluster, but where a cluster of nonspacing marks alone follows clusters X9 removed whole (a soft hyphen,
+ * ZWSP, WJ: the segmenter breaks after each, a control, so that a mark after one is a cluster of its own) that follow a
+ * cluster of the stretch: the mark goes with that cluster, and so do the removed characters between, in their order. UAX
+ * #9 gives the mark the class of the character before it, the removed ones passed over (W1), and the reader keeps a
+ * letter's marks after it, as a terminal draws them; as an item of its own, at an odd level, the mark was reversed with
+ * its run, before its letter, on the cell before it (round 6's check: final nun, WJ, WJ, patah was written patah, WJ,
+ * WJ, nun). Only after a cluster with a character X9 keeps: a mark after removed characters that begin the stretch, or
+ * follow only removed ones, has no letter there, and is an item of its own, at its own level. `items` and `at` (its
+ * levels) are the caller's, items added to the end of them, `fallback` the level of a first item X9 removed whole; a
+ * cluster X9 removed whole is at the level of the item before it.
+ */
+function addItems(s, levelOf, items, at, fallback) {
+  const held = [];
+  // whether the last item is a cluster of this stretch with a character X9 keeps (removed ones after it are held)
+  let kept = false;
+  const flush = () => { for (const x of held) { at[items.length] = at[items.length - 1]; items.push(x); } held.length = 0; kept = false; };
+  for (const c of clusters(s)) {
+    const v = levelOf(c);
+    if (v < 0 && kept) { held.push(c); continue; }
+    if (held.length && marksAlone(c)) { items[items.length - 1] += held.join('') + c; held.length = 0; continue; }
+    flush();
+    at[items.length] = v >= 0 ? v : items.length ? at[items.length - 1] : fallback;
+    items.push(c);
+    kept = v >= 0;
+  }
+  flush();
+}
+
 /** The clusters of s in visual order by `levels`, the levels of the code units of a text s begins at offset `base` of:
  *  a cluster at the level of its first character X9 kept (one X9 removed whole at the level of the cluster before it,
- *  the first at `level`); L2; L4. */
+ *  the first at `level`; a mark after such ones, with the cluster before them: addItems); L2; L4. */
 function ordered(s, levels, base, level) {
   const cs = [], at = new Int8Array(s.length);
   let k = base;
-  for (const c of clusters(s)) {
-    let v = -1;
-    for (let j = k, e = k + c.length; j < e && v < 0; j++) v = levels[j];
-    at[cs.length] = v >= 0 ? v : cs.length ? at[cs.length - 1] : level;
-    cs.push(c); k += c.length;
-  }
+  addItems(s, (c) => { let v = -1; for (let j = k, e = k + c.length; j < e && v < 0; j++) v = levels[j]; k += c.length; return v; }, cs, at, level);
   let out = '';
   for (const i of visualOrder(at, 0, cs.length)) out += drawn(cs[i], at[i]);
   return out;
@@ -450,7 +479,8 @@ function layOut(text, level, units) {
 
 /**
  * Line [a, b) of a paragraph laid out by layOut (a and b begin clusters), in visual order: L1 over the line (its own
- * characters' classes, the paragraph's levels), each cluster at the level of its first character X9 kept, L2, L4. A
+ * characters' classes, the paragraph's levels), each cluster at the level of its first character X9 kept (a mark after
+ * characters X9 removed, with the cluster before them: addItems), L2, L4. A
  * path's or a URL's part in the line stands in it as one isolate, at the level the unit has in the paragraph, its own
  * characters in the order of its own levels (a unit the line breaks inside of is drawn in pieces, as an isolate across
  * a line break is: GNU FriBidi's library agrees, test/bidi.test.mjs).
@@ -482,12 +512,7 @@ function lineOf(P, a, b) {
       i = e; u++; continue;
     }
     const end = u < units.length && units[u].a < b ? units[u].a : b;
-    for (const c of clusters(text.slice(i, end))) {
-      let v = -1;
-      for (let k = i - a, e = k + c.length; k < e && v < 0; k++) v = lv[k];
-      at[items.length] = v >= 0 ? v : items.length ? at[items.length - 1] : p;
-      items.push(c); i += c.length;
-    }
+    addItems(text.slice(i, end), (c) => { let v = -1; for (let k = i - a, e = k + c.length; k < e && v < 0; k++) v = lv[k]; i += c.length; return v; }, items, at, p);
   }
   let out = '';
   for (const i of visualOrder(at, 0, items.length)) out += typeof items[i] === 'string' ? drawn(items[i], at[i]) : items[i].unit;

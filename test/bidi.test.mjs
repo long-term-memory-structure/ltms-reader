@@ -722,3 +722,101 @@ function glueParagraphs(n, seed) {
     return p;
   });
 }
+
+// Z5 (round 7): a nonspacing mark right after a character X9 removes (a soft hyphen, ZWSP, WJ: each a grapheme cluster
+// of its own, the segmenter breaking after a control, so that the mark after it is a cluster of its own too) was laid
+// out as an item of its own: at an odd level reversed with its run, it was drawn before its letter, on the cell before
+// it (round 6's builder found it, its check measured it, nbmark.mjs: final nun, WJ, WJ, patah written patah, WJ, WJ,
+// nun; the tests' reference writes nun, patah, and GNU FriBidi's library nun, WJ, WJ, patah). UAX #9 gives the mark the
+// class of the character before it, X9's removed passed over (W1), and the reader keeps a letter's marks after it as a
+// terminal draws them (L3): now the mark, and the removed characters between, go with the letter's cluster.
+const X9_REMOVED = /[\u00ad\u200b\u2060]/g;
+
+/** Paragraphs whose words put characters X9 removes (a soft hyphen, ZWSP, WJ) between a letter and its nonspacing marks
+ *  (Z5, round 7: randomParagraphs draws none before a mark): pointed Hebrew, Arabic with its marks, Latin with
+ *  combining marks; words joined by a space, a comma, brackets or a number; `n` of them, from `seed`. */
+function marksAfterRemoved(n, seed) {
+  const rnd = randomOf(seed), pick = (xs) => xs[rnd(xs.length)];
+  const BN = ['\u00ad', '\u200b', '\u2060'];
+  const heb = [...'\u05d0\u05d1\u05d2\u05d3\u05d4\u05d5\u05d6\u05d7\u05d8\u05d9\u05db\u05dc\u05de\u05e0\u05e1\u05e2\u05e4\u05e6\u05e7\u05e8\u05e9\u05ea\u05da\u05dd\u05df'];
+  const ar = [...'\u0627\u0628\u062a\u062c\u062d\u062f\u0631\u0633\u0634\u0639\u0641\u0642\u0643\u0644\u0645\u0646\u0647\u0648\u064a'];
+  const scripts = [[heb, ['\u05b0', '\u05b4', '\u05b7', '\u05b8', '\u05bc', '\u05c1']], [ar, ['\u064e', '\u064f', '\u0650', '\u0651']], [[...'abcdefgh'], ['\u0301', '\u0308']]];
+  const word = () => {
+    const [abc, marks] = scripts[[0, 0, 0, 1, 2][rnd(5)]];
+    let w = '';
+    for (let i = 0, k = 1 + rnd(5); i < k; i++) {
+      w += pick(abc);
+      if (rnd(2)) { if (rnd(3)) w += pick(BN).repeat(1 + rnd(2)); w += pick(marks); if (!rnd(3)) w += pick(BN) + pick(marks); }
+    }
+    return w;
+  };
+  return Array.from({ length: n }, () => {
+    let p = word();
+    for (let i = 0, k = 2 + rnd(10); i < k; i++) p += pick([' ', ' ', ', ', ' (', ') ', ' 12 ', ' [']) + word();
+    return p;
+  });
+}
+
+test('Z5: a nonspacing mark after characters X9 removes (a soft hyphen, ZWSP, WJ) is drawn with the letter they follow, after it, the removed characters between: known answers, and every line of 800 paragraphs at two widths each as the tests\' reference of UAX #9 lays it out, the removed characters left out', (t) => {
+  // round 6's check's cases (nbmark.mjs), at level 1: the mark with its letter, wherever the run puts the letter
+  assert.equal(paragraphLine('\u05df\u2060\u2060\u05b7', 1, 0, 4), '\u05df\u2060\u2060\u05b7');
+  assert.equal(paragraphLine('\u05e9\u05dc\u200b\u05b8\u05d5\u05dd', 1, 0, 6), '\u05dd\u05d5\u05dc\u200b\u05b8\u05e9');
+  assert.equal(paragraphLine('\u05d0\u05d1\u00ad\u05b7\u05d2', 1, 0, 5), '\u05d2\u05d1\u00ad\u05b7\u05d0');
+  // the control: no removed character between, as before
+  assert.equal(paragraphLine('\u05d0\u05b7\u05d1\u05d2', 1, 0, 4), '\u05d2\u05d1\u05d0\u05b7');
+  // a right-to-left run of a left-to-right line, as a cell (visualLine) and on the screen (displayOrder)
+  assert.equal(visualLine('ab \u05d0\u05d1\u2060\u05b7\u05d2 cd', 0), 'ab \u05d2\u05d1\u2060\u05b7\u05d0 cd');
+  assert.equal(displayOrder([{ text: 'ab \u05d0\u05d1\u2060\u05b7\u05d2 cd', style: null, dir: 0 }], 'reader')[0].text, 'ab \u05d2\u05d1\u2060\u05b7\u05d0 cd');
+  // inside a path, laid out on its own (HL4)
+  assert.equal(visualLine('see src/\u05d0\u05d1\u2060\u05b7\u05d2/x.ts', 0), 'see src/\u05d2\u05d1\u2060\u05b7\u05d0/x.ts');
+  // two marks after a removed character and a mark: both with the letter
+  assert.equal(paragraphLine('\u05d0\u05b8\u200b\u05bc\u05d1', 1, 0, 5), '\u05d1\u05d0\u05b8\u200b\u05bc');
+  // a mark after removed characters at a line's start has no letter in the line: an item of its own, as before
+  assert.equal(paragraphLine('\u05d0\u200b\u05b7\u05d1', 1, 1, 4), '\u05d1\u05b7\u200b');
+  // the population: every line of each paragraph at two widths, the reader's line (paragraphLine, as the record view
+  // asks for each line) against the reference's (linesAsFribidi: a mark after the character it follows, X9's removed
+  // passed over), the removed characters left out of both
+  const rnd = randomOf(7172), pars = marksAfterRemoved(800, 7171);
+  let lines = 0, holding = 0;
+  const differ = [];
+  for (const text of pars) {
+    const level = directionOf(text), cps = [...text].map((c) => c.codePointAt(0));
+    assert.equal(cps.length, text.length, 'every character in the Basic Multilingual Plane: code point and code unit offsets are one');
+    for (const cols of [5 + rnd(20), 25 + rnd(56)]) {
+      const spans = [...lineSpans(text, cols)].filter(([a, b]) => a < b);
+      const ref = reference.linesAsFribidi({ cps, level, lines: spans }).map((l) => String.fromCodePoint(...l));
+      spans.forEach(([a, b], i) => {
+        const mine = paragraphLine(text, level, a, b, { units: false });
+        lines++;
+        if (/[\u00ad\u200b\u2060]\p{Mn}/u.test(text.slice(a, b))) holding++;
+        if (mine.replace(X9_REMOVED, '') !== ref[i]) differ.push(`${JSON.stringify(text.slice(a, b))} at ${level}: ${JSON.stringify(mine)}, the reference ${JSON.stringify(ref[i])}`);
+      });
+    }
+  }
+  t.diagnostic(`${pars.length} paragraphs at two widths each: ${lines} lines, ${holding} holding a mark after a character X9 removes; ${differ.length} differ from the reference`);
+  assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${lines} lines differ from the tests' reference`);
+  assert.ok(lines >= 3000 && holding >= 1000, `${lines} lines, ${holding} holding a mark after a character X9 removes`);
+});
+
+// The same paragraphs against GNU FriBidi's library (its FRIBIDI_FLAG_REORDER_NSM keeps a mark after the character it
+// follows, the removed characters between too, as the reader now does), the removed characters left out, judged as the
+// other library tests are (a line on which FriBidi differs from the tests' reference while the reader gives the
+// reference's line is FriBidi's difference: brackets next to a mark).
+test('Z5: the same paragraphs, each line as GNU FriBidi\'s library lays it out, the characters X9 removes left out', { skip: hasLib ? false : `no ${PYTHON} that loads GNU FriBidi's library (libfribidi) here`, timeout: 600_000 }, (t) => {
+  const rnd = randomOf(7172), asked = [], mine = [];
+  for (const text of marksAfterRemoved(800, 7171)) {
+    const level = directionOf(text);
+    for (const cols of [5 + rnd(20), 25 + rnd(56)]) {
+      const lines = [...lineSpans(text, cols)].filter(([a, b]) => a < b);
+      for (const [a, b] of lines) mine.push({ line: text.slice(a, b), level, reader: paragraphLine(text, level, a, b, { units: false }) });
+      asked.push({ text, level, lines });
+    }
+  }
+  const theirs = fribidiLines(asked).flat();
+  assert.equal(theirs.length, mine.length);
+  const removed = (s) => s.replace(X9_REMOVED, '');
+  const { differ, faults } = judged(asked, mine, theirs, (a, b) => removed(a) === removed(b));
+  t.diagnostic(`${mine.length} lines: ${mine.length - differ.length - faults.length} equal to FriBidi's but for where the removed characters are, ${faults.length} FriBidi's difference from UAX #9 (the reader's line the tests' reference's), ${differ.length} the reader's`);
+  assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's and from the tests' reference`);
+  assert.ok(mine.length >= 3000, `${mine.length} lines`);
+});
