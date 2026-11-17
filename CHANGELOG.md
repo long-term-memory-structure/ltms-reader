@@ -36,7 +36,8 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   data, generated and pinned as the width table is; a path or a URL laid out as one left-to-right unit; a paragraph
   wrapped into lines, a record's text line or a message, resolved once and each line reordered from its levels, whole,
   its spaces at either end too), and writes a line that holds right-to-left text inside a left-to-right override (LRO
-  after its first grapheme cluster, PDF at its end), so that a terminal that lays text out itself keeps that order;
+  after its first grapheme cluster that takes a column, never at the line's first column; PDF at its end), so that a
+  terminal that lays text out itself keeps that order;
   `LTMS_READER_BIDI=terminal` writes the text as stored instead, with an RLM at the end of each right-to-left
   paragraph.
 - A transcript is read in the reader's own process; one over a tenth of Node's memory limit (its heap's, or the old

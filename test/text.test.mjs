@@ -632,6 +632,43 @@ test('Y1: in "reader" mode a row that holds right-to-left text is written with L
   assert.ok(overridden >= 20 && overridden < rows, `${overridden} of ${rows} rows written with the override`);
 });
 
+// Z3 (round 7): a row whose first grapheme cluster takes no column put the LRO in the row's first column, where the
+// four terminals measured mishandle it (S378, CONTROLS.md: tmux drops it, xterm.js gives it a column of its own, Konsole
+// does not apply it): a right-to-left line whose logical end is ZWSP (X9 removes it, and the reader draws it with the
+// run before it: at the row's left), or WJ and a lone mark; a row that begins with a lone mark, or an RLM. Round 6's
+// check built these (y1edge.mjs); none of its transcripts' rows began so. Now the LRO goes after the first cluster that
+// takes a column; and a row with none (nothing a terminal could reorder) is written without the override.
+test('Z3: the override never in the first column: the LRO after the row\'s first cluster that takes a column, not after one that takes none (ZWSP, a lone mark, an RLM, at the row\'s left); a row with no cluster that takes a column, none', async () => {
+  const { frameBytes, LRO, PDF } = await import('../src/screen.mjs');
+  const { takesNoColumn, withoutOverride } = await import('./helpers.mjs');
+  const rowsOf = (lines, colour = false) => frameBytes(lines, { cols: 80, rows: lines.length, colour, rtl: 'reader' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1);
+  const SHALOM = '\u05e9\u05dc\u05d5\u05dd', OLAM = '\u05e2\u05d5\u05dc\u05dd';
+  // a right-to-left line whose logical end is ZWSP: ZWSP first on the row, then the line laid out
+  assert.deepEqual(rowsOf([[{ text: `${SHALOM} ${OLAM}\u200b`, style: null, dir: 1 }]]), [`\u200b\u05dd${LRO}\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  // a row that begins with a lone mark, then Latin and Hebrew
+  assert.deepEqual(rowsOf([[{ text: `\u05b7abc ${SHALOM}`, style: null, dir: 0 }]]), [`\u05b7a${LRO}bc \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  // a row that begins with an RLM (class R: a run of its own at the left of a left-to-right line)
+  assert.deepEqual(rowsOf([[{ text: `\u200fabc ${SHALOM}`, style: null, dir: 0 }]]), [`\u200fa${LRO}bc \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  // the zero-width first cluster in a segment of its own, styled: the LRO in the next segment, inside its style
+  assert.deepEqual(rowsOf([[{ text: '\u200b', style: 'dim' }, { text: SHALOM, style: 'sel', dir: 1 }]], true), [`\x1b[2m\u200b\x1b[0m\x1b[7m\u05dd${LRO}\u05d5\u05dc\u05e9\x1b[0m${PDF}`]);
+  // a row of an RLM alone, or of marks and an RLM: right to left, and no column: written as it is
+  assert.deepEqual(rowsOf([[{ text: '\u200f', style: null }]]), ['\u200f']);
+  assert.deepEqual(rowsOf([[{ text: '\u05b7\u200f', style: null, dir: 0 }]]), ['\u05b7\u200f']);
+  // and as before: a letter first, the LRO after it
+  assert.deepEqual(rowsOf([[{ text: `${SHALOM} ${OLAM}`, style: null, dir: 1 }]]), [`\u05dd${LRO}\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  // the helper the tests check placement with says the same, and so it does of every row above
+  assert.equal(takesNoColumn('\u200b'), true); assert.equal(takesNoColumn('\u05b7'), true); assert.equal(takesNoColumn('\u200f'), true);
+  assert.equal(takesNoColumn('\u00ad'), false); assert.equal(takesNoColumn('a\u0301'), false); assert.equal(takesNoColumn('\u05dd'), false);
+  for (const text of [`${SHALOM} ${OLAM}\u200b`, `${SHALOM}\u2060\u05b7`, `\u05b7abc ${SHALOM}`, `\u200fabc ${SHALOM}`, '\u200f', `\u200b\u200b${SHALOM}`]) {
+    for (const dir of [0, 1]) {
+      const [row] = rowsOf([[{ text, style: null, dir }]]);
+      const at = row.indexOf(LRO);
+      assert.ok(at < 0 || width(row.slice(0, at)) >= 1, `${JSON.stringify(text)} at ${dir}: ${width(row.slice(0, Math.max(0, at)))} columns before the LRO: ${JSON.stringify(row)}`);
+      withoutOverride(row);
+    }
+  }
+});
+
 test('V7: in "terminal", a line of a paragraph takes its paragraph\'s direction, not its own: an RLM after a left-to-right line of a right-to-left paragraph, none after a right-to-left line of a left-to-right one', () => {
   const rtl = 'שלום world and more', ltr = 'hello שלום עולם';
   assert.equal(directionOf(rtl), 1); assert.equal(directionOf('world and more'), 0);

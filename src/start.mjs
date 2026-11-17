@@ -22,8 +22,8 @@ For lines to read or to pipe, ltms is the command (npx long-term-memory-structur
 
 Right to left (Hebrew, Arabic): in every terminal the reader lays out each line itself, by the Unicode Bidirectional
 Algorithm, and writes a line that holds right-to-left text inside a left-to-right override (U+202D after its first
-character, U+202C at its end), so that a terminal that lays text out itself keeps that order. Measured on four
-terminals: Alacritty, Konsole, tmux and VS Code's terminal; no other was. To choose:
+character that takes a column, U+202C at its end), so that a terminal that lays text out itself keeps that order.
+Measured on four terminals: Alacritty, Konsole, tmux and VS Code's terminal; no other was. To choose:
   LTMS_READER_BIDI=reader      the reader lays it out (the default)
   LTMS_READER_BIDI=terminal    as stored, with no override (for a terminal that lays text out itself)
 `;

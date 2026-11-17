@@ -154,17 +154,24 @@ export function afterHebrewLetter(s, i) {
 /** The left-to-right override "reader" mode writes around a row that holds right-to-left text (Y1, round 6). */
 export const LRO = '\u202d', PDF = '\u202c';
 
+/** Whether a grapheme cluster takes no column, by the README's rule: every character in it a nonspacing or enclosing
+ *  mark, or a format character but the soft hyphen, or a Hangul medial vowel or final consonant. */
+export const takesNoColumn = (c) => [...c].every((ch) => ch !== '\u00ad' && /^[\p{Mn}\p{Me}\p{Cf}\u1160-\u11ff\ud7b0-\ud7ff]$/u.test(ch));
+
 /**
  * A row as the screen writes it (its escape sequences taken out), without the override around it, after checking it
- * (Y1, round 6): in "reader" mode, a row that holds right-to-left text (a character of class R, AL or AN, by the tests'
- * own reference of UAX #9) has LRO right after its first grapheme cluster and PDF as its last character, and no other;
- * any other row, and every row in "terminal" mode, has neither. Throws an AssertionError otherwise.
+ * (Y1, round 6; Z3, round 7): in "reader" mode, a row that holds right-to-left text (a character of class R, AL or AN, by
+ * the tests' own reference of UAX #9) and a cluster that takes a column has LRO right after the first such cluster
+ * (never in the row's first column: Z3) and PDF as its last character, and no other; a row that holds right-to-left
+ * text but no cluster that takes a column, any other row, and every row in "terminal" mode, have neither. Throws an
+ * AssertionError otherwise.
  */
 export function withoutOverride(row, mode = 'reader') {
   const bare = row.replace(/[\u202c\u202d]/g, '');
   const rtl = mode === 'reader' && [...bare].some((c) => [REFERENCE.R, REFERENCE.AL, REFERENCE.AN].includes(REFERENCE.classOf(c.codePointAt(0))));
-  if (!rtl) { assert.equal(row, bare, `${mode}: a row without the override: ${JSON.stringify(row)}`); return row; }
-  const first = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(bare)][0].segment;
-  assert.equal(row, `${first}${LRO}${bare.slice(first.length)}${PDF}`, `a row that holds right-to-left text, LRO after its first cluster and PDF last: ${JSON.stringify(row)}`);
+  const cs = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(bare)].map((x) => x.segment), k = cs.findIndex((c) => !takesNoColumn(c));
+  if (!rtl || k < 0) { assert.equal(row, bare, `${mode}: a row without the override: ${JSON.stringify(row)}`); return row; }
+  const first = cs.slice(0, k + 1).join('');
+  assert.equal(row, `${first}${LRO}${bare.slice(first.length)}${PDF}`, `a row that holds right-to-left text, LRO after its first cluster that takes a column and PDF last: ${JSON.stringify(row)}`);
   return bare;
 }

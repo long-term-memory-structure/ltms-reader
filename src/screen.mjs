@@ -10,14 +10,15 @@
 // row early, and nothing of the frame before may stay after it (R.F6). Each row's segments are put in the order the
 // right-to-left mode writes them (text.mjs displayOrder, R1): laid out by the reader, or as stored for a terminal that
 // lays bidirectional text out itself. A row laid out by the reader that holds right-to-left text is written inside a
-// left-to-right override, LRO after its first grapheme cluster and PDF at its end (Y1, round 6), so that a terminal that
+// left-to-right override, LRO after its first grapheme cluster that takes a column and PDF at its end (Y1, round 6; Z3,
+// round 7: after a first cluster that takes none, it was at the row's first column), so that a terminal that
 // lays text out itself keeps the reader's order: measured on four terminals (S378, CONTROLS.md), the two take no column
 // in Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 and VS Code 1.146.0's terminal (xterm.js) there, and Konsole applies an
 // override from a row's second column on; at its first column an LRO is not applied by Konsole, dropped by tmux and
 // given a column by xterm.js, which gives an isolate (LRI, RLI, PDI) a column anywhere; so nothing else is written.
 import readline from 'node:readline';
 import { AL, AN, R, classOf } from './bidi.mjs';
-import { clusters, displayOrder, visible } from './text.mjs';
+import { clusterWidth, clusters, displayOrder, visible } from './text.mjs';
 
 /** The alternate screen, the cursor hidden, no wrapping at the last column (so a cluster a terminal draws wider than it
  *  is counted here cannot scroll the screen), and bracketed paste: the terminal marks a paste, so that its text is
@@ -48,9 +49,17 @@ export function holdsRtl(text) {
   return false;
 }
 
+/** Where the first grapheme cluster of `text` that takes a column ends (Z3, round 7: after a first cluster that takes
+ *  none, ZWSP or a lone mark, the LRO was in the row's first column), or -1 when none takes a column. */
+function firstColumnEnd(text) {
+  let at = 0;
+  for (const c of clusters(text)) { at += c.length; if (clusterWidth(c) > 0) return at; }
+  return -1;
+}
+
 /** The bytes of one whole frame: each line at its row, the row erased whole first, then the line, styled; its segments in
  *  the order the right-to-left mode `rtl` writes them ("reader" or "terminal"); in "reader", a row that holds
- *  right-to-left text inside LRO (after its first grapheme cluster) and PDF (last). */
+ *  right-to-left text inside LRO (after its first grapheme cluster that takes a column) and PDF (last). */
 export function frameBytes(lines, { cols, rows, colour = true, rtl = 'reader' }) {
   let out = '';
   for (let i = 0; i < rows; i++) {
@@ -60,13 +69,15 @@ export function frameBytes(lines, { cols, rows, colour = true, rtl = 'reader' })
     const merged = [];
     for (const s of row) { const last = merged[merged.length - 1]; if (last && (last.style ?? null) === (s.style ?? null)) last.text += s.text; else merged.push({ text: s.text, style: s.style ?? null }); }
     const texts = merged.map((s) => safe(s.text));
-    // laid out by the reader and holding right-to-left text: LRO right after the row's first grapheme cluster (where it
-    // ends, in whichever segment that is, a mark on the first character kept with it), PDF last
+    // laid out by the reader and holding right-to-left text: LRO right after the row's first grapheme cluster that takes
+    // a column (where it ends, in whichever segment that is, a mark on its character kept with it; never in the row's
+    // first column, where the terminals measured drop it, give it a column or do not apply it: Z3, round 7), PDF last; a
+    // row with no cluster that takes a column has nothing a terminal could reorder, and neither
     let end = '';
     if (rtl === 'reader') {
       const whole = texts.join('');
-      if (holdsRtl(whole)) {
-        const first = clusters(whole).next().value.length;
+      const first = holdsRtl(whole) ? firstColumnEnd(whole) : -1;
+      if (first > 0) {
         for (let k = 0, at = 0; k < texts.length; at += texts[k++].length) {
           if (at < first && first <= at + texts[k].length) { texts[k] = texts[k].slice(0, first - at) + LRO + texts[k].slice(first - at); break; }
         }

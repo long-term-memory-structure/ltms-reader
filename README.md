@@ -102,10 +102,11 @@ pasted acts as a key.
   `reader`, the default), by the Unicode Bidirectional Algorithm (UAX #9, Unicode 17.0.0, written in this package: the
   implicit algorithm with paired brackets, its lines reordered and mirrored, a paragraph's direction from its first
   strong character), and writes it in visual order. A line that holds right-to-left text (a character of UAX #9's class
-  R, AL or AN) is written inside a left-to-right override, U+202D (LRO) right after its first grapheme cluster and
+  R, AL or AN) is written inside a left-to-right override, U+202D (LRO) right after its first grapheme cluster that
+  takes a column (never at the line's first column: after ZWSP, a lone mark or an RLM that begins it, the next) and
   U+202C (PDF) at its end, so that a terminal that lays bidirectional text out itself keeps the reader's order instead
-  of reordering it a second time; nothing else is written (no isolate), and a line without right-to-left text is
-  written as it is. No terminal is detected.
+  of reordering it a second time; nothing else is written (no isolate), and a line without right-to-left text, or with
+  no cluster that takes a column, is written as it is. No terminal is detected.
   - Measured on four terminals (S378): Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 and VS Code 1.146.0's terminal
     (xterm.js 6.1.0-beta.304). There, after a line's first column, LRO and PDF take no column. Konsole lays text out
     itself, with a left-to-right base for each line, and applies the override from a line's second column on; at the
@@ -114,9 +115,9 @@ pasted acts as a key.
     draw the text in the order it is written; tmux passes it on. No other terminal was measured (kitty, VTE's, as in
     GNOME Terminal, mlterm, WezTerm, foot, iTerm2, Windows Terminal, GNU screen and the rest are not): one that gives
     LRO or PDF a column shifts such a line by it. Not measured either: how Konsole joins Arabic letters that come to it
-    in visual order under the override; and a line whose first cluster is itself right to left, which the override
-    leaves out (laid out by UAX #9 with a left-to-right base, as Konsole lays a line out, that cluster would go to the
-    line's other end).
+    in visual order under the override; and a line whose first cluster that takes a column is itself right to left,
+    which the override leaves out (laid out by UAX #9 with a left-to-right base, as Konsole lays a line out, that
+    cluster would go to the line's other end). That is a known limit, left as it is.
   - `LTMS_READER_BIDI=terminal` writes the text as stored instead (mode `terminal`), with a right-to-left mark (RLM) at
     the end of each right-to-left paragraph, for a terminal that lays bidirectional text out itself (on Konsole the RLM
     puts the paragraph's end punctuation where it belongs, though its brackets are not mirrored); `LTMS_READER_BIDI=reader`
