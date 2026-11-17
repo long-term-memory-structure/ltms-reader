@@ -225,6 +225,10 @@ npm test
 `npm test` runs `node --test test/*.test.mjs`, the pattern expanded by the shell, which runs the test files on Node 20,
 22, 24 and 26 alike. Given the folder `test/` instead, Node 20 runs every module under it as a test, the fixtures too,
 and Node 22 and 24 run none: they take the folder for a module, and fail.
+The whole suite was run on four Node lines on 2026-11-17, with no failure on any: Node 26.13.1, 428 tests, 428
+passed (GNU FriBidi 1.0.18 there, its command and its library); Node 24.22.3, 22.23.3 and 20.20.2 in docker (the
+images node:24-slim, node:22-slim and node:20-slim), 428 tests each, 421 passed and 7 skipped, as there is no GNU
+FriBidi and no Electron in them. Each with the pinned Unicode files named (`LTMS_READER_UCD`, `LTMS_READER_EAW`).
 The tests run every view at 80 x 24 and 200 x 60 over ltms's own synthetic transcripts (`test/fixtures/ltms`) and the
 reader's (`test/fixtures/hebrew-english.jsonl`, `escapes.jsonl` and `channels.jsonl`, written by
 `node test/fixtures/make-fixtures.mjs`), compare what each row says with ltms's own commands, read every byte the
