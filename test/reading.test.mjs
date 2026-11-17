@@ -25,7 +25,7 @@ test('too large: refused with its size and the NODE_OPTIONS that would let it be
   assert.equal(sizeLimit(heap), Math.floor(heap / 10));
   assert.equal(tooLarge(400 * MB, heap), null);
   const why = tooLarge(300 * MB - 1, 2048 * MB);
-  assert.match(why, /^it is 300 MB, and this process reads a transcript of up to 205 MB \(a tenth of its memory limit, as ltms reads; parsing takes 5 to 8 times a file's size\)\. To read it, give Node more memory: NODE_OPTIONS=--max-old-space-size=3072 npx ltms-reader$/);
+  assert.match(why, /^it is 300 MB, and this process reads a transcript of up to 204 MB \(a tenth of its memory limit, as ltms reads; parsing takes 5 to 8 times a file's size\)\. To read it, give Node more memory: NODE_OPTIONS=--max-old-space-size=3072 npx ltms-reader$/);
   // the setting named is enough by the same rule: a tenth of it holds the file
   const need = Number(/--max-old-space-size=(\d+)/.exec(why)[1]) * MB;
   assert.equal(tooLarge(300 * MB - 1, need), null);
@@ -44,7 +44,7 @@ test('the file itself: a link, a folder, a FIFO, a missing file and a file too l
     assert.match(kind(own), /^not-file: .* is not a regular file$/);
     assert.match(kind(path.join(own, 'fifo.jsonl')), /^not-file: .* is not a regular file$/);
     assert.match(kind(path.join(own, 'gone.jsonl')), /^missing: no file at /);
-    assert.match(kind(big, { heapLimit: 10_000 }), /^too-large: .*big\.jsonl is not read: it is 1 MB, and this process reads a transcript of up to 1 MB .*NODE_OPTIONS=--max-old-space-size=256 npx ltms-reader$/);
+    assert.match(kind(big, { heapLimit: 10_000 }), /^too-large: .*big\.jsonl is not read: it is 3 KB, and this process reads a transcript of up to 0 KB .*NODE_OPTIONS=--max-old-space-size=256 npx ltms-reader$/);
     assert.equal(kind(big), 'read');
   } finally { rmSync(own, { recursive: true, force: true }); }
 });
@@ -145,7 +145,7 @@ test('Z1: the memory limit the size rules read: the heap limit, or the old space
   assert.equal(tooLarge(300 * MiB), tooLarge(300 * MiB, memoryLimit()));
   assert.equal(recordTooLarge(30 * MiB, 40 * MiB), recordTooLarge(30 * MiB, 40 * MiB, memoryLimit()));
   assert.equal(tooLarge(2 * MiB, 208 * MiB), null);
-  assert.match(tooLarge(2 * MiB, at({ execArgv: ['--max-old-space-size=16'] })), /^it is 2 MB, and this process reads a transcript of up to 2 MB .* NODE_OPTIONS=--max-old-space-size=256 npx ltms-reader$/);
+  assert.match(tooLarge(2 * MiB, at({ execArgv: ['--max-old-space-size=16'] })), /^it is 2 MB, and this process reads a transcript of up to 1 MB .* NODE_OPTIONS=--max-old-space-size=256 npx ltms-reader$/);
 });
 
 // R8c (round 8): Node reads NODE_OPTIONS as its ParseNodeOptionsEnvVar does, a double-quoted stretch part of a word, and
@@ -179,6 +179,35 @@ test('R8c: under NODE_OPTIONS="--max-old-space-size=16" quoted whole, a transcri
   } finally { rmSync(own, { recursive: true, force: true }); }
 });
 
+// R8d (round 8): a refusal rounded both the transcript's size and the limit up (Math.ceil each), so that under an old
+// space of 16 MB, a limit of 1.6 MB, a transcript of 1.604 MB was refused with "it is 2 MB, and this process reads a
+// transcript of up to 2 MB" (round 7's check, on Node 20, 22, 24 and 26). The size is rounded up and the limit down, in KB
+// under a megabyte, as a record's refusal has them: wherever a transcript is refused, the two numbers differ.
+test('R8d: a refusal tells the size and the limit apart: the size rounded up, the limit rounded down (it said "it is 2 MB, and this process reads a transcript of up to 2 MB")', () => {
+  assert.match(tooLarge(1_681_917, 16 * MiB), /^it is 2 MB, and this process reads a transcript of up to 1 MB \(/, 'a transcript of 1.604 MB under an old space of 16 MB');
+  const said = (why) => {
+    const m = /^it is ([\d,]+) (KB|MB), and this process reads a transcript of up to ([\d,]+) (KB|MB) \(/.exec(why);
+    assert.ok(m, why);
+    const n = (v, unit) => Number(v.replace(/,/g, '')) * (unit === 'KB' ? 1024 : MiB);
+    return [n(m[1], m[2]), n(m[3], m[4])];
+  };
+  let n = 0;
+  for (const old of [8, 9, 10, 16, 17, 20, 32, 33, 64, 100, 128, 160, 1000, 2048, 4097]) {
+    const heap = old * MiB, limit = sizeLimit(heap);
+    const up = Math.ceil(limit / MiB) * MiB, kb = Math.ceil(limit / 1024) * 1024;
+    for (const size of [limit + 1, limit + 1023, kb, kb + 1, up, up + 1, 2 * limit, 10 * limit + 7]) {
+      if (size <= limit || size > STRING_MAX) continue;
+      const [shown, upTo] = said(tooLarge(size, heap));
+      const at = `${size.toLocaleString('en-US')} bytes under ${old} MB (a limit of ${limit.toLocaleString('en-US')})`;
+      assert.ok(shown >= size, `${at}: the size said, ${shown}, is not less than it`);
+      assert.ok(upTo <= limit, `${at}: the limit said, ${upTo}, is not more than it`);
+      assert.ok(shown > upTo, `${at}: the size said, ${shown}, is more than the limit said, ${upTo}`);
+      n++;
+    }
+  }
+  assert.ok(n > 100, `${n} refusals`);
+});
+
 test('Z1: under an old space of 16 MB, transcripts of 10 and 4 MB are refused, on every Node line: by a tenth of the heap\'s limit Node 24 and 26 read both, and the first ran their old space out, and Node 20 and 22 read the second', { timeout: 120_000 }, () => {
   const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-old-'));
   try {
@@ -188,7 +217,7 @@ test('Z1: under an old space of 16 MB, transcripts of 10 and 4 MB are refused, o
       assert.equal(r.status, 0, `${mb} MB: status ${r.status}, signal ${r.signal}: ${r.stderr.slice(-600)}`);
       const lines = JSON.parse(r.stdout.trim().split('\n').pop()).map((l) => l.trimEnd());
       assert.equal(lines[1], 'this transcript could not be read', `${mb} MB: ${JSON.stringify(lines.slice(0, 4))}`);
-      assert.match(lines.slice(2).join(' '), new RegExp(`is not read: it is ${mb + 1} MB, and this process reads a transcript of up to 2 MB `), `${mb} MB`);
+      assert.match(lines.slice(2).join(' '), new RegExp(`is not read: it is ${mb + 1} MB, and this process reads a transcript of up to 1 MB `), `${mb} MB`);
     }
   } finally { rmSync(own, { recursive: true, force: true }); }
 });

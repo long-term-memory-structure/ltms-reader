@@ -149,8 +149,9 @@ pasted acts as a key.
 ## Limits
 
 - A transcript is read into memory whole, in the reader's own process. One over a tenth of Node's memory limit is
-  refused with its size and the `NODE_OPTIONS=--max-old-space-size=...` that would let it be read (the rule ltms's
-  commands follow, so the lists and the reader agree on which files can be read); one over 480 MB cannot be read at all.
+  refused with its size and that limit (the size rounded up, the limit down, so that the two differ) and the
+  `NODE_OPTIONS=--max-old-space-size=...` that would let it be read (the rule ltms's commands follow, so the lists and
+  the reader agree on which files can be read); one over 480 MB cannot be read at all.
   Node's memory limit is its heap's, or, where `--max-old-space-size` or `--max-old-space-size-percentage` sets the old
   space (in `NODE_OPTIONS` or on node's command line), the old space's: a transcript's parse is kept there, and the
   heap's limit holds beside it a reserve for new objects that is sized from the machine's memory, not from the old space

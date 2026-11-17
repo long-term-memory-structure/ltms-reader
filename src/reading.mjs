@@ -75,16 +75,20 @@ export function memoryLimit({ heap = getHeapStatistics().heap_size_limit, execAr
 /** The largest transcript this process reads, by ltms's rule, for a memory limit of `heapLimit` bytes. */
 export const sizeLimit = (heapLimit) => Math.min(STRING_MAX, Math.floor(heapLimit / 10));
 
+/** n bytes as a refusal says them: in KB under a megabyte, else in MB, rounded by `round`: a size up (Math.ceil), so that
+ *  it is never said smaller than it is, and a limit down (Math.floor), never said larger. R8d, round 8: a transcript's
+ *  refusal rounded both up, and said "it is 2 MB, and this process reads a transcript of up to 2 MB". */
+const sized = (n, round) => (n < MB ? `${round(n / 1024).toLocaleString('en-US')} KB` : `${round(n / MB).toLocaleString('en-US')} MB`);
+
 /** Why a file of `size` bytes is not read here (with the NODE_OPTIONS that would let it be, before `again`, the command
  *  that was run: src/start.mjs's againOf), or null when it is read. `heapLimit`: the memory limit (memoryLimit). */
 export function tooLarge(size, heapLimit = memoryLimit(), again = 'npx ltms-reader') {
   const limit = sizeLimit(heapLimit);
   if (size <= limit) return null;
-  const mb = (n) => `${Math.ceil(n / MB).toLocaleString('en-US')} MB`;
-  if (size > STRING_MAX) return `it is ${mb(size)}: no memory setting lets it be read, since its text would pass JavaScript's limit on a string's length (about ${mb(STRING_MAX)} here); ltms skips it too`;
+  if (size > STRING_MAX) return `it is ${sized(size, Math.ceil)}: no memory setting lets it be read, since its text would pass JavaScript's limit on a string's length (about ${sized(STRING_MAX, Math.floor)} here); ltms skips it too`;
   // ltms's rule reads a file of up to a tenth of the heap's limit; the old space alone, set to ten times the size, is enough
   const need = Math.ceil((size * 10) / MB / 256) * 256;
-  return `it is ${mb(size)}, and this process reads a transcript of up to ${mb(limit)} (a tenth of its memory limit, as ltms reads; parsing takes 5 to 8 times a file's size). To read it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need} ${again}`;
+  return `it is ${sized(size, Math.ceil)}, and this process reads a transcript of up to ${sized(limit, Math.floor)} (a tenth of its memory limit, as ltms reads; parsing takes 5 to 8 times a file's size). To read it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need} ${again}`;
 }
 
 /** What a transcript's parse takes, at most, for each byte of the file (ltms's figure: 5 to 8 times a file's size). */
@@ -126,13 +130,12 @@ export const BUILT_MARGIN = 12 * MB;
 export function recordTooLarge(bytes, fileSize, heapLimit = memoryLimit(), again = 'npx ltms-reader', built = 0) {
   const room = 0.9 * heapLimit - PARSE_PER_BYTE * fileSize;
   const limit = Math.max(0, Math.floor(room / RECORD_VIEW_PER_BYTE));
-  const size = (n, round) => (n < MB ? `${round(n / 1024).toLocaleString('en-US')} KB` : `${round(n / MB).toLocaleString('en-US')} MB`);
   // the setting at which both fit: its old space alone (Node's limit is that and more), and a tenth of it for the transcript
   const need = (view) => Math.ceil(Math.max(10 * fileSize, (PARSE_PER_BYTE * fileSize + view) / 0.9) / MB / 256) * 256;
   const writing = built > 0 ? BUILT_PER_BYTE * built + BUILT_MARGIN : 0;
   const view = Math.max(RECORD_VIEW_PER_BYTE * bytes, writing);
-  if (bytes > limit) return `it is ${size(bytes, Math.ceil)}, and in a transcript of ${size(fileSize, Math.ceil)} this process shows a record of up to ${size(limit, Math.floor)} (its view takes up to ${RECORD_VIEW_PER_BYTE} times a record's size, the transcript's parse up to ${PARSE_PER_BYTE} times the file's, both within nine tenths of the memory limit). To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need(view)} ${again}`;
-  if (built > 0 && writing > room) return `it is ${size(bytes, Math.ceil)}, and its view would write ${size(built, Math.ceil)} of JSON (indented, as JSON is, once more at each level a value is nested in), which takes up to ${BUILT_PER_BYTE} times that to write, and with what the view needs beside it (${size(BUILT_MARGIN, Math.ceil)}) does not fit beside the transcript's parse in nine tenths of the memory limit. To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need(view)} ${again}`;
+  if (bytes > limit) return `it is ${sized(bytes, Math.ceil)}, and in a transcript of ${sized(fileSize, Math.ceil)} this process shows a record of up to ${sized(limit, Math.floor)} (its view takes up to ${RECORD_VIEW_PER_BYTE} times a record's size, the transcript's parse up to ${PARSE_PER_BYTE} times the file's, both within nine tenths of the memory limit). To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need(view)} ${again}`;
+  if (built > 0 && writing > room) return `it is ${sized(bytes, Math.ceil)}, and its view would write ${sized(built, Math.ceil)} of JSON (indented, as JSON is, once more at each level a value is nested in), which takes up to ${BUILT_PER_BYTE} times that to write, and with what the view needs beside it (${sized(BUILT_MARGIN, Math.ceil)}) does not fit beside the transcript's parse in nine tenths of the memory limit. To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need(view)} ${again}`;
   return null;
 }
 
