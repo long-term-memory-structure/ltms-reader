@@ -191,6 +191,11 @@ pasted acts as a key.
   again.
 - Some clusters are drawn wider by some terminals than by the cluster rule (an Indic conjunct, an emoji sequence a
   terminal does not join); a row then ends early, at the screen's edge.
+- On a narrow screen some rows are wider than it (round 6's check measured them at 25 and 30 columns): the line that
+  says what is being read (`reading the sessions with ltms index`, a transcript's name, `searching with ltms search`),
+  which is not cut to the screen's width, and the search line where its prompt, which names what is searched, fills
+  the screen (the text typed and the cursor go past it). The reader turns wrapping at the last column off, so a
+  terminal stops such a row at its edge (reasoned, not measured). A known limit, left as it is.
 - A paragraph's levels are resolved once, when a line of it is first drawn, and kept for the last two drawn of 4,096
   characters or more. For R's record (one paragraph of 4,000,000 Hebrew characters), measured on 2026-11-16 on one
   machine, its first frame took 150 to 239 ms on Node 26.13.1 (11 runs), where it took 12 to 23 ms before (11 runs);
