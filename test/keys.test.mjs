@@ -9,7 +9,7 @@ import { App } from '../src/app.mjs';
 import { RootSource } from '../src/sources.mjs';
 import { width } from '../src/text.mjs';
 import { top } from '../src/views.mjs';
-import { KEY, keyboard, makeRoot, plainOf } from './helpers.mjs';
+import { KEY, keyboard, makeRoot, plainOf, withoutOverride } from './helpers.mjs';
 
 const CC = /[\u0000-\u001f\u007f-\u009f]/;
 function frameOf(app) {
@@ -515,7 +515,8 @@ test('W1: a message wrapped into lines, each laid out from its paragraph\'s leve
     const par = note[0].par;
     assert.ok(typeof par === 'string' && par.startsWith('not an address: [1] abc'), `the message is the paragraph: ${JSON.stringify(note[0])}`);
     for (const s of note) { assert.equal(s.par, par); assert.equal(par.slice(s.at, s.at + s.text.length), s.text); assert.equal(s.dir, directionOf(par)); }
-    const rows = frameBytes(lines, { cols: 40, rows: 24, colour: false, rtl: 'reader' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).map((x) => x.replace(/\x1b\[[0-9;]*m/g, '').trimEnd());
+    // each row without the override around a row that holds right-to-left text (Y1, round 6), checked where it is
+    const rows = frameBytes(lines, { cols: 40, rows: 24, colour: false, rtl: 'reader' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).map((x) => withoutOverride(x.replace(/\x1b\[[0-9;]*m/g, '')).trimEnd());
     assert.deepEqual(rows.slice(-3), ['not an address: [1] abc x abc \u2014 abc', '\u05dd\u05dc\u05d5\u05e2 (an address is <prefix>:L<line> or', '<prefix>:T<turn>, as ltms prints it)']);
   } finally { app.dispose(); source.dispose(); r.dispose(); }
 });

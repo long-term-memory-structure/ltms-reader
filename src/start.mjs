@@ -19,11 +19,12 @@ sessions, a session's turns, a turn's tool calls, a record's text. Read-only, lo
 Keys: arrows, PgUp PgDn, Home End move; Enter opens; Esc goes back; / searches; : opens an address; ? the keys; q quits.
 For lines to read or to pipe, ltms is the command (npx long-term-memory-structure).
 
-Right to left (Hebrew, Arabic): in Konsole (KONSOLE_VERSION set) the text is written as it is stored, and Konsole lays
-it out; in every other terminal the reader lays out each line itself, by the Unicode Bidirectional Algorithm.
-Measured on three terminals: Konsole, Alacritty and VS Code's terminal; no other was. To choose:
-  LTMS_READER_BIDI=reader      the reader lays it out (for a terminal that draws text in the order it is stored)
-  LTMS_READER_BIDI=terminal    as stored (for a terminal that lays it out itself, as Konsole does)
+Right to left (Hebrew, Arabic): in every terminal the reader lays out each line itself, by the Unicode Bidirectional
+Algorithm, and writes a line that holds right-to-left text inside a left-to-right override (U+202D after its first
+character, U+202C at its end), so that a terminal that lays text out itself keeps that order. Measured on four
+terminals: Alacritty, Konsole, tmux and VS Code's terminal; no other was. To choose:
+  LTMS_READER_BIDI=reader      the reader lays it out (the default)
+  LTMS_READER_BIDI=terminal    as stored, with no override (for a terminal that lays text out itself)
 `;
 
 /** The arguments: { help } | { version } | { path } (null for none) | { usage: what is wrong }. */

@@ -9,9 +9,15 @@
 // terminal that draws a cluster narrower than it is counted here (an emoji and VS16, one column by wcwidth) ends the
 // row early, and nothing of the frame before may stay after it (R.F6). Each row's segments are put in the order the
 // right-to-left mode writes them (text.mjs displayOrder, R1): laid out by the reader, or as stored for a terminal that
-// lays bidirectional text out itself.
+// lays bidirectional text out itself. A row laid out by the reader that holds right-to-left text is written inside a
+// left-to-right override, LRO after its first grapheme cluster and PDF at its end (Y1, round 6), so that a terminal that
+// lays text out itself keeps the reader's order: measured on four terminals (S378, CONTROLS.md), the two take no column
+// in Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 and VS Code 1.146.0's terminal (xterm.js) there, and Konsole applies an
+// override from a row's second column on; at its first column an LRO is not applied by Konsole, dropped by tmux and
+// given a column by xterm.js, which gives an isolate (LRI, RLI, PDI) a column anywhere; so nothing else is written.
 import readline from 'node:readline';
-import { displayOrder, visible } from './text.mjs';
+import { AL, AN, R, classOf } from './bidi.mjs';
+import { clusters, displayOrder, visible } from './text.mjs';
 
 /** The alternate screen, the cursor hidden, no wrapping at the last column (so a cluster a terminal draws wider than it
  *  is counted here cannot scroll the screen), and bracketed paste: the terminal marks a paste, so that its text is
@@ -29,8 +35,22 @@ export const colourFrom = (env) => !(typeof env.NO_COLOR === 'string' && env.NO_
 /** One segment's text as it is written: visible, on one line. */
 const safe = (s) => visible(s).replace(/\n/g, '\\n').replace(/\t/g, '\\t');
 
+/** The left-to-right override (U+202D) and the pop that ends it (U+202C), written around a row laid out by the reader
+ *  that holds right-to-left text (Y1): the only bidirectional controls the reader writes (a transcript's are escapes). */
+export const LRO = '\u202d', PDF = '\u202c';
+/** A text with no character that could be right to left (every R, AL and AN code point is at U+0590 or above). */
+const NO_RTL = /^[\u0000-\u058f]*$/;
+/** Whether a row's text holds a character a terminal that lays text out itself would lay out right to left or reorder
+ *  around: one of class R, AL or AN (an Arabic number among neutrals is reordered too, and the reader has laid it out). */
+export function holdsRtl(text) {
+  if (NO_RTL.test(text)) return false;
+  for (const ch of text) { const c = classOf(ch.codePointAt(0)); if (c === R || c === AL || c === AN) return true; }
+  return false;
+}
+
 /** The bytes of one whole frame: each line at its row, the row erased whole first, then the line, styled; its segments in
- *  the order the right-to-left mode `rtl` writes them ("reader" or "terminal"). */
+ *  the order the right-to-left mode `rtl` writes them ("reader" or "terminal"); in "reader", a row that holds
+ *  right-to-left text inside LRO (after its first grapheme cluster) and PDF (last). */
 export function frameBytes(lines, { cols, rows, colour = true, rtl = 'reader' }) {
   let out = '';
   for (let i = 0; i < rows; i++) {
@@ -39,11 +59,25 @@ export function frameBytes(lines, { cols, rows, colour = true, rtl = 'reader' })
     // segments of one style next to each other are written as one
     const merged = [];
     for (const s of row) { const last = merged[merged.length - 1]; if (last && (last.style ?? null) === (s.style ?? null)) last.text += s.text; else merged.push({ text: s.text, style: s.style ?? null }); }
-    for (const s of merged) {
-      const text = safe(s.text);
-      const code = s.style && (colour || !COLOURS.has(s.style)) ? SGR[s.style] : undefined;
-      out += code ? `\x1b[${code}m${text}\x1b[0m` : text;
+    const texts = merged.map((s) => safe(s.text));
+    // laid out by the reader and holding right-to-left text: LRO right after the row's first grapheme cluster (where it
+    // ends, in whichever segment that is, a mark on the first character kept with it), PDF last
+    let end = '';
+    if (rtl === 'reader') {
+      const whole = texts.join('');
+      if (holdsRtl(whole)) {
+        const first = clusters(whole).next().value.length;
+        for (let k = 0, at = 0; k < texts.length; at += texts[k++].length) {
+          if (at < first && first <= at + texts[k].length) { texts[k] = texts[k].slice(0, first - at) + LRO + texts[k].slice(first - at); break; }
+        }
+        end = PDF;
+      }
     }
+    merged.forEach((s, k) => {
+      const code = s.style && (colour || !COLOURS.has(s.style)) ? SGR[s.style] : undefined;
+      out += code ? `\x1b[${code}m${texts[k]}\x1b[0m` : texts[k];
+    });
+    out += end;
   }
   return out;
 }

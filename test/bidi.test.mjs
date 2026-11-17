@@ -27,7 +27,7 @@ import { BRACKETS, BRACKET_EQUIVALENTS, CLASSES, CLASS_RANGES, MIRRORS, SOURCE_S
 import { SOURCES, TEST_SOURCE, VERSION, readPinned } from '../scripts/bidi-table.mjs';
 import { directionOf, displayOrder, expandTabs, lineSpans, paragraphLine, pathUnits, visible, visualLine, width, wordSpans, wrap } from '../src/text.mjs';
 import { RecordLines } from '../src/views.mjs';
-import { FX, OWN, ROOT } from './helpers.mjs';
+import { FX, OWN, ROOT, withoutOverride } from './helpers.mjs';
 import * as reference from './uba-reference.mjs';
 
 const UCD = process.env.LTMS_READER_UCD || null;
@@ -178,7 +178,9 @@ test('R1 (e): a session, a turn, a record and its JSON, through the screen: "rea
   const source = new RootSource({ root: r.root });
   const app = new App({ source, cols: 100, rows: 20, timeZone: 'UTC' });
   const k = keyboard(app);
-  const written = (rtl) => frameBytes(app.lines(), { cols: 100, rows: 20, colour: false, rtl }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).map((x) => x.replace(/\x1b\[[0-9;]*m/g, ''));
+  // each row without the override "reader" writes around a row that holds right-to-left text (Y1, round 6), which
+  // withoutOverride checks is where it belongs, and that "terminal" writes none
+  const written = (rtl) => frameBytes(app.lines(), { cols: 100, rows: 20, colour: false, rtl }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).map((x) => withoutOverride(x.replace(/\x1b\[[0-9;]*m/g, ''), rtl));
   const has = (rows, s, what) => assert.ok(rows.some((x) => x.includes(s)), `${what}: ${JSON.stringify(s)} in ${JSON.stringify(rows.filter((x) => /[א-ת]/.test(x)))}`);
   try {
     app.start(); await app.idle();
@@ -278,7 +280,7 @@ test('W1: a record\'s paragraph wrapped into lines, each laid out from the parag
     assert.match(app.lines()[0].map((s) => s.text).join(''), /^ltms-reader {2}Record hebrew-e:L9 /);
     for (const [cols, want] of Object.entries(L9)) {
       app.resize(Number(cols), 30);
-      const rows = frameBytes(app.lines(), { cols: Number(cols), rows: 30, colour: false, rtl: 'reader' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).map((x) => x.replace(/\x1b\[[0-9;]*m/g, ''));
+      const rows = frameBytes(app.lines(), { cols: Number(cols), rows: 30, colour: false, rtl: 'reader' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).map((x) => withoutOverride(x.replace(/\x1b\[[0-9;]*m/g, '')));
       const at = rows.findIndex((x) => x.includes('scripts'));
       assert.equal(rows[at].trimEnd(), want, `${cols} columns: the row that holds "scripts"`);
     }

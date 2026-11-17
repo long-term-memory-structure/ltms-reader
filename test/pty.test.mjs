@@ -9,7 +9,7 @@ import { chmodSync, closeSync, openSync, readFileSync, writeFileSync, writeSync 
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BIN, KEY, OWN, deepRecord, makeRoot } from './helpers.mjs';
+import { BIN, KEY, LRO, OWN, PDF, deepRecord, makeRoot, withoutOverride } from './helpers.mjs';
 
 const SCRIPT = process.platform === 'linux' && spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
 const skip = SCRIPT ? false : 'no `script` here (util-linux, Linux)';
@@ -50,8 +50,10 @@ function ptyRun(r, { args, steps, nodeArgs = '', env = {}, wait = 20_000 }) {
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (d) => { out += d; });
   child.stderr.on('data', (d) => { err += d; });
-  // what the screen says: the received bytes without the reader's escape sequences, which split a styled row
-  const said = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
+  // what the screen says: the received bytes without the reader's escape sequences, which split a styled row, and without
+  // the override it writes around a row that holds right-to-left text (Y1, round 6: LRO after its first cluster), which
+  // splits a row's text; the tests that read a row check the override where it is
+  const said = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/[\u202c\u202d]/g, '');
   const until = (want, since) => new Promise((resolve, reject) => {
     const t0 = Date.now();
     const look = () => {
@@ -296,29 +298,36 @@ test("N3: the checker's record nested 990 deep (a line of 0.8 MB) at --max-old-s
   } finally { r.dispose(); }
 });
 
-// ---- R1 (S377, round 3): right to left, end to end ------------------------------------------------------------------------
-// The Hebrew fixture's first prompt, opened as a record, as the terminal receives it: laid out by the reader by default
-// (every terminal but Konsole), as stored with an RLM after it under Konsole (KONSOLE_VERSION), LTMS_READER_BIDI over
-// both; a value LTMS_READER_BIDI does not take is refused before the screen opens. The two forms are spelled out with
+// ---- R1 (S377, round 3), Y1 (round 6): right to left, end to end ----------------------------------------------------------
+// The Hebrew fixture's first prompt, opened as a record, as the terminal receives it: laid out by the reader in every
+// terminal, inside the override (LRO after the row's first cluster, PDF last: Y1), KONSOLE_VERSION changing nothing (round
+// 3 gave Konsole the text as stored); as stored with an RLM after it, and no override, where LTMS_READER_BIDI=terminal
+// chooses it; a value LTMS_READER_BIDI does not take is refused before the screen opens. The two forms are spelled out with
 // escapes here, the visual one as test/bidi.test.mjs's oracles give it.
 const STORED = '\u05d1\u05b0\u05bc\u05e8\u05b5\u05d0\u05e9\u05b4\u05c1\u05d9\u05ea: read src/\u05de\u05d5\u05d3\u05d5\u05dc.ts (line 12) and fix [the bug] in \u05e4\u05d5\u05e0\u05e7\u05e6\u05d9\u05d4() \u2014 3.14 > 2';
 const LAID_OUT = '2 < 3.14 \u2014 ()\u05d4\u05d9\u05e6\u05e7\u05e0\u05d5\u05e4 read src/\u05dc\u05d5\u05d3\u05d5\u05de.ts (line 12) and fix [the bug] in :\u05ea\u05d9\u05e9\u05b4\u05c1\u05d0\u05e8\u05b5\u05d1\u05b0\u05bc';
-for (const [what, env, want] of [
-  ['by default (no Konsole): laid out by the reader', {}, LAID_OUT],
-  ['under Konsole (KONSOLE_VERSION): as stored, with an RLM after it', { KONSOLE_VERSION: '260803' }, `${STORED}\u200f`],
-  ['under Konsole with LTMS_READER_BIDI=reader: laid out by the reader', { KONSOLE_VERSION: '260803', LTMS_READER_BIDI: 'reader' }, LAID_OUT],
-  ['LTMS_READER_BIDI=terminal: as stored, with an RLM after it', { LTMS_READER_BIDI: 'terminal' }, `${STORED}\u200f`],
+const OVERRIDDEN = `${LAID_OUT.slice(0, 1)}${LRO}${LAID_OUT.slice(1)}${PDF}`;
+for (const [what, env, want, mode] of [
+  ['by default: laid out by the reader, inside the override', {}, OVERRIDDEN, 'reader'],
+  ['under Konsole (KONSOLE_VERSION), which changes nothing: laid out by the reader, inside the override', { KONSOLE_VERSION: '260803' }, OVERRIDDEN, 'reader'],
+  ['with LTMS_READER_BIDI=reader: laid out by the reader, inside the override', { KONSOLE_VERSION: '260803', LTMS_READER_BIDI: 'reader' }, OVERRIDDEN, 'reader'],
+  ['with LTMS_READER_BIDI=terminal: as stored, with an RLM after it, no override', { LTMS_READER_BIDI: 'terminal' }, `${STORED}\u200f`, 'terminal'],
+  ['under Konsole with LTMS_READER_BIDI=terminal: as stored, with an RLM after it, no override', { KONSOLE_VERSION: '260803', LTMS_READER_BIDI: 'terminal' }, `${STORED}\u200f`, 'terminal'],
 ]) {
-  test(`R1: a Hebrew record ${what}; q, and the terminal as it was`, { skip, timeout: 60_000 }, async () => {
+  test(`R1, Y1: a Hebrew record ${what}; q, and the terminal as it was`, { skip, timeout: 60_000 }, async () => {
     const r = makeRoot('ltms-reader-pty-');
     try {
       const res = await ptyRun(r, { args: [path.join(OWN, 'hebrew-english.jsonl')], env, steps: [{ until: '> hebrew-e:T001', send: KEY.enter }, { until: 'Turn hebrew-e:T001', send: KEY.enter }, { until: 'Record hebrew-e:L1', send: 'q' }] });
       assert.equal(res.exit, 0);
       assert.equal(res.after, res.before, 'stty -g after = before');
-      const shown = readerPart(res.out).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
-      assert.ok(shown.includes(want), `the record's line as the terminal received it: ${JSON.stringify(shown.slice(shown.indexOf('Record hebrew-e:L1'), shown.indexOf('Record hebrew-e:L1') + 400))}`);
-      const other = want === LAID_OUT ? STORED : LAID_OUT;
-      assert.ok(!shown.includes(other), 'and not in the other form');
+      const rows = rowsOf(res.out), at = rows.findIndex((x) => x.startsWith('ltms-reader  Record hebrew-e:L1'));
+      assert.ok(at >= 0, 'the record drawn');
+      assert.ok(rows.slice(at).includes(want), `the record's line, the row as the terminal received it: ${JSON.stringify(rows.slice(at, at + 6))}`);
+      // every row of every frame: the override where it belongs in "reader", none in "terminal" (withoutOverride)
+      const bare = rows.map((x) => withoutOverride(x, mode));
+      const other = mode === 'reader' ? STORED : LAID_OUT;
+      assert.ok(!bare.some((x) => x.includes(other)), 'and never in the other form');
+      if (mode === 'terminal') assert.ok(!res.out.includes(LRO) && !res.out.includes(PDF), 'no override at all');
     } finally { r.dispose(); }
   });
 }
@@ -349,16 +358,17 @@ test('W1: a record\'s wrapped paragraph, by default (laid out by the reader): he
     });
     assert.equal(res.exit, 0);
     assert.equal(res.after, res.before, 'stty -g after = before');
-    const rows = rowsOf(res.out).map((x) => x.trimEnd());
+    // each row without the override around a row that holds right-to-left text (Y1, round 6), checked where it is
+    const rows = rowsOf(res.out).map((x) => withoutOverride(x).trimEnd());
     assert.ok(rows.includes('graph that mixes both scripts,'), `30 columns: ${JSON.stringify(rows.filter((x) => x.includes('scripts')))}`);
     assert.ok(rows.includes(`a long paragraph that mixes both scripts, :${VAYEHI}`), `60 columns: ${JSON.stringify(rows.filter((x) => x.includes('scripts')))}`);
     assert.ok(!rows.some((x) => x.startsWith(',')), 'no row begins with the comma');
   } finally { r.dispose(); }
 });
 
-// Under Konsole ("terminal" mode), a left-to-right paragraph that holds Hebrew is written as stored, with no RLM after
-// it; a right-to-left one has its RLM. Round 3's pty tests showed only a right-to-left paragraph, and passed with an RLM
-// after every paragraph planted.
+// In "terminal" mode (LTMS_READER_BIDI=terminal; round 4 tested it under Konsole, which chose it until round 6), a
+// left-to-right paragraph that holds Hebrew is written as stored, with no RLM after it; a right-to-left one has its RLM.
+// Round 3's pty tests showed only a right-to-left paragraph, and passed with an RLM after every paragraph planted.
 const BIDI = 'bidibidi-0000-4000-8000-000000000000.jsonl';
 const LTR_LINES = ['abc אבג def', 'The word שלום means peace.', 'C++ \u200eהיא שפה (with LRM before the Hebrew)'];
 const RTL_LINE = 'שלום עולם, זהו משפט בעברית.';
@@ -368,12 +378,12 @@ function promptRecord(file, text) {
   const base = { isSidechain: false, userType: 'external', cwd: '/work/b', sessionId: 'bidibidi-0000-4000-8000-000000000000', version: '2.0.0', gitBranch: 'main', entrypoint: 'cli' };
   writeFileSync(file, `${JSON.stringify({ ...base, parentUuid: null, type: 'user', message: { role: 'user', content: text }, uuid: 'bb000000-0000-4000-8000-000000000001', timestamp: '2026-03-01T10:00:00.000Z', promptSource: 'typed' })}\n`);
 }
-test('W2 (a): under Konsole (KONSOLE_VERSION), a left-to-right paragraph that holds Hebrew, whole or wrapped, is written as stored with no RLM after it; a right-to-left one with its RLM; q, and the terminal as it was', { skip, timeout: 60_000 }, async () => {
+test('W2 (a): in "terminal" mode (LTMS_READER_BIDI=terminal), a left-to-right paragraph that holds Hebrew, whole or wrapped, is written as stored with no RLM after it; a right-to-left one with its RLM; no override; q, and the terminal as it was', { skip, timeout: 60_000 }, async () => {
   const r = makeRoot('ltms-reader-pty-');
   try {
     const file = path.join(r.base, BIDI);
     promptRecord(file, [...LTR_LINES, RTL_LINE, WRAPPED].join('\n'));
-    const res = await ptyRun(r, { args: [file], env: { KONSOLE_VERSION: '260803' }, steps: [{ until: '> bidibidi:T001', send: KEY.enter }, { until: 'Turn bidibidi:T001', send: KEY.enter }, { until: 'Record bidibidi:L1', send: 'q' }] });
+    const res = await ptyRun(r, { args: [file], env: { LTMS_READER_BIDI: 'terminal' }, steps: [{ until: '> bidibidi:T001', send: KEY.enter }, { until: 'Turn bidibidi:T001', send: KEY.enter }, { until: 'Record bidibidi:L1', send: 'q' }] });
     assert.equal(res.exit, 0);
     assert.equal(res.after, res.before, 'stty -g after = before');
     const rows = rowsOf(res.out), at = rows.findIndex((x) => x.startsWith('ltms-reader  Record bidibidi:L1'));
@@ -386,5 +396,6 @@ test('W2 (a): under Konsole (KONSOLE_VERSION), a left-to-right paragraph that ho
     assert.ok(first >= 0 && WRAPPED.startsWith(record[first]) && record[first].length < WRAPPED.length, `the wrapped paragraph's first line: ${JSON.stringify(record[first])}`);
     assert.equal(record[first] + record[first + 1], WRAPPED, 'its two lines, as stored, are the paragraph');
     assert.ok(!record.some((x) => x.includes('\u200f') && x !== `${RTL_LINE}\u200f`), 'no other RLM');
+    assert.ok(!res.out.includes(LRO) && !res.out.includes(PDF), 'no override');
   } finally { r.dispose(); }
 });

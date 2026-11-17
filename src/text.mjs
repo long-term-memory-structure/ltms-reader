@@ -18,12 +18,13 @@
 // columns, between clusters, never inside one; a space where it is cut stays at the end of the line before (lineSpans:
 // V7, round 5, as UAX #14 has it).
 //
-// Right to left (R1, decided by the measurement of S377 on three terminals): Konsole lays out a line's right-to-left runs
-// itself, with a left-to-right base for the line; Alacritty and VS Code's terminal (xterm.js) draw the text in the order
-// it is written. So there are two modes (displayOrder, below): "reader", in which the reader lays the text out itself,
-// by the Unicode Bidirectional Algorithm (src/bidi.mjs), and writes it in visual order; and "terminal", in which the
-// text is written as stored, with a right-to-left mark (RLM) at the end of each right-to-left paragraph, which on Konsole
-// puts the paragraph's end punctuation where it belongs. rtlModeOf picks one by the terminal. A paragraph here is a
+// Right to left (R1, decided by the measurement of S377 on three terminals; Y1, round 6, by that of S378 on four): there
+// are two modes (displayOrder, below): "reader", the default in every terminal, in which the reader lays the text out
+// itself, by the Unicode Bidirectional Algorithm (src/bidi.mjs), and writes it in visual order (src/screen.mjs writes a
+// row of it that holds right-to-left text inside a left-to-right override, so that a terminal that lays text out itself,
+// as Konsole does, keeps that order); and "terminal", LTMS_READER_BIDI's choice, in which the text is written as stored,
+// with a right-to-left mark (RLM) at the end of each right-to-left paragraph, which on Konsole puts the paragraph's end
+// punctuation where it belongs. rtlModeOf reads the choice; no terminal is detected. A paragraph here is a
 // segment of a row (a list's cell, the reader's own words before it, a line cut to the row's width), or a text a view
 // wraps into lines (a record's text line, a message, an error, the reader's own words), each line of which names it: its
 // levels are resolved once, and each line is reordered from them, whole (W1, round 4; V7, round 5; UAX #9 section 3.4:
@@ -322,18 +323,17 @@ export function expandTabs(s, tab = 8) {
 export const RTL_MODES = Object.freeze(['reader', 'terminal']);
 
 /**
- * The right-to-left mode, by the terminal (R1): LTMS_READER_BIDI when it is set ("terminal" or "reader"); else
- * "terminal" in Konsole (KONSOLE_VERSION set), which lays bidirectional text out itself; else "reader". Measured on
- * Konsole 26.08.3, Alacritty 0.17.0 and VS Code 1.146.0's terminal (xterm.js), S377; no other terminal was. Returns
- * { mode, by } or { refused: why }.
+ * The right-to-left mode: LTMS_READER_BIDI when it is set ("terminal" or "reader"); else "reader", in every terminal
+ * (Y1, round 6: one layout for every terminal, decided S378 on a measurement of Alacritty 0.17.0, Konsole 26.08.3, tmux
+ * 3.6 and VS Code 1.146.0's terminal; round 3 gave Konsole, detected by KONSOLE_VERSION, "terminal", which a reader run
+ * over ssh from Konsole did not see). Returns { mode, by } or { refused: why }.
  */
 export function rtlModeOf(env) {
   const v = env.LTMS_READER_BIDI;
   if (typeof v === 'string' && v !== '') {
-    if (!RTL_MODES.includes(v)) return { refused: `LTMS_READER_BIDI is ${JSON.stringify(v)}: it takes "reader" (the reader lays right-to-left text out) or "terminal" (the text as stored, for a terminal that lays it out itself, as Konsole does)` };
+    if (!RTL_MODES.includes(v)) return { refused: `LTMS_READER_BIDI is ${JSON.stringify(v)}: it takes "reader" (the reader lays right-to-left text out, the default) or "terminal" (the text as stored, for a terminal that lays it out itself)` };
     return { mode: v, by: 'LTMS_READER_BIDI' };
   }
-  if (typeof env.KONSOLE_VERSION === 'string' && env.KONSOLE_VERSION !== '') return { mode: 'terminal', by: 'KONSOLE_VERSION' };
   return { mode: 'reader', by: 'default' };
 }
 

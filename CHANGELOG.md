@@ -27,13 +27,16 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   characters) as `\uXXXX`, while LRM, RLM and ALM are written as they are. Width by grapheme cluster, wide characters
   and emoji two columns, from a table generated from Unicode's `EastAsianWidth.txt` 17.0.0 (its sha256 in the table);
   lines cut by columns, never inside a cluster, a space where a line breaks staying at the end of the line before (UAX
-  #14), so that no line but a paragraph's first begins with one. Right to left, by the terminal (measured on Konsole,
-  Alacritty and VS Code's terminal): in Konsole (`KONSOLE_VERSION`) the text as stored, with an RLM at the end of each
-  right-to-left paragraph; in every other terminal the reader lays out each line itself, by the Unicode Bidirectional
-  Algorithm (UAX #9, written here from Unicode 17.0.0's data, generated and pinned as the width table is; a path or a
-  URL laid out as one left-to-right unit; a paragraph wrapped into lines, a record's text line or a message, resolved
-  once and each line reordered from its levels, whole, its spaces at either end too); `LTMS_READER_BIDI=terminal|reader`
-  chooses.
+  #14), so that no line but a paragraph's first begins with one, nor, where UAX #14 gives no break before one, with a
+  no-break space or a non-breaking hyphen; a message's space at a break hangs, and a message ends with its last word.
+  Right to left, one layout for every terminal (measured on Alacritty, Konsole, tmux and VS Code's terminal): the
+  reader lays out each line itself, by the Unicode Bidirectional Algorithm (UAX #9, written here from Unicode 17.0.0's
+  data, generated and pinned as the width table is; a path or a URL laid out as one left-to-right unit; a paragraph
+  wrapped into lines, a record's text line or a message, resolved once and each line reordered from its levels, whole,
+  its spaces at either end too), and writes a line that holds right-to-left text inside a left-to-right override (LRO
+  after its first grapheme cluster, PDF at its end), so that a terminal that lays text out itself keeps that order;
+  `LTMS_READER_BIDI=terminal` writes the text as stored instead, with an RLM at the end of each right-to-left
+  paragraph.
 - A transcript is read in the reader's own process; one over a tenth of Node's memory limit is refused with its size
   and the `NODE_OPTIONS` that would let it be read, in the command that was run, the path given included. A record is
   refused the same way when its view would not fit beside the transcript in Node's memory, by its size and by the JSON

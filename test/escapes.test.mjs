@@ -14,7 +14,7 @@ import { main } from '../src/main.mjs';
 import { ENTER, LEAVE } from '../src/screen.mjs';
 import { width } from '../src/text.mjs';
 import { top } from '../src/views.mjs';
-import { KEY, OWN, terminal } from './helpers.mjs';
+import { KEY, LRO, OWN, PDF, terminal, withoutOverride } from './helpers.mjs';
 
 const FILE = path.join(OWN, 'escapes.jsonl');
 /** The reader's own sequences: the alternate screen, the cursor, wrapping, bracketed paste, a position, a line erased,
@@ -26,10 +26,19 @@ const OWN_SEQ = /^(?:\x1b\[\?1049[hl]|\x1b\[\?25[hl]|\x1b\[\?7[hl]|\x1b\[\?2004[
 const reordersOrHides = (c) => (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069) || c === 0xfeff || c === 0x2028 || c === 0x2029 || (c >= 0xe0000 && c <= 0xe007f);
 
 /** Every place in `bytes` where something other than the reader's own sequences would act on a terminal, or would
- *  reorder or hide what the reader writes. */
+ *  reorder or hide what the reader writes. The reader's own override around a row that holds right-to-left text (Y1,
+ *  round 6: LRO right after the row's first grapheme cluster, PDF last) is its own where it is so (withoutOverride, over
+ *  the row's text, from its position and erase to the next row's), and a stranger anywhere else. */
 export function strangers(bytes) {
-  const bad = [];
+  const bad = [], own = new Set(), rows = [...bytes.matchAll(/\x1b\[\d{1,3};1H\x1b\[2K/g)];
+  rows.forEach((m, k) => {
+    const a = m.index + m[0].length, b = k + 1 < rows.length ? rows[k + 1].index : bytes.length, row = bytes.slice(a, b);
+    if (!row.includes(LRO) && !row.includes(PDF)) return;
+    try { withoutOverride(row.replace(new RegExp(OWN_SEQ.source.slice(1), 'g'), '')); } catch { return; }
+    for (let i = a; i < b; i++) if (bytes[i] === LRO || bytes[i] === PDF) own.add(i);
+  });
   for (let i = 0; i < bytes.length;) {
+    if (own.has(i)) { i++; continue; }
     const c = bytes.codePointAt(i);
     if (c === 0x1b) {
       const m = OWN_SEQ.exec(bytes.slice(i, i + 16));
@@ -257,6 +266,16 @@ test('the writer itself: a control character in a line, from anywhere, goes out 
   assert.deepEqual(strangers(out), []);
   assert.ok(out.includes('a␛]52;c;eA==\\x07b'));
   assert.ok(out.includes('\\x9b2J\\nnext\\tcol\\x0d'), 'a new line and a tab inside a line are shown too');
+  // a row that holds right-to-left text is written inside the reader's own override (Y1, round 6), and an override a
+  // transcript holds in it is shown as an escape all the same
+  const rtl = frameBytes([[{ text: '\u05e9\u05dc\u05d5\u05dd \u202d x \u202c', style: null }]], { cols: 80, rows: 1, colour: false });
+  assert.deepEqual(strangers(rtl), []);
+  const bare = rtl.replace(/[\u202c\u202d]/g, '');
+  assert.ok(bare.includes('\\u202d') && bare.includes('\\u202c'), `the transcript's own, shown (in visual order, the row being right to left): ${JSON.stringify(rtl)}`);
+  assert.equal([...rtl].filter((c) => c === LRO).length + [...rtl].filter((c) => c === PDF).length, 2, 'one LRO and one PDF, the reader\'s');
+  // an override out of its place is a stranger: on a row without right-to-left text, before the row's first cluster
+  assert.equal(strangers(`\x1b[1;1H\x1b[2Kab${LRO}c${PDF}`).length, 2);
+  assert.equal(strangers(`\x1b[1;1H\x1b[2K${LRO}\u05e9\u05dc\u05d5\u05dd${PDF}`).length, 2);
 });
 
 test('Esc alone goes back within a tenth of a second (readline waits half a second unless told)', async () => {

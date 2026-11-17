@@ -95,20 +95,30 @@ pasted acts as a key.
   wide, as on a line of one column, it begins the line all the same). The wide characters come from a table generated
   from Unicode's `EastAsianWidth.txt`, version 17.0.0 (`src/width-table.mjs`, which names the file's sha256;
   `scripts/width-table.mjs` writes it). Characters of ambiguous width take one column.
-- **Right to left** (Hebrew, Arabic): terminals differ, and the reader follows the terminal. Measured on three
-  (S377): Konsole 26.08.3 lays out a line's right-to-left runs itself, with a left-to-right base for the line; Alacritty
-  0.17.0 and VS Code 1.146.0's terminal (xterm.js) draw the text in the order it is stored, so that Hebrew reads
-  backwards there unless the reader lays it out. So:
-  - in Konsole (`KONSOLE_VERSION` set), the text is written as stored (mode `terminal`), with a right-to-left mark
-    (RLM) at the end of each right-to-left paragraph, which on Konsole puts the paragraph's end punctuation where it
-    belongs;
-  - in every other terminal, the reader lays out each line itself (mode `reader`), by the Unicode Bidirectional
-    Algorithm (UAX #9, Unicode 17.0.0, written in this package: the implicit algorithm with paired brackets, its lines
-    reordered and mirrored, a paragraph's direction from its first strong character), and writes it in visual order;
-  - `LTMS_READER_BIDI=terminal` or `LTMS_READER_BIDI=reader` chooses, over both. No other terminal was measured (kitty,
-    VTE's, as in GNOME Terminal, mlterm, WezTerm, foot, iTerm2, Windows Terminal and the rest are not): one that lays
-    bidirectional text out itself wants `terminal`, one that draws the stored order `reader`, the default. Over ssh
-    from Konsole, `KONSOLE_VERSION` does not reach the reader unless it is passed on: set `LTMS_READER_BIDI` there.
+- **Right to left** (Hebrew, Arabic): one layout for every terminal. The reader lays out each line itself (mode
+  `reader`, the default), by the Unicode Bidirectional Algorithm (UAX #9, Unicode 17.0.0, written in this package: the
+  implicit algorithm with paired brackets, its lines reordered and mirrored, a paragraph's direction from its first
+  strong character), and writes it in visual order. A line that holds right-to-left text (a character of UAX #9's class
+  R, AL or AN) is written inside a left-to-right override, U+202D (LRO) right after its first grapheme cluster and
+  U+202C (PDF) at its end, so that a terminal that lays bidirectional text out itself keeps the reader's order instead
+  of reordering it a second time; nothing else is written (no isolate), and a line without right-to-left text is
+  written as it is. No terminal is detected.
+  - Measured on four terminals (S378): Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 and VS Code 1.146.0's terminal
+    (xterm.js 6.1.0-beta.304). There, after a line's first column, LRO and PDF take no column. Konsole lays text out
+    itself, with a left-to-right base for each line, and applies the override from a line's second column on; at the
+    first column an LRO is not applied by Konsole, dropped by tmux and given a column of its own by xterm.js (hence
+    after the first cluster), and xterm.js gives an isolate (LRI, RLI, PDI) a column anywhere. Alacritty and xterm.js
+    draw the text in the order it is written; tmux passes it on. No other terminal was measured (kitty, VTE's, as in
+    GNOME Terminal, mlterm, WezTerm, foot, iTerm2, Windows Terminal, GNU screen and the rest are not): one that gives
+    LRO or PDF a column shifts such a line by it. Not measured either: how Konsole joins Arabic letters that come to it
+    in visual order under the override; and a line whose first cluster is itself right to left, which the override
+    leaves out (laid out by UAX #9 with a left-to-right base, as Konsole lays a line out, that cluster would go to the
+    line's other end).
+  - `LTMS_READER_BIDI=terminal` writes the text as stored instead (mode `terminal`), with a right-to-left mark (RLM) at
+    the end of each right-to-left paragraph, for a terminal that lays bidirectional text out itself (on Konsole the RLM
+    puts the paragraph's end punctuation where it belongs, though its brackets are not mirrored); `LTMS_READER_BIDI=reader`
+    is the default; a value it does not take is refused. Until this version, Konsole (`KONSOLE_VERSION` set) got
+    `terminal`; it gets the reader's layout now, over ssh too, where `KONSOLE_VERSION` did not reach the reader.
 
   A paragraph is a cell of a list, the reader's own words before a transcript's text being a paragraph of their own, or
   a text wrapped into lines: a line of a record's text (its lines share its direction), a message, an error. A wrapped

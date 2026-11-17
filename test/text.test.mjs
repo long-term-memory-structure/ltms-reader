@@ -188,17 +188,32 @@ test('expandTabs: a tab is spaces to the next multiple of 8 columns, counted by 
 const SEG2 = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const clustersOf = (s) => [...SEG2.segment(s)].map((x) => x.segment);
 
-test('R1: the mode by the terminal: Konsole (KONSOLE_VERSION) gets the text as stored, every other terminal the reader\'s layout; LTMS_READER_BIDI chooses, and a value it does not take is refused', () => {
+// Y1 (round 6, his item 15, pick (a)): one layout for every terminal. Round 3 gave Konsole, detected by KONSOLE_VERSION,
+// the text as stored, and every other terminal the reader's layout; KONSOLE_VERSION did not cross ssh, and Konsole laid
+// every line out with a left-to-right base and its brackets unmirrored. Now the reader lays every line out itself in
+// every terminal ("reader"), and LTMS_READER_BIDI=terminal chooses the text as stored.
+test('Y1: the mode: "reader" in every terminal, KONSOLE_VERSION and the terminal\'s other variables changing nothing; LTMS_READER_BIDI chooses "terminal" (or "reader"), and a value it does not take is refused', async () => {
   assert.deepEqual(RTL_MODES, ['reader', 'terminal']);
   assert.deepEqual(rtlModeOf({}), { mode: 'reader', by: 'default' });
-  assert.deepEqual(rtlModeOf({ TERM_PROGRAM: 'vscode' }), { mode: 'reader', by: 'default' });
-  assert.deepEqual(rtlModeOf({ KONSOLE_VERSION: '260803' }), { mode: 'terminal', by: 'KONSOLE_VERSION' });
-  assert.deepEqual(rtlModeOf({ KONSOLE_VERSION: '' }), { mode: 'reader', by: 'default' });
+  for (const env of [{ TERM_PROGRAM: 'vscode' }, { KONSOLE_VERSION: '260803' }, { KONSOLE_VERSION: '260803', KONSOLE_DBUS_SESSION: '/Sessions/1', TERM: 'xterm-256color' }, { TERM_PROGRAM: 'tmux', TMUX: '/tmp/tmux-1000/default,1,0' }, { KONSOLE_VERSION: '' }, { LTMS_READER_BIDI: '', KONSOLE_VERSION: '1' }]) {
+    assert.deepEqual(rtlModeOf(env), { mode: 'reader', by: 'default' }, JSON.stringify(env));
+  }
   assert.deepEqual(rtlModeOf({ KONSOLE_VERSION: '260803', LTMS_READER_BIDI: 'reader' }), { mode: 'reader', by: 'LTMS_READER_BIDI' });
   assert.deepEqual(rtlModeOf({ LTMS_READER_BIDI: 'terminal' }), { mode: 'terminal', by: 'LTMS_READER_BIDI' });
-  assert.deepEqual(rtlModeOf({ LTMS_READER_BIDI: '', KONSOLE_VERSION: '1' }), { mode: 'terminal', by: 'KONSOLE_VERSION' });
-  assert.match(rtlModeOf({ LTMS_READER_BIDI: 'auto' }).refused, /^LTMS_READER_BIDI is "auto": it takes "reader" .* or "terminal" /);
+  assert.deepEqual(rtlModeOf({ LTMS_READER_BIDI: 'terminal', KONSOLE_VERSION: '260803' }), { mode: 'terminal', by: 'LTMS_READER_BIDI' });
+  assert.match(rtlModeOf({ LTMS_READER_BIDI: 'auto' }).refused, /^LTMS_READER_BIDI is "auto": it takes "reader" .*the default.* or "terminal" .*lays it out itself/);
   assert.throws(() => displayOrder([], 'auto'), /the modes are "reader" and "terminal"/);
+  // the command: what it opens the screen with, KONSOLE_VERSION set or not
+  const { before } = await import('../src/main.mjs');
+  const tty = { isTTY: true }, file = path.join(root, 'test', 'fixtures', 'hebrew-english.jsonl');
+  for (const [env, want] of [[{}, 'reader'], [{ KONSOLE_VERSION: '260803' }, 'reader'], [{ KONSOLE_VERSION: '260803', LTMS_READER_BIDI: 'terminal' }, 'terminal'], [{ LTMS_READER_BIDI: 'terminal' }, 'terminal']]) {
+    const b = before([file], { stdin: tty, stdout: tty, stderr: { write() { throw new Error('nothing is written'); } }, env });
+    assert.equal(b.rtl, want, JSON.stringify(env));
+  }
+  // --help says it, and names the four terminals measured
+  const { USAGE } = await import('../src/start.mjs');
+  assert.match(USAGE.replace(/\s+/g, ' '), /in every terminal the reader lays out each line itself.* inside a left-to-right override .*Measured on four terminals: Alacritty, Konsole, tmux and VS Code's terminal; no other was\..* LTMS_READER_BIDI=terminal as stored, with no override/);
+  assert.ok(!USAGE.includes('KONSOLE_VERSION'), 'no terminal is detected');
 });
 
 test('R1: a line in visual order: a right-to-left paragraph reversed by clusters, its marks after their letters, its brackets mirrored, its numbers left to right', () => {
@@ -477,6 +492,65 @@ test('W2 (a): "terminal" writes an RLM after a right-to-left paragraph\'s text a
 // stored, with an RLM after it when its paragraph, not the line itself, is right to left. Round 4's check's
 // 'line-own-dir' (a line takes its own direction) was caught by the reader's layout only; once that layout took the
 // paragraph's direction on a path of its own (V7), the mutant changed "terminal" alone, and every test passed.
+// Y1 (round 6): in "reader" mode, a row that holds right-to-left text is written inside a left-to-right override, so that
+// a terminal that lays text out itself keeps the reader's order: LRO (U+202D) right after the row's first grapheme
+// cluster (Konsole applies an override from a row's second column on, not at its first, where tmux drops it and VS
+// Code's xterm.js gives it a column), PDF (U+202C) last; nothing else (xterm.js gives an isolate a column). Measured on
+// Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 and VS Code 1.146.0's terminal (S378, CONTROLS.md).
+test('Y1: in "reader" mode a row that holds right-to-left text is written with LRO right after its first grapheme cluster and PDF last; a row without it, and every row in "terminal", with neither; each row as wide as before', async () => {
+  const { frameBytes, LRO, PDF, holdsRtl } = await import('../src/screen.mjs');
+  const { withoutOverride } = await import('./helpers.mjs');
+  assert.equal(LRO, '\u202d'); assert.equal(PDF, '\u202c');
+  const rowsOf = (lines, rtl, colour = true) => frameBytes(lines, { cols: 80, rows: lines.length, colour, rtl }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1);
+  const heb = '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd', laid = '\u05dd\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9';
+  // a record's line, right to left: its first cluster a letter
+  assert.deepEqual(rowsOf([[{ text: heb, style: null, dir: 1 }]], 'reader'), [`\u05dd${LRO}${laid.slice(1)}${PDF}`]);
+  // a list's row, styled: the LRO after '>' inside the selection's style, the PDF after the last style's end
+  assert.deepEqual(rowsOf([[{ text: '> ', style: 'sel' }, { text: 'demo.jso:L2', style: 'addr' }, { text: '  ' }, { text: heb, style: null }]], 'reader'), [`\x1b[7m>${LRO} \x1b[0m\x1b[36mdemo.jso:L2\x1b[0m  ${laid}${PDF}`]);
+  // a mark on the first character stays with it: the LRO after the mark; and where the mark begins the next segment
+  assert.deepEqual(rowsOf([[{ text: 'e\u0301 \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`e\u0301${LRO} \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: 'e', style: 'dim' }, { text: '\u0301 abc \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`\x1b[2me\x1b[0m\u0301${LRO} abc \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  const pointed = '\u05e9\u05b8\u05c1\u05dc\u05d5\u05b9\u05dd', [p] = rowsOf([[{ text: pointed, style: null, dir: 1 }]], 'reader');
+  assert.equal(withoutOverride(p), displayOrder([{ text: pointed, style: null, dir: 1 }], 'reader')[0].text);
+  // an Arabic number among neutrals (class AN) is reordered by the reader, and so would be by the terminal: the override
+  assert.deepEqual(rowsOf([[{ text: '\u0661 \u0662', style: null }]], 'reader'), [`\u0662${LRO} \u0661${PDF}`]);
+  // nothing right to left in it: neither, though the row holds Hebrew marks, escapes, wide characters or an LRM
+  for (const text of ['plain ascii', 'na\u00efve caf\u00e9 \u2014 \u4e2d\u6587', 'a \u241b[31m red \\u202e x', 'C++ \u200e', '\u05b0\u05b4 marks alone']) {
+    assert.deepEqual(rowsOf([[{ text, style: null }]], 'reader', false), [text], JSON.stringify(text));
+    assert.equal(holdsRtl(text), false, JSON.stringify(text));
+  }
+  // an RLM alone is right to left (class R)
+  assert.equal(holdsRtl('a \u200f b'), true);
+  // "terminal": as stored, the RLM after a right-to-left paragraph, no override
+  assert.deepEqual(rowsOf([[{ text: heb, style: null, dir: 1 }]], 'terminal'), [`${heb}\u200f`]);
+  // the columns: every row of every view of the Hebrew fixture, at 80 x 24 and 200 x 60, as wide with the override as
+  // without it, and the override where it belongs (withoutOverride checks it)
+  const { App } = await import('../src/app.mjs');
+  const { FileSource } = await import('../src/sources.mjs');
+  const { KEY, keyboard, OWN } = await import('./helpers.mjs');
+  let rows = 0, overridden = 0;
+  for (const [cols, height] of [[80, 24], [200, 60]]) {
+    const app = new App({ source: new FileSource({ file: path.join(OWN, 'hebrew-english.jsonl') }), cols, rows: height, timeZone: 'UTC' });
+    const k = keyboard(app);
+    try {
+      app.start(); await app.idle();
+      const check = () => {
+        for (const rtl of ['reader', 'terminal']) {
+          for (const row of frameBytes(app.lines(), { cols, rows: height, colour: true, rtl }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1)) {
+            const plain = row.replace(/\x1b\[[0-9;]*m/g, ''), bare = withoutOverride(plain, rtl);
+            assert.equal(width(plain), width(bare), JSON.stringify(plain));
+            assert.ok(width(plain) <= cols, `${width(plain)} columns: ${JSON.stringify(plain)}`);
+            rows++; if (bare !== plain) overridden++;
+          }
+        }
+      };
+      for (const step of [KEY.enter, KEY.enter, KEY.down, KEY.enter, KEY.escape, KEY.escape, KEY.end, KEY.enter, 'j']) { check(); await k.press(step); }
+      check();
+    } finally { app.dispose(); }
+  }
+  assert.ok(overridden >= 20 && overridden < rows, `${overridden} of ${rows} rows written with the override`);
+});
+
 test('V7: in "terminal", a line of a paragraph takes its paragraph\'s direction, not its own: an RLM after a left-to-right line of a right-to-left paragraph, none after a right-to-left line of a left-to-right one', () => {
   const rtl = 'שלום world and more', ltr = 'hello שלום עולם';
   assert.equal(directionOf(rtl), 1); assert.equal(directionOf('world and more'), 0);

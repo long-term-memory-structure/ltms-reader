@@ -10,6 +10,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { PassThrough, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import * as REFERENCE from './uba-reference.mjs';
 
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.join(HERE, '..');
@@ -137,4 +138,22 @@ export function sameLines(got, want, what, memo = new Map()) {
   while (i < a.length && i < b.length && a[i] === b[i]) i++;
   const show = (line) => (line === undefined ? '(no line)' : !Array.isArray(line) ? `(not a line: ${typeof line})` : bounded(JSON.stringify(line.map((s) => (typeof s.par === 'string' ? { ...s, par: `<${s.par.length} units, sha256 ${parOf(s.par).split(':')[1].slice(0, 12)}, beginning ${s.par.slice(0, 16)}>` } : s))), 300));
   assert.fail(`${what}: ${got.length} lines (sha256 ${da.slice(0, 12)}) where ${want.length} were wanted (sha256 ${db.slice(0, 12)}); the first that differs is line ${i}:\n  got:  ${show(got[i])}\n  want: ${show(want[i])}`);
+}
+
+/** The left-to-right override "reader" mode writes around a row that holds right-to-left text (Y1, round 6). */
+export const LRO = '\u202d', PDF = '\u202c';
+
+/**
+ * A row as the screen writes it (its escape sequences taken out), without the override around it, after checking it
+ * (Y1, round 6): in "reader" mode, a row that holds right-to-left text (a character of class R, AL or AN, by the tests'
+ * own reference of UAX #9) has LRO right after its first grapheme cluster and PDF as its last character, and no other;
+ * any other row, and every row in "terminal" mode, has neither. Throws an AssertionError otherwise.
+ */
+export function withoutOverride(row, mode = 'reader') {
+  const bare = row.replace(/[\u202c\u202d]/g, '');
+  const rtl = mode === 'reader' && [...bare].some((c) => [REFERENCE.R, REFERENCE.AL, REFERENCE.AN].includes(REFERENCE.classOf(c.codePointAt(0))));
+  if (!rtl) { assert.equal(row, bare, `${mode}: a row without the override: ${JSON.stringify(row)}`); return row; }
+  const first = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(bare)][0].segment;
+  assert.equal(row, `${first}${LRO}${bare.slice(first.length)}${PDF}`, `a row that holds right-to-left text, LRO after its first cluster and PDF last: ${JSON.stringify(row)}`);
+  return bare;
 }
