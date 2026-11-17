@@ -1,5 +1,7 @@
 // test/helpers.mjs — what the screen's tests share (not a test file: node --test runs only *.test.mjs here).
+import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -102,4 +104,37 @@ export function deepRecord(file, depth, leaves) {
     { ...base, parentUuid: u(3), type: 'assistant', message: { id: 'msg_d2', type: 'message', role: 'assistant', model: 'm', content: [{ type: 'text', text: 'done' }], stop_reason: 'end_turn', usage }, requestId: 'req_d2', uuid: u(4), timestamp: '2026-03-01T10:00:03.000Z' },
   ];
   writeFileSync(file, recs.map((r) => JSON.stringify(r)).join('\n') + '\n');
+}
+
+/** At most `n` code points of s, with how long it was when it is longer. */
+const bounded = (s, n) => { const cps = Array.from(s); return cps.length <= n ? s : `${cps.slice(0, n).join('')}... (${cps.length} code points)`; };
+
+/**
+ * Whether two lists of screen lines (each a list of segments { text, style, dir, par, at }) are the same, as
+ * assert.deepStrictEqual has them, without node:assert's diff (round 6, Y3 (a): deepEqual over two lists of some 2,000
+ * lines that all differed, each naming a paragraph of 100,000 characters, built a diff that took a 3 GB scope's memory,
+ * and the test was killed instead of failing). Their lengths, then a sha256 of each (a segment's paragraph by its length
+ * and its own sha256, computed once for each paragraph in `memo`); where they differ, the first line that does is written
+ * out, at most 300 code points of each, a paragraph as its length, digest and first 16 units. Throws an
+ * AssertionError (assert.fail: a message, no diff) when they differ.
+ */
+export function sameLines(got, want, what, memo = new Map()) {
+  const parOf = (p) => {
+    if (typeof p !== 'string') return p === undefined ? '(none)' : `(${typeof p})`;
+    let d = memo.get(p);
+    if (d === undefined) { d = `${p.length}:${createHash('sha256').update(p).digest('hex')}`; memo.set(p, d); }
+    return d;
+  };
+  // each segment by its keys and their values (a paragraph by its digest), undefined told from null as deepStrictEqual
+  // tells them
+  const u = (v) => (v === undefined ? { undefined: true } : v);
+  const keyOf = (line) => (Array.isArray(line) ? JSON.stringify(line.map((s) => Object.keys(s).sort().map((k) => [k, k === 'par' ? parOf(s[k]) : u(s[k])]))) : `(not a line: ${typeof line})`);
+  const a = got.map(keyOf), b = want.map(keyOf);
+  const digest = (keys) => { const h = createHash('sha256'); for (const k of keys) h.update(k).update('\n'); return h.digest('hex'); };
+  const da = digest(a), db = digest(b);
+  if (a.length === b.length && da === db) return;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  const show = (line) => (line === undefined ? '(no line)' : !Array.isArray(line) ? `(not a line: ${typeof line})` : bounded(JSON.stringify(line.map((s) => (typeof s.par === 'string' ? { ...s, par: `<${s.par.length} units, sha256 ${parOf(s.par).split(':')[1].slice(0, 12)}, beginning ${s.par.slice(0, 16)}>` } : s))), 300));
+  assert.fail(`${what}: ${got.length} lines (sha256 ${da.slice(0, 12)}) where ${want.length} were wanted (sha256 ${db.slice(0, 12)}); the first that differs is line ${i}:\n  got:  ${show(got[i])}\n  want: ${show(want[i])}`);
 }

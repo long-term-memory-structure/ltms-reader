@@ -15,7 +15,7 @@ import { FileSource } from '../src/sources.mjs';
 import { againOf } from '../src/start.mjs';
 import { directionOf, expandTabs, fit, lineSpans, visible } from '../src/text.mjs';
 import { RecordLines, recordLines, top } from '../src/views.mjs';
-import { KEY, deepRecord, keyboard, plainOf } from './helpers.mjs';
+import { KEY, deepRecord, keyboard, plainOf, sameLines } from './helpers.mjs';
 
 /** The lines as the record view made them whole before (44b868f's recordLines, cutting where lineSpans cuts: since V7,
  *  round 5, a space at a break hangs at the end of the line before, in no line); each line of a text with its text
@@ -49,21 +49,55 @@ const records = {
   'no parts': { reading: [], raw: { text: '{}', more: 0 } },
 };
 
+// The lines are compared by sameLines (test/helpers.mjs): their lengths and digests first, then the first line that
+// differs, written out bounded (round 6, Y3 (a): with every line's place off by one, planted, assert.deepEqual's diff of
+// the whole took the 3 GB a run is given, and the test was killed before it could fail).
 test('R.F1: a record\'s lines laid out a page at a time: every page is that page of the whole, and the whole is what the view drew before', () => {
   for (const [what, rec] of Object.entries(records)) {
     for (const json of [false, true]) {
       for (const cols of [20, 80, 133, 200]) {
-        const at = `${what}, ${json ? 'JSON' : 'text'}, ${cols} columns`;
+        const at = `${what}, ${json ? 'JSON' : 'text'}, ${cols} columns`, memo = new Map();
         const lines = recordLines(rec, json, cols), all = whole(rec, json, cols);
         assert.equal(lines.length, all.length, `${at}: the count`);
-        assert.deepEqual(lines.slice(), all, `${at}: the whole`);
+        sameLines(lines.slice(), all, `${at}: the whole`, memo);
         const h = 18, starts = new Set([0, 1, 255, 256, 257, 511, 512, 513, lines.length - h, lines.length - 1]);
         for (let a = 0; a < lines.length; a += 97) starts.add(a);
-        for (const a of starts) if (a >= 0) assert.deepEqual(lines.slice(a, a + h), all.slice(a, a + h), `${at}: the page at ${a}`);
+        for (const a of starts) if (a >= 0) sameLines(lines.slice(a, a + h), all.slice(a, a + h), `${at}: the page at ${a}`, memo);
         assert.equal(recordLines(rec, json, cols), lines, `${at}: kept for the width drawn last`);
       }
     }
   }
+});
+
+test('Y3 (a): sameLines tells two lists of lines apart where assert.deepStrictEqual does, names the first line that differs, and fails in a bounded message, at once, where every line of 3,000 differs', () => {
+  const verdict = (f) => { try { f(); return 'equal'; } catch (e) { assert.ok(e instanceof assert.AssertionError, e?.stack); return 'differ'; } };
+  // small paragraphs, where deepStrictEqual's own diff is small: the two agree on each case
+  const small = 'אבג '.repeat(10), line = (at) => [{ text: small.slice(at, at + 4), style: null, dir: 1, par: small, at }];
+  const a = Array.from({ length: 10 }, (_, i) => line(i * 4)).concat([[], [{ text: 'more', style: 'dim' }]]);
+  const cases = [
+    ['the same', a.map((l) => l.map((s) => ({ ...s })))],
+    ['another string of the same paragraph', a.map((l) => l.map((s) => (s.par ? { ...s, par: (` ${s.par}`).slice(1) } : { ...s })))],
+    ['a place off by one', a.map((l, i) => (i === 3 ? [{ ...l[0], at: l[0].at + 1 }] : l))],
+    ['a style undefined for null', a.map((l, i) => (i === 9 ? [{ ...l[0], style: undefined }] : l))],
+    ['a key more, undefined', a.map((l, i) => (i === 7 ? [{ ...l[0], extra: undefined }] : l))],
+    ['a key fewer', a.map((l, i) => (i === 11 ? [{ text: 'more' }] : l))],
+    ['another paragraph', a.map((l, i) => (i === 5 ? [{ ...l[0], par: `${small}x` }] : l))],
+    ['a direction as a string', a.map((l, i) => (i === 0 ? [{ ...l[0], dir: '1' }] : l))],
+    ['a line fewer', a.slice(1)],
+    ['a segment more', a.map((l, i) => (i === 10 ? [{ text: '', style: null }] : l))],
+  ];
+  for (const [what, b] of cases) assert.equal(verdict(() => sameLines(b, a, what)), verdict(() => assert.deepStrictEqual(b, a)), what);
+  assert.throws(() => sameLines(cases[2][1], a, 'x'), /the first that differs is line 3:\n {2}got: .*"at":13.*\n {2}want: .*"at":12/);
+  // R.F1's shape: 3,000 lines of one paragraph of 200,000 units, every line's place off by one (round 4's check's
+  // record-at-shifted): a message of a few hundred characters, the first line named
+  const par = 'אבג '.repeat(50_000), big = Array.from({ length: 3000 }, (_, i) => [{ text: par.slice(4 * i, 4 * i + 4), style: null, dir: 1, par, at: 4 * i }]);
+  const t0 = performance.now();
+  assert.throws(() => sameLines(big.map((l) => [{ ...l[0], at: l[0].at + 1 }]), big, 'shifted'), (e) => {
+    assert.ok(e.message.length < 1500, `a message of ${e.message.length} characters`);
+    assert.match(e.message, /^shifted: 3000 lines \(sha256 [0-9a-f]{12}\) where 3000 were wanted \(sha256 [0-9a-f]{12}\); the first that differs is line 0:\n {2}got: .*<200000 units, sha256 [0-9a-f]{12}, beginning אבג אבג /);
+    return true;
+  });
+  assert.ok(performance.now() - t0 < 5000, `${Math.round(performance.now() - t0)} ms`);
 });
 
 // V1 (round 5): round 4 laid out each line of a wrapped paragraph from the paragraph's levels, and found the paths and
