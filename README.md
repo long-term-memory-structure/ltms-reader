@@ -113,10 +113,12 @@ pasted acts as a key.
   broken into lines (its section 3.4): a line reads as its words do in the whole paragraph, the comma that ends a line
   where the sentence has it. Each such line is laid out whole, its spaces at either end with the rest: a space that
   ends a line takes the paragraph's direction (L1), so that in a right-to-left paragraph it is drawn at the line's
-  left. A record's text is cut into lines by columns, and a message at its spaces; either way a space where a line
-  breaks stays at the end of the line before, as UAX #14 has it, past the screen's edge where that line is full (there
-  it is not drawn), so that no line but a paragraph's first begins with one. A long line of a list is cut in logical
-  order, its beginning kept, then laid out by itself, the spaces at its ends (a cell's padding) where they are.
+  left. A record's text is cut into lines by columns: the whitespace where a line breaks stays at the end of the line
+  before, as UAX #14 has it, drawn there where the line has room for it, and past the screen's edge, not drawn, where
+  it does not. A message is broken at its spaces, and the space where a line breaks hangs, as UAX #14 has the
+  whitespace at a break: it is in no line, and is not drawn, though the line has room for it. Either way no line but a
+  paragraph's first begins with whitespace. A long line of a list is cut in logical order, its beginning kept, then
+  laid out by itself, the spaces at its ends (a cell's padding) where they are.
   A path or a URL in a line (`/home/...`, `~/...`, `src/...`, `https://...`) is laid out as one left-to-right unit, its
   parts in order and a Hebrew name in it reading right (UAX #9's higher-level protocol HL4), in pieces where a line
   breaks inside it, as an isolate is. Each cluster is kept whole, its marks after its letter, as a terminal draws them;

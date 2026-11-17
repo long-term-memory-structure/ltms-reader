@@ -525,6 +525,12 @@ test('V7: a space at a break stays at the end of the line it follows (hanging pa
   // next word, which made 'ab' and U+3000 a line of 4 columns at 3, and every test passed)
   assert.deepEqual(lines('ab\u3000  x', 3), ['ab', 'x']);
   assert.deepEqual(lines('אבגד\u2003  ה ו', 4), ['אבגד', 'ה ו']);
+  // a message's space at a break hangs: in no line, never drawn, though its line has room for it, as UAX #14 has the
+  // whitespace at a break; a record's text, cut by columns, ends a line with the whitespace that fits there (drawn: at
+  // the line's left in a right-to-left paragraph, by L1) and hangs only what does not fit (Y3 (c), round 6: the README
+  // said a message's was drawn where its line had room)
+  assert.deepEqual(messageWritten('שלום עולם ומלואו', 10), [['שלום עולם', 'םלוע םולש'], ['ומלואו', 'ואולמו']]);
+  assert.deepEqual(recordWritten('שלום עולם ומלואו', 10), [['שלום עולם ', ' םלוע םולש'], ['ומלואו', 'ואולמו']]);
 });
 
 test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80, no line of a record\'s text but its first begins with whitespace, none is wider than the columns but a cluster wider than them alone, and between two lines there is only whitespace (what hangs); a message\'s lines likewise', (t) => {

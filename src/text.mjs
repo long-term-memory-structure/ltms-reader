@@ -213,10 +213,11 @@ export function wrap(s, cols) {
 
 /** Where the lines of wrapWords(s, cols) begin and end in s, [start, end) each: a paragraph in lines of at most `cols`
  *  columns, broken at spaces where a line can be, else by columns (lineSpans). A space a line is broken at is in no line
- *  (it hangs at the end of the line before), and so is the whitespace (HANGS) after it, at the start of the word that
- *  begins the next line, and whitespace that hangs inside a word cut by columns, which ends its line: no line but the
- *  first begins with whitespace (V7, round 5). Each line is s.slice(start, end), so that its place in its paragraph is
- *  known (W1: a line is laid out from its paragraph's levels). */
+ *  (it hangs at the end of the line before, as UAX #14 has the whitespace at a break, and is not drawn, though the line
+ *  has room for it: Y3 (c), round 6), and so is the whitespace (HANGS) after it, at the start of the word that begins
+ *  the next line, and whitespace that hangs inside a word cut by columns, which ends its line: no line but the first
+ *  begins with whitespace (V7, round 5). Each line is s.slice(start, end), so that its place in its paragraph is known
+ *  (W1: a line is laid out from its paragraph's levels). */
 export function wordSpans(s, cols) {
   const out = [];
   // the line being made, where it begins in s, where the next word begins, and whether the line can take it (not when
