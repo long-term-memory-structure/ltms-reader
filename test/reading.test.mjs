@@ -112,8 +112,19 @@ const MiB = 1024 * 1024;
 test('Z1: the memory limit the size rules read: the heap limit, or the old space where Node\'s flags set it (--max-old-space-size, the command line\'s over NODE_OPTIONS\'; --max-old-space-size-percentage, of the memory Node reads, over both), as measured on Node 22.23.3 and 24.22.3', async () => {
   const { memoryLimit, recordTooLarge, tooLarge } = await import('../src/reading.mjs');
   assert.equal(typeof memoryLimit, 'function', 'src/reading.mjs gives the memory limit its rules read');
-  const at = (o) => memoryLimit({ heap: 208 * MiB, execArgv: [], nodeOptions: undefined, memory: 3072 * MiB, ...o });
+  const at = (o) => memoryLimit({ heap: 208 * MiB, execArgv: [], nodeOptions: '', memory: 3072 * MiB, ...o });
   assert.equal(at({}), 208 * MiB, 'no flag: the heap limit');
+  // R8b (round 8): none is an empty NODE_OPTIONS. Given as undefined, it was this process's (memoryLimit's default), so
+  // that under NODE_OPTIONS=--max-old-space-size=128 'no flag' read 128 MB and this test failed (round 7's check)
+  const ownOptions = process.env.NODE_OPTIONS;
+  process.env.NODE_OPTIONS = '--max-old-space-size=16';
+  try {
+    assert.equal(at({}), 208 * MiB, "this process's NODE_OPTIONS is not read where the test gives none");
+    assert.equal(memoryLimit({ heap: 208 * MiB, execArgv: [], memory: 3072 * MiB }), 16 * MiB, 'and it is read where none is given');
+  } finally {
+    if (ownOptions === undefined) delete process.env.NODE_OPTIONS;
+    else process.env.NODE_OPTIONS = ownOptions;
+  }
   assert.equal(at({ execArgv: ['--max-old-space-size=16'] }), 16 * MiB, 'node --max-old-space-size=16: 16 MB, not the heap limit of 208');
   assert.equal(at({ nodeOptions: '--max-old-space-size=16' }), 16 * MiB);
   assert.equal(at({ nodeOptions: '--max_old_space_size=16' }), 16 * MiB, 'V8 reads the flag with underscores too');

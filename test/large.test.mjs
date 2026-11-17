@@ -1,17 +1,14 @@
 // test/large.test.mjs — a turn too long for a call's arguments: one prompt and 33,000 tool calls (66,001 records, about
 // 132,000 line numbers in the turn: more than the 125,000 or so arguments a spread call takes on Node 26's default
 // stack). Its session view, its turn's view and the screen's frames are made without passing those numbers as
-// arguments. The transcript is written in a folder of the test's own.
+// arguments. The transcript is written in a folder of the test's own, and read in a process of its own (R8b, round 8).
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { App } from '../src/app.mjs';
-import { FileSource } from '../src/sources.mjs';
-import { readTranscript } from '../src/reading.mjs';
-import { top } from '../src/views.mjs';
-import { KEY, keyboard, plainOf } from './helpers.mjs';
+import { OWN, plainOf } from './helpers.mjs';
 
 const CALLS = 33_000;
 
@@ -32,23 +29,19 @@ test(`one turn of ${CALLS.toLocaleString('en-US')} calls: its session view, its 
   try {
     const file = path.join(own, 'large.jsonl');
     write(file);
-    const d = readTranscript(file);
-    assert.equal(d.view.turns.length, 1);
-    assert.equal(d.view.turns[0].calls, CALLS);
-    assert.deepEqual([d.view.turns[0].from, d.view.turns[0].to], [1, 2 * CALLS + 1]);
-    const source = new FileSource({ file });
-    const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC' });
-    const k = keyboard(app);
-    try {
-      app.start(); await app.idle();
-      assert.equal(top(app.state).error ?? null, null);
-      await k.press(KEY.enter);
-      assert.equal(top(app.state).kind, 'turn');
-      assert.equal(top(app.state).rows.length, 1 + 2 * CALLS);
-      await k.press(KEY.end);
-      const f = plainOf(app.lines());
-      assert.match(f.find((l) => l.startsWith('> ')), /^> large\.js:L66001 {2}result /, 'the last row, its address whole');
-    } finally { app.dispose(); source.dispose(); }
+    // read in a process of its own, with no NODE_OPTIONS (R8b, round 8): in this one, under the suite's
+    // NODE_OPTIONS=--max-old-space-size=100, the size rules read that old space and refused the file (21 MB), and with
+    // them set aside its parse ran it out; this test is of a turn's length, not of the memory a test runner is given
+    const r = spawnSync(process.execPath, [path.join(OWN, 'large-turn.mjs'), file], { cwd: own, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: own, CLAUDE_CONFIG_DIR: own, TZ: 'UTC' }, timeout: 250_000 });
+    assert.equal(r.status, 0, `status ${r.status}, signal ${r.signal}: ${(r.stderr ?? '').slice(-600)}`);
+    const seen = JSON.parse(r.stdout.trim().split('\n').pop());
+    assert.equal(seen.turns, 1);
+    assert.equal(seen.calls, CALLS);
+    assert.deepEqual([seen.from, seen.to], [1, 2 * CALLS + 1]);
+    assert.equal(seen.error, null);
+    assert.equal(seen.kind, 'turn');
+    assert.equal(seen.rows, 1 + 2 * CALLS);
+    assert.match(seen.selected, /^> large\.js:L66001 {2}result /, 'the last row, its address whole');
   } finally { rmSync(own, { recursive: true, force: true }); }
 });
 

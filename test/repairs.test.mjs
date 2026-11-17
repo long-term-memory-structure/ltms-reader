@@ -136,7 +136,10 @@ test("C-05, C-06: the reading process skips a file by ltms's own rule, a tenth o
   const e = new Engine({ root, env: childEnv(process.env) });
   try {
     const hello = await e.helper.request('hello', {});
-    const heap = Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(require("v8").getHeapStatistics().heap_size_limit))'], { encoding: 'utf8' }));
+    // the heap limit of a Node given the environment the reading process is given (childEnv: no NODE_OPTIONS); R8b, round
+    // 8: measured with this process's whole environment, under NODE_OPTIONS=--max-old-space-size=100 or 500 it was not
+    // the reading process's
+    const heap = Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(require("v8").getHeapStatistics().heap_size_limit))'], { encoding: 'utf8', env: childEnv(process.env) }));
     assert.equal(hello.maxFile, Math.min(480 * 1024 * 1024, Math.floor(heap / 10)));
   } finally { e.dispose(); }
 });
