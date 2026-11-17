@@ -248,12 +248,15 @@ test('R.F1: R\'s record of 4,000,000 Hebrew characters, at a heap of 512 MB: sho
   } finally { r.dispose(); }
 });
 
-test('R.F1: the same record at a heap of 128 MB: refused before it is drawn, with its size and the NODE_OPTIONS that would show it, the path given in the command; q, and the terminal as it was', { skip, timeout: 300_000 }, async () => {
+// At an old space of 160 MB: the transcript (14 MB) is read, a tenth of the old space being 16 MB, and the record is not
+// shown. It was 128 MB until Z1 (round 7): the rule read a tenth of Node's heap limit, 224 MB on Node 26 there; a tenth of
+// the old space set, 12.8 MB, refuses the transcript itself.
+test('R.F1: the same record at an old space of 160 MB: refused before it is drawn, with its size and the NODE_OPTIONS that would show it, the path given in the command; q, and the terminal as it was', { skip, timeout: 300_000 }, async () => {
   const r = makeRoot('ltms-reader-pty-');
   try {
     const file = path.join(r.base, OOM);
     hebrewRecord(file);
-    const res = await ptyRun(r, { args: [file], env: { NODE_OPTIONS: '--max-old-space-size=128' }, wait: 120_000, steps: [...toTheRecord, { until: 'this record is not shown', send: 'q' }] });
+    const res = await ptyRun(r, { args: [file], env: { NODE_OPTIONS: '--max-old-space-size=160' }, wait: 120_000, steps: [...toTheRecord, { until: 'this record is not shown', send: 'q' }] });
     assert.equal(res.exit, 0, `q quits with 0; the terminal received, last: ${JSON.stringify(res.out.slice(-400))}`);
     assert.equal(res.after, res.before, 'stty -g after = before');
     // the refusal's lines, read without the screen's own sequences and spaces (it is wrapped at 78 columns)

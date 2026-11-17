@@ -6,9 +6,10 @@
 // at its name (O_NONBLOCK); it must be a regular file, and it is read from the descriptor checked. A transcript too
 // large to parse in this process's memory is refused before it is read, with its size and the NODE_OPTIONS that would
 // let it be read: the rule is ltms's own (a file over a tenth of the runtime's memory limit is skipped, so the reader
-// and ltms's lists agree on which files can be read; parsing takes 5 to 8 times a file's size), and a file over 480 MB
-// cannot be read at all, by JavaScript's limit on a string's length.
+// and ltms's lists agree on which files can be read; parsing takes 5 to 8 times a file's size), the memory limit read
+// as memoryLimit reads it, and a file over 480 MB cannot be read at all, by JavaScript's limit on a string's length.
 import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs';
+import { totalmem } from 'node:os';
 import path from 'node:path';
 import { getHeapStatistics } from 'node:v8';
 import { parseTranscript } from '#ltms';
@@ -20,12 +21,63 @@ export const STRING_MAX = 480 * MB;
 
 export class Refusal extends Error { constructor(kind, message) { super(message); this.kind = kind; } }
 
-/** The largest transcript this process reads, by ltms's rule, for a heap limit of `heapLimit` bytes. */
+/** NODE_OPTIONS's words, as Node reads them (its ParseNodeOptionsEnvVar): apart at spaces, a double-quoted stretch part
+ *  of a word with its spaces, a backslash in one taking the character after it as it is. */
+function nodeOptionWords(s) {
+  const out = [];
+  let word = null, quoted = false;
+  for (let i = 0; i < s.length; i++) {
+    let c = s[i];
+    if (c === '\\' && quoted && i + 1 < s.length) c = s[++i];
+    else if (c === '"') { quoted = !quoted; continue; }
+    else if (c === ' ' && !quoted) { if (word !== null) out.push(word); word = null; continue; }
+    word = (word ?? '') + c;
+  }
+  if (word !== null) out.push(word);
+  return out;
+}
+
+/** The memory Node reads for --max-old-space-size-percentage: the process's constraint (a cgroup's limit), where there
+ *  is one, else the machine's. */
+function memoryOfNode() {
+  const c = typeof process.constrainedMemory === 'function' ? process.constrainedMemory() : 0;
+  return c > 0 && Number.isSafeInteger(c) ? c : totalmem();
+}
+
+/**
+ * The memory limit the size rules read (Z1, round 7): Node's heap limit (V8's heap_size_limit, ltms's measure), but no
+ * more than the old space's where Node's flags set it. A heap limit is the old space and the young generation's reserve,
+ * and the reserve is sized from the machine's memory, not from the old space set: with --max-old-space-size=16, measured,
+ * the heap limit is 64 MB on Node 20.20.2 and 22.23.3, 208 MB on 24.22.3 and 112 MB on 26.13.1 (with
+ * --max-semi-space-size=1 too, 19 MB). A transcript's text and what its parse makes of it live in the old space: by a
+ * tenth of the heap limit, under an old space of 16 MB, Node 24 read a transcript of 8 to 20 MB and its parse ran the old
+ * space out (R.F14 on Box B's Node 24.18.0), and Node 26 one of 10 or 11 MB (round 7's probe, admit.mjs). The flags, as
+ * Node and V8 take them (measured on Node 22.23.3 and 24.22.3): --max-old-space-size=N (or --max_old_space_size), in
+ * NODE_OPTIONS or on node's command line, the command line's over NODE_OPTIONS', the last given, 0 setting none; and
+ * --max-old-space-size-percentage=P (Node 22 and later), the old space at P per cent of the memory Node reads (in MB,
+ * rounded down), over --max-old-space-size wherever each is given. Where no flag sets the old space, V8 sizes the old
+ * space and the young generation together, from the memory it finds, and the heap limit is the measure. Not read: a
+ * limit set by --max-heap-size (the heap limit is then about it) or by an embedder. `heap`, `execArgv`, `nodeOptions` and
+ * `memory` are this process's when not given.
+ */
+export function memoryLimit({ heap = getHeapStatistics().heap_size_limit, execArgv = process.execArgv, nodeOptions = process.env.NODE_OPTIONS, memory = memoryOfNode() } = {}) {
+  let size = 0, percent = 0;
+  for (const word of [...(typeof nodeOptions === 'string' ? nodeOptionWords(nodeOptions) : []), ...execArgv]) {
+    const m = /^--max[-_]old[-_]space[-_]size(?:[-_](percentage))?=(.*)$/.exec(word);
+    if (!m) continue;
+    const v = Number(m[2]);
+    if (m[1]) { if (v > 0 && v <= 100) percent = v; } else if (Number.isInteger(v) && v >= 0) size = v;
+  }
+  const old = percent > 0 ? Math.floor((Math.floor(memory / MB) * percent) / 100) * MB : size > 0 ? size * MB : null;
+  return old === null ? heap : Math.min(heap, old);
+}
+
+/** The largest transcript this process reads, by ltms's rule, for a memory limit of `heapLimit` bytes. */
 export const sizeLimit = (heapLimit) => Math.min(STRING_MAX, Math.floor(heapLimit / 10));
 
 /** Why a file of `size` bytes is not read here (with the NODE_OPTIONS that would let it be, before `again`, the command
- *  that was run: src/start.mjs's againOf), or null when it is read. */
-export function tooLarge(size, heapLimit = getHeapStatistics().heap_size_limit, again = 'npx ltms-reader') {
+ *  that was run: src/start.mjs's againOf), or null when it is read. `heapLimit`: the memory limit (memoryLimit). */
+export function tooLarge(size, heapLimit = memoryLimit(), again = 'npx ltms-reader') {
   const limit = sizeLimit(heapLimit);
   if (size <= limit) return null;
   const mb = (n) => `${Math.ceil(n / MB).toLocaleString('en-US')} MB`;
@@ -46,8 +98,8 @@ export const RECORD_VIEW_PER_BYTE = 16;
 /** What a record's view needs beside the JSON it writes (N3), measured: over six records nested deep (lists 200 to 990
  *  deep, one of Hebrew strings), the view opened, its text and its JSON laid out, at an old space of 9 to 24 MB more
  *  than that JSON (recordViewBytes) on Node 26, and of 18 to 73 MB more on Node 20; Node's heap limit, which this rule
- *  reads, is the old space and 96 MB more on Node 26, 48 on Node 20. At the heap where each failed, on both, the rule
- *  refuses it. */
+ *  read then, is the old space and 96 MB more on Node 26, 48 on Node 20. At the heap where each failed, on both, the rule
+ *  refuses it; and so it does reading the old space set (memoryLimit, Z1), the smaller. */
 export const BUILT_MARGIN = 96 * MB;
 
 /**
@@ -58,7 +110,7 @@ export const BUILT_MARGIN = 96 * MB;
  * the terminal raw); and so must the JSON the view writes of it, `built` bytes (view.mjs recordViewBytes), and
  * BUILT_MARGIN (N3: a record nested deep, its line small, wrote JSON hundreds of times its size, and ran the heap out).
  */
-export function recordTooLarge(bytes, fileSize, heapLimit = getHeapStatistics().heap_size_limit, again = 'npx ltms-reader', built = 0) {
+export function recordTooLarge(bytes, fileSize, heapLimit = memoryLimit(), again = 'npx ltms-reader', built = 0) {
   const room = 0.9 * heapLimit - PARSE_PER_BYTE * fileSize;
   const limit = Math.max(0, Math.floor(room / RECORD_VIEW_PER_BYTE));
   const size = (n, round) => (n < MB ? `${round(n / 1024).toLocaleString('en-US')} KB` : `${round(n / MB).toLocaleString('en-US')} MB`);

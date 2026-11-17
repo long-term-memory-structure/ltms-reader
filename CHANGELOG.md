@@ -38,8 +38,9 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   after its first grapheme cluster, PDF at its end), so that a terminal that lays text out itself keeps that order;
   `LTMS_READER_BIDI=terminal` writes the text as stored instead, with an RLM at the end of each right-to-left
   paragraph.
-- A transcript is read in the reader's own process; one over a tenth of Node's memory limit is refused with its size
-  and the `NODE_OPTIONS` that would let it be read, in the command that was run, the path given included. A record is
+- A transcript is read in the reader's own process; one over a tenth of Node's memory limit (its heap's, or the old
+  space's where `--max-old-space-size` or `--max-old-space-size-percentage` sets one) is refused with its size and the
+  `NODE_OPTIONS` that would let it be read, in the command that was run, the path given included. A record is
   refused the same way when its view would not fit beside the transcript in Node's memory, by its size and by the JSON
   its view would write (measured by walking the record, before any is written: a record nested deep writes JSON
   hundreds of times its size), and its lines are laid out a page at a time. The screen runs in a process of its own: when it ends without restoring the terminal (Node's memory

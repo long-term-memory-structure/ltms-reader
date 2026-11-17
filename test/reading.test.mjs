@@ -6,6 +6,7 @@ import { closeSync, mkdirSync, mkdtempSync, openSync, rmSync, symlinkSync, write
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { getHeapStatistics } from 'node:v8';
 import assert from 'node:assert/strict';
 import { MB, Refusal, STRING_MAX, readTranscript, sizeLimit, tooLarge } from '../src/reading.mjs';
 import { FX, OWN, ltms } from './helpers.mjs';
@@ -76,7 +77,9 @@ function bigTranscript(file, bytes) {
 test('R.F14: the reader refused a transcript too large, on its screen, with the command to read it: the path given in it, both ways in', { timeout: 120_000 }, () => {
   const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-again-'));
   try {
-    // node --max-old-space-size=16: a heap limit of 112 MB here, so a transcript over 11.2 MB is refused
+    // node --max-old-space-size=16: an old space of 16 MB, so a transcript over 1.6 MB is refused, on every Node line (Z1,
+    // round 7: by a tenth of the heap's limit, 112 MB on Node 26, refused over 11.2 MB; 208 MB on Node 24, where this
+    // transcript was read, and its parse ran the old space out)
     mkdirSync(path.join(own, 'projects', '-work-big'), { recursive: true });
     bigTranscript(path.join(own, 'big.jsonl'), 12 * MB);
     bigTranscript(path.join(own, 'projects', '-work-big', '99999999-9999-4999-8999-999999999999.jsonl'), 12 * MB);
@@ -94,5 +97,56 @@ test('R.F14: the reader refused a transcript too large, on its screen, with the 
     const root = run(['projects'], ['\r', '\r']);
     assert.equal(root[1], 'this transcript could not be read', JSON.stringify(root));
     assert.match(refusal(root), /is not read: it is 13 MB, .* NODE_OPTIONS=--max-old-space-size=\d+ npx ltms-reader projects$/);
+  } finally { rmSync(own, { recursive: true, force: true }); }
+});
+
+// Z1 (round 7): R.F14 failed on Node 24 (Box B's 24.18.0, and 24.22.3 in docker: 3 of 3 each), the reader under test
+// dying of V8's heap run out in the parse (TextEncoder's encoding of the transcript's line, ltms's byte count) instead of
+// refusing. The size rules read a tenth of Node's heap limit; a heap limit is the old space and the young generation's
+// reserve, and the reserve is sized from the machine's memory, not from the old space set: measured with
+// --max-old-space-size=16, the heap limit is 64 MB on Node 20.20.2 and 22.23.3, 208 MB on 24.22.3 and 112 MB on 26.13.1.
+// A transcript's text and what its parse makes of it live in the old space, so that under an old space of 16 MB a
+// transcript of 8 to 20 MB was read on Node 24 and ran it out, and one of 10 or 11 MB on Node 26 (round 7's probe,
+// admit.mjs). Now the rules read the old space's limit where Node's flags set it.
+const MiB = 1024 * 1024;
+test('Z1: the memory limit the size rules read: the heap limit, or the old space where Node\'s flags set it (--max-old-space-size, the command line\'s over NODE_OPTIONS\'; --max-old-space-size-percentage, of the memory Node reads, over both), as measured on Node 22.23.3 and 24.22.3', async () => {
+  const { memoryLimit, recordTooLarge, tooLarge } = await import('../src/reading.mjs');
+  assert.equal(typeof memoryLimit, 'function', 'src/reading.mjs gives the memory limit its rules read');
+  const at = (o) => memoryLimit({ heap: 208 * MiB, execArgv: [], nodeOptions: undefined, memory: 3072 * MiB, ...o });
+  assert.equal(at({}), 208 * MiB, 'no flag: the heap limit');
+  assert.equal(at({ execArgv: ['--max-old-space-size=16'] }), 16 * MiB, 'node --max-old-space-size=16: 16 MB, not the heap limit of 208');
+  assert.equal(at({ nodeOptions: '--max-old-space-size=16' }), 16 * MiB);
+  assert.equal(at({ nodeOptions: '--max_old_space_size=16' }), 16 * MiB, 'V8 reads the flag with underscores too');
+  assert.equal(at({ execArgv: ['--max_old_space_size=16'] }), 16 * MiB);
+  assert.equal(at({ nodeOptions: '--max-old-space-size=64', execArgv: ['--max-old-space-size=16'] }), 16 * MiB, 'the command line over NODE_OPTIONS (measured: a heap of 208 MB)');
+  assert.equal(at({ heap: 256 * MiB, nodeOptions: '--max-old-space-size=16', execArgv: ['--max-old-space-size=64'] }), 64 * MiB, 'and the other way (measured: 256 MB)');
+  assert.equal(at({ execArgv: ['--max-old-space-size=32', '--max-old-space-size=16'] }), 16 * MiB, 'the last given');
+  assert.equal(at({ execArgv: ['--max-old-space-size=0'] }), 208 * MiB, '0 sets none (measured: the default heap)');
+  assert.equal(at({ nodeOptions: '--require "/a b/c.js" --max-old-space-size=32' }), 32 * MiB, 'NODE_OPTIONS read as Node reads it, a quoted word holding a space');
+  assert.equal(at({ nodeOptions: '--require "/a --max-old-space-size=1/c.js"' }), 208 * MiB, 'a flag inside a quoted word is not one');
+  // the percentage: of the memory Node reads (a constraint's, 3,072 MB in docker --memory 3g, measured: 307 MB at 10 %)
+  assert.equal(at({ heap: 499 * MiB, execArgv: ['--max-old-space-size-percentage=10'] }), 307 * MiB);
+  assert.equal(at({ heap: 499 * MiB, nodeOptions: '--max-old-space-size-percentage=10', execArgv: ['--max-old-space-size=16'] }), 307 * MiB, 'over --max-old-space-size, wherever each is given (measured: a heap of 499 MB)');
+  assert.equal(at({ heap: 499 * MiB, execArgv: ['--max-old-space-size=16', '--max-old-space-size-percentage=10'] }), 307 * MiB);
+  assert.equal(at({ heap: 499 * MiB, execArgv: ['--max-old-space-size-percentage=12.5'], memory: 1000 * MiB }), 125 * MiB);
+  // the rules read it when they are given no limit; this process's own is its heap limit or less
+  assert.ok(memoryLimit() <= getHeapStatistics().heap_size_limit);
+  assert.equal(tooLarge(300 * MiB), tooLarge(300 * MiB, memoryLimit()));
+  assert.equal(recordTooLarge(30 * MiB, 40 * MiB), recordTooLarge(30 * MiB, 40 * MiB, memoryLimit()));
+  assert.equal(tooLarge(2 * MiB, 208 * MiB), null);
+  assert.match(tooLarge(2 * MiB, at({ execArgv: ['--max-old-space-size=16'] })), /^it is 2 MB, and this process reads a transcript of up to 2 MB .* NODE_OPTIONS=--max-old-space-size=256 npx ltms-reader$/);
+});
+
+test('Z1: under an old space of 16 MB, transcripts of 10 and 4 MB are refused, on every Node line: by a tenth of the heap\'s limit Node 24 and 26 read both, and the first ran their old space out, and Node 20 and 22 read the second', { timeout: 120_000 }, () => {
+  const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-old-'));
+  try {
+    for (const mb of [10, 4]) {
+      bigTranscript(path.join(own, `big${mb}.jsonl`), mb * MB);
+      const r = spawnSync(process.execPath, ['--max-old-space-size=16', path.join(OWN, 'frame-once.mjs'), `big${mb}.jsonl`], { cwd: own, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: own, CLAUDE_CONFIG_DIR: own, TZ: 'UTC', LTMS_COLS: '400', LTMS_ROWS: '12', LTMS_KEYS: '[]' }, timeout: 100_000 });
+      assert.equal(r.status, 0, `${mb} MB: status ${r.status}, signal ${r.signal}: ${r.stderr.slice(-600)}`);
+      const lines = JSON.parse(r.stdout.trim().split('\n').pop()).map((l) => l.trimEnd());
+      assert.equal(lines[1], 'this transcript could not be read', `${mb} MB: ${JSON.stringify(lines.slice(0, 4))}`);
+      assert.match(lines.slice(2).join(' '), new RegExp(`is not read: it is ${mb + 1} MB, and this process reads a transcript of up to 2 MB `), `${mb} MB`);
+    }
   } finally { rmSync(own, { recursive: true, force: true }); }
 });

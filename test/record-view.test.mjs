@@ -150,15 +150,16 @@ test('R.F1: a record\'s lines are kept for one width only: at another, laid out 
 test('R.F1: the rule for a record too large: its view, 16 times its size, beside its transcript\'s parse, 8 times the file\'s, within nine tenths of the heap limit', () => {
   assert.equal(RECORD_VIEW_PER_BYTE, 16);
   assert.equal(PARSE_PER_BYTE, 8);
-  // R's scenario: the result's line, 14,000,514 bytes, in a transcript of 14,002,119; the heap limits Node gave at
-  // --max-old-space-size=512 and =128 (measured here: 637,534,208 and 234,881,024)
+  // R's scenario: the result's line, 14,000,514 bytes, in a transcript of 14,002,119; the heap limits Node 26 gave at
+  // --max-old-space-size=512 and =128 (measured here: 637,534,208 and 234,881,024), which the rule read until Z1 (round
+  // 7: it reads the old space set, 512 and 128 MB, and at 128 refuses the transcript itself, test/pty.test.mjs)
   assert.equal(recordTooLarge(14_000_514, 14_002_119, 637_534_208, 'npx ltms-reader x.jsonl'), null, 'at 512: shown');
   assert.equal(recordTooLarge(14_000_514, 14_002_119, 234_881_024, 'npx ltms-reader x.jsonl'), "it is 14 MB, and in a transcript of 14 MB this process shows a record of up to 5 MB (its view takes up to 16 times a record's size, the transcript's parse up to 8 times the file's, both within nine tenths of the memory limit). To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=512 npx ltms-reader x.jsonl", 'at 128: refused, and 512 named');
   // the boundary, by the rule's own numbers
   const heap = 1000 * MB, file = 20 * MB, limit = Math.floor((0.9 * heap - 8 * file) / 16);
   assert.equal(recordTooLarge(limit, file, heap), null);
   assert.match(recordTooLarge(limit + 1, file, heap), /^it is \d+ MB, and in a transcript of 20 MB this process shows a record of up to \d+ MB .* NODE_OPTIONS=--max-old-space-size=\d+ npx ltms-reader$/);
-  // the setting named is enough by the same rule (Node's limit at --max-old-space-size=N is N MB and more), and for
+  // the setting named is enough by the same rule (the memory limit at --max-old-space-size=N is N MB: Z1), and for
   // the transcript too (a tenth of it); under a megabyte, sizes in KB
   for (const [bytes, size, h] of [[14_000_514, 14_002_119, 234_881_024], [3 * MB, 3 * MB, 40 * MB], [600_000, 700_000, 8 * MB], [100 * MB, 180 * MB, 2048 * MB]]) {
     const why = recordTooLarge(bytes, size, h);

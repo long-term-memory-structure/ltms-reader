@@ -147,6 +147,11 @@ pasted acts as a key.
 - A transcript is read into memory whole, in the reader's own process. One over a tenth of Node's memory limit is
   refused with its size and the `NODE_OPTIONS=--max-old-space-size=...` that would let it be read (the rule ltms's
   commands follow, so the lists and the reader agree on which files can be read); one over 480 MB cannot be read at all.
+  Node's memory limit is its heap's, or, where `--max-old-space-size` or `--max-old-space-size-percentage` sets the old
+  space (in `NODE_OPTIONS` or on node's command line), the old space's: a transcript's parse is kept there, and the
+  heap's limit holds beside it a reserve for new objects that is sized from the machine's memory, not from the old space
+  (with `--max-old-space-size=16`, measured: a heap limit of 64 MB on Node 20 and 22, 208 MB on Node 24, 112 MB on Node
+  26). By the heap's limit, under an old space of 16 MB, Node 24 read a transcript of 12 MB and ran out of memory.
 - A record is shown when its view (up to 16 times the record's size) fits beside the transcript's (up to 8 times the
   file's) in nine tenths of Node's memory limit, and so does the JSON the view writes of it, with 96 MB beside it: JSON
   is indented once more at each level a value is nested in, so that a record nested deep writes JSON hundreds of times
