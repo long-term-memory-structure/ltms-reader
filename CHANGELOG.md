@@ -29,8 +29,9 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   and emoji two columns, from a table generated from Unicode's `EastAsianWidth.txt` 17.0.0 (its sha256 in the table);
   lines cut by columns, never inside a cluster, a space where a line breaks staying at the end of the line before (UAX
   #14), so that no line but a paragraph's first begins with one, nor, where UAX #14 gives no break before one, with a
-  no-break space or a non-breaking hyphen (the figure space among them, and after a Hebrew letter's hyphen-minus:
-  LB21a); a message's space at a break hangs, and a message ends with its last word.
+  no-break space or a non-breaking hyphen (the figure space among them, and after a Hebrew letter's hyphen-minus,
+  what UAX #14's LB9 folds into the letter or the hyphen passed over, LRM, RLM, ALM and ZWNJ among it: LB21a); a
+  message's space at a break hangs, and a message ends with its last word.
   Right to left, one layout for every terminal (measured on Alacritty, Konsole, tmux and VS Code's terminal): the
   reader lays out each line itself, by the Unicode Bidirectional Algorithm (UAX #9, written here from Unicode 17.0.0's
   data, generated and pinned as the width table is; a letter's marks kept after it, a mark after a soft hyphen, ZWSP or

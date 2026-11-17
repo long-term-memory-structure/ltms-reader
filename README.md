@@ -94,7 +94,9 @@ pasted acts as a key.
   U+202F, U+2011: UAX #14's class GL) where it would be cut goes to the next line with the character before it, as UAX
   #14 gives no break before one but after a space or a hyphen, a hyphen-minus only where it does not follow a Hebrew
   letter (LB21a; where that would leave the line before empty, or the next too wide, as on a line of one column, it
-  begins the line all the same). The figure space (U+2007) is such a no-break space, not a space that hangs at a
+  begins the line all the same). What UAX #14 takes as part of the character before it (LB9: its class CM, the marks
+  and LRM, RLM, ALM and ZWNJ among it, and ZWJ) is read so: between a Hebrew letter and its hyphen, after the hyphen,
+  and on the line it goes to. The figure space (U+2007) is such a no-break space, not a space that hangs at a
   break: a line begins with it only where UAX #14 breaks before it, after a space. The wide characters come from a
   table generated from Unicode's `EastAsianWidth.txt`, version 17.0.0 (`src/width-table.mjs`, which names the file's
   sha256; `scripts/width-table.mjs` writes it). Characters of ambiguous width take one column.
@@ -229,10 +231,12 @@ npm test
 `npm test` runs `node --test test/*.test.mjs`, the pattern expanded by the shell, which runs the test files on Node 20,
 22, 24 and 26 alike. Given the folder `test/` instead, Node 20 runs every module under it as a test, the fixtures too,
 and Node 22 and 24 run none: they take the folder for a module, and fail.
-The whole suite was run on four Node lines on 2026-11-17, with no failure on any: Node 26.13.1, 428 tests, 428
+The whole suite was run on four Node lines on 2026-11-17, with no failure on any: Node 26.13.1, 434 tests, 434
 passed (GNU FriBidi 1.0.18 there, its command and its library); Node 24.22.3, 22.23.3 and 20.20.2 in docker (the
-images node:24-slim, node:22-slim and node:20-slim), 428 tests each, 421 passed and 7 skipped, as there is no GNU
-FriBidi and no Electron in them. Each with the pinned Unicode files named (`LTMS_READER_UCD`, `LTMS_READER_EAW`).
+images node:24-slim, node:22-slim and node:20-slim), 434 tests each, 427 passed and 7 skipped, as there is no GNU
+FriBidi and no Electron in them. Each with the pinned Unicode files named (`LTMS_READER_UCD`, `LTMS_READER_EAW`). So
+it was under `NODE_OPTIONS=--max-old-space-size=100` and `=500` too, on each line: no test reads the environment's
+`NODE_OPTIONS` where it means none, and the test of a turn of 33,000 calls reads it in a process of its own.
 The tests run every view at 80 x 24 and 200 x 60 over ltms's own synthetic transcripts (`test/fixtures/ltms`) and the
 reader's (`test/fixtures/hebrew-english.jsonl`, `escapes.jsonl` and `channels.jsonl`, written by
 `node test/fixtures/make-fixtures.mjs`), compare what each row says with ltms's own commands, read every byte the

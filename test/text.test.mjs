@@ -14,7 +14,7 @@ import { RTL_MODES, clusterWidth, cut, directionOf, displayOrder, expandTabs, fi
 import { SOURCE_SHA256, SOURCE_URL, UNICODE_VERSION, WIDE } from '../src/width-table.mjs';
 import { SHA256, VERSION } from '../scripts/width-table.mjs';
 import { readPinned } from '../scripts/bidi-table.mjs';
-import { HEBREW_LETTER, afterHebrewLetter } from './helpers.mjs';
+import { HEBREW_LETTER, MARKS_NOT_CM, afterHebrewLetter, codePointBefore, lb9Base, lb9Folds } from './helpers.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SEG = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -134,9 +134,18 @@ test('wrap: lines of at most the columns, cut between clusters, that join back t
 // 221 record lines and 201 message lines of its population beginning with U+00A0, 201 and 292 with U+202F (of 113,398
 // and 129,439).
 const GLUE = /^[\u00a0\u2007\u202f\u2011]/, BEFORE_GLUE = /[\u0020\u002d\u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]/;
-/** Whether UAX #14 breaks before a GL character after the character at offset i of s: after a space, a space of class
- *  BA or a hyphen-minus (LB12a), but not after a hyphen-minus that follows a Hebrew letter (LB21a: Z2, round 7). */
-const breaksBeforeGlueAt = (s, i) => i >= 0 && BEFORE_GLUE.test(s[i]) && !(s[i] === '-' && afterHebrewLetter(s, i));
+/** Whether UAX #14 breaks before a GL character after the code unit at offset i of s: after a space, a space of class
+ *  BA or a hyphen-minus (LB12a), but not after a hyphen-minus that follows a Hebrew letter (LB21a: Z2, round 7); and
+ *  (R8e, round 8) after what LB9 folds into one of those, as after it, but none after ZWJ (LB8a), and none after a run
+ *  of it that follows a space or nothing (LB9 folds nothing into a space; LB10 takes the run as AL). */
+const breaksBeforeGlueAt = (s, i) => {
+  if (i < 0) return false;
+  let [cp, at] = codePointBefore(s, i + 1);
+  if (cp === 0x200d) return false;
+  if (lb9Folds(cp)) { [cp, at] = lb9Base(s, at); if (cp < 0 || cp === 0x20) return false; }
+  const c = String.fromCodePoint(cp);
+  return BEFORE_GLUE.test(c) && !(c === '-' && afterHebrewLetter(s, at));
+};
 test('Y3 (e): a line cut by columns does not begin with a no-break space or a non-breaking hyphen (UAX #14 class GL) where UAX #14 gives no break before one: the character it follows begins the line with it; a message\'s word cut likewise', () => {
   assert.deepEqual(wrap('abc\u00a0def', 3), ['ab', 'c\u00a0d', 'ef']);
   assert.deepEqual(wrap('abc\u202fdef', 3), ['ab', 'c\u202fd', 'ef']);
@@ -253,6 +262,92 @@ test('Z2: the Hebrew letters LB21a reads are the letters of the Hebrew blocks (G
     if (f[2] === 'Lo' && ((cp >= 0x590 && cp <= 0x5ff) || (cp >= 0xfb1d && cp <= 0xfb4f))) lo.push(cp);
   }
   assert.deepEqual(mine, lo);
+});
+
+// R8e (round 8): LB21a read past a Hebrew letter's marks and ZWJ (Z2), but UAX #14's LB9 folds every character of class
+// CM into the character before it, ZWJ too, and not every one of them is a mark: of those visible() leaves as they are,
+// ALM, ZWNJ, LRM and RLM (the README: the light marks are written as they are) and 22 more; and some marks are of other
+// classes, which LB9 does not fold (31: 21 GL, U+0F7F BA, 2 VF, 7 VI). Round 7's check: ICU 78.3 gives no break inside
+// alef, X, '-', U+00A0, 'x' for X ZWNJ, LRM, RLM or ALM, as for a patah or ZWJ, and the head's wrap began a line with
+// U+00A0 after each, in a record line and in a message. Round 8's probes: ICU 78.3's breaks for alef bet, X, '-', U+00A0,
+// 'x' and seven other forms, X each character LB9 folds that visible() leaves, and each mark of another class
+// (lb9cases.py); the reader's cut judged by them at every width from 1 to 12 (lb9judge.mjs): at ca347a3, 27 line starts
+// with U+00A0 where ICU gives no break and the cut did not have to stay with X between the letter and the hyphen, and 24
+// with X after the hyphen (as many after a Latin letter's hyphen, where ICU breaks after X, not before it).
+const FOLDED_SHOWN = [0x61c, 0x200c, 0x200e, 0x200f, 0x206a, 0x206b, 0x206c, 0x206d, 0x206e, 0x206f, 0x3035, 0xfff9, 0xfffa, 0xfffb, 0x1bca0, 0x1bca1, 0x1bca2, 0x1bca3, 0x1d173, 0x1d174, 0x1d175, 0x1d176, 0x1d177, 0x1d178, 0x1d179, 0x1d17a];
+test('R8e: LB21a past what LB9 folds into a Hebrew letter that is not a mark (ALM, ZWNJ, LRM, RLM and 22 more): no line begins with a GL character after the letter, it and a hyphen-minus; after the hyphen it goes with the hyphen; a mark of another class is not folded, and UAX #14 breaks there', async () => {
+  const AB = '\u05d0\u05d1', hex = (cp) => `U+${cp.toString(16).toUpperCase()}`;
+  // the four the check found, at 3 columns: the hyphen begins the next line with the no-break space (ICU 78.3: no break
+  // in the whole of it), and so in a message, a word cut by columns
+  for (const x of ['\u061c', '\u200c', '\u200e', '\u200f']) {
+    assert.deepEqual(wrap(`${AB}${x}-\u00a0x`, 3), [`${AB}${x}`, '-\u00a0x'], hex(x.codePointAt(0)));
+    assert.deepEqual(wrapWords(`y ${AB}${x}-\u00a0x`, 3), ['y', `${AB}${x}`, '-\u00a0x'], `a message: ${hex(x.codePointAt(0))}`);
+  }
+  // no break after ZWJ (LB8a), after a Latin letter's hyphen too; and none before the no-break space after LRM that follows
+  // a space, which LB9 does not fold into the space (LB10: a letter, AL), where UAX #14 breaks after the space (ICU 78.3)
+  assert.deepEqual(wrap('ab-\u200d\u00a0x', 3), ['ab', '-\u200d\u00a0x']);
+  assert.deepEqual(wrap('ab \u200e\u00a0x', 3), ['ab ', '\u200e\u00a0x']);
+  // each that reaches the wrapper as it is: between the letter and the hyphen, twice, after a mark; after the hyphen,
+  // where it goes to the next line with the hyphen (ICU: no break in any of these); and after a Latin letter's hyphen,
+  // where UAX #14 breaks before the no-break space, after it
+  assert.equal(FOLDED_SHOWN.length, 26);
+  for (const cp of FOLDED_SHOWN) {
+    const x = String.fromCodePoint(cp), at = hex(cp);
+    assert.equal(visible(x), x, `${at}: visible() leaves it`);
+    assert.ok(lb9Folds(cp), `${at}: LB9 folds it`);
+    for (const pre of [`${AB}${x}`, `${AB}${x}${x}`, `${AB}\u05b7${x}`]) assert.deepEqual(wrap(`${pre}-\u00a0x`, width(`${pre}-`)), [pre, '-\u00a0x'], `${at}: ${JSON.stringify(pre)}`);
+    assert.deepEqual(wrap(`${AB}-${x}\u00a0x`, width(`${AB}-${x}`)), [AB, `-${x}\u00a0x`], `${at} after the hyphen`);
+    assert.deepEqual(wrap(`ab-${x}\u00a0x`, width(`ab-${x}`)), [`ab-${x}`, '\u00a0x'], `${at} after a Latin letter's hyphen`);
+  }
+  // a mark of another class: LB9 does not fold it, the hyphen does not follow the letter, and UAX #14 breaks before the
+  // no-break space (ICU 78.3, each of the 31)
+  assert.equal(MARKS_NOT_CM.length, 31);
+  for (const cp of MARKS_NOT_CM) {
+    const m = String.fromCodePoint(cp);
+    assert.deepEqual(wrap(`${AB}${m}-\u00a0x`, width(`${AB}${m}-`)), [`${AB}${m}-`, '\u00a0x'], hex(cp));
+  }
+  // what src/text.mjs takes LB9 to fold is what the tests take, at every code point: 2,704, as ICU 78.3 counts them
+  const { isLineBreakCombining } = await import('../src/text.mjs');
+  assert.equal(typeof isLineBreakCombining, 'function', 'src/text.mjs says what LB9 folds');
+  let n = 0;
+  for (let cp = 0; cp <= 0x10ffff; cp++) {
+    if (cp >= 0xd800 && cp <= 0xdfff) continue;
+    const mine = isLineBreakCombining(cp), theirs = lb9Folds(cp);
+    if (mine !== theirs) assert.fail(`${hex(cp)}: src/text.mjs ${mine}, the tests ${theirs}`);
+    if (mine) n++;
+  }
+  assert.equal(n, 2704);
+  // texts of these at every width from 1 to 30, from the start and from every line's start: no line begins with a GL
+  // character, past what LB9 folds at its start, but after a break UAX #14 gives, or where the cut had to stay (the unit
+  // before it, a character and what LB9 folds into it, would leave the line before with no column, or not fit)
+  const texts = [`${AB}\u200e-\u00a0\u05e2\u05d5\u05d3 \u05e9\u200c-\u202f12 ab-\u200f\u00a0cd`, `\u05d3\u061c\u061c-\u2011\u05d4 x-\u206a\u00a0y \u05d5-\u{1d173}\u00a0z`, `\u05d0\u05b7\u200f-\u00a0\u2007\u05d1 a\u3000\u200e\u00a0b \u05d2\u0f7f-\u00a0c`];
+  const SEGS = (t) => [...SEG.segment(t)].map((x) => x.segment);
+  const past = (t) => { let j = 0; for (const ch of t) { if (!lb9Folds(ch.codePointAt(0))) break; j += ch.length; } return t.slice(j); };
+  let glued = 0;
+  for (const s of texts) {
+    for (let cols = 1; cols <= 30; cols++) {
+      const spans = [...lineSpans(s, cols)];
+      for (const [i, [a, b]] of spans.entries()) {
+        if (i > 0) assert.deepEqual([...lineSpans(s, cols, a)], spans.slice(i), `${JSON.stringify(s)} at ${cols}: from line ${i}'s start`);
+        const rest = past(s.slice(a, b));
+        if (i === 0 || !GLUE.test(rest)) continue;
+        glued++;
+        const g = b - rest.length, [pa] = spans[i - 1], prev = SEGS(s.slice(pa, a));
+        // the run of GL clusters the line before ends in; before it, the unit that would go with it: back over clusters
+        // made only of what LB9 folds, then the one they fold into
+        let k = prev.length;
+        while (k > 0 && GLUE.test(prev[k - 1])) k--;
+        const run = pa + prev.slice(0, k).join('').length;
+        while (k > 0 && [...prev[k - 1]].every((ch) => lb9Folds(ch.codePointAt(0)))) k--;
+        k--;
+        const unit = k >= 0 ? pa + prev.slice(0, k).join('').length : pa, gl = SEGS(s.slice(g))[0];
+        const allowed = breaksBeforeGlueAt(s, a - 1) || breaksBeforeGlueAt(s, run - 1) || k < 1 || width(s.slice(pa, unit)) === 0 || width(s.slice(unit, g) + gl) > cols;
+        assert.ok(allowed, `${JSON.stringify(s)} at ${cols}: line ${i} begins with ${JSON.stringify(s.slice(a, g + 1))}: ${JSON.stringify(spans.map(([x, y]) => s.slice(x, y)))}`);
+      }
+      assert.ok(spans.every(([a, b]) => width(s.slice(a, b)) <= cols || SEGS(s.slice(a, b)).length === 1), `${JSON.stringify(s)} at ${cols}: within the columns`);
+    }
+  }
+  assert.ok(glued > 0, `${glued} lines begin with one where UAX #14 or the columns allow it`);
 });
 
 test('expandTabs: a tab is spaces to the next multiple of 8 columns, counted by width', () => {

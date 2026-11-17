@@ -182,23 +182,54 @@ const breaksBeforeGlue = (g) => g === 0x20 || g === 0x2d || g === 0x1680 || (g >
  *  78.3 gives the same 75 code points the class). */
 export const isHebrewLetter = (cp) => (cp >= 0x5d0 && cp <= 0x5ea) || (cp >= 0x5ef && cp <= 0x5f2) || (cp >= 0xfb1d && cp <= 0xfb4f && cp !== 0xfb1e && cp !== 0xfb29 && cp !== 0xfb37 && cp !== 0xfb3d && cp !== 0xfb3f && cp !== 0xfb42 && cp !== 0xfb45);
 const MARK = /^\p{M}$/u;
-/** Whether UAX #14 breaks before a GL character after offset i of s (LB12a, breaksBeforeGlue), but where the character
- *  there is a hyphen-minus after a Hebrew letter, the letter's marks and ZWJ between (LB21a: HL HY x, unless a Hebrew
- *  letter follows; LB9: a mark and ZWJ take the class of what they follow). Z2, round 7: the reader broke there as after
- *  a Latin letter's hyphen (ICU 78.3 breaks before U+00A0 after 'abcd-', and gives no break in a Hebrew word, '-', U+00A0
- *  and a Hebrew word). What is before i is read from s, so that a line laid out from its start is the same as from the
- *  text's. */
+/** The marks (General_Category M) that are not of UAX #14's class CM, which LB9 does not fold into the character before
+ *  them: 21 of class GL (combining double marks), U+0F7F of class BA, 2 of VF and 7 of VI (viramas). LineBreak.txt 17.0.0;
+ *  ICU 78.3 gives the same (round 8's probe cmsets.py). */
+const MARK_NOT_CM = new Set([0x35c, 0x35d, 0x35e, 0x35f, 0x360, 0x361, 0x362, 0xf7f, 0x1aeb, 0x1b44, 0x1bf2, 0x1bf3, 0x1dcd, 0x1dfc, 0xa9c0, 0xfe20, 0xfe22, 0xfe24, 0xfe26, 0xfe27, 0xfe29, 0xfe2b, 0xfe2d, 0xfe2e, 0x11046, 0x1107f, 0x1134d, 0x113d0, 0x1193e, 0x11f42, 0x16fe4]);
+/** The code points of class CM that are not marks, ZWJ aside (the same sources): the C0 and C1 controls, ALM, ZWNJ, LRM,
+ *  RLM, the bidirectional embeddings, overrides and isolates, U+206A to U+206F, U+3035, U+FFF9 to U+FFFB, U+1BCA0 to
+ *  U+1BCA3, U+1D173 to U+1D17A, the tags. visible() shows most of them as escapes; ALM, ZWNJ, LRM, RLM and 22 others
+ *  reach the wrapper as they are. */
+const CM_NOT_MARK = [[0x0, 0x8], [0xe, 0x1f], [0x7f, 0x84], [0x86, 0x9f], [0x61c, 0x61c], [0x200c, 0x200c], [0x200e, 0x200f], [0x202a, 0x202e], [0x2066, 0x206f], [0x3035, 0x3035], [0xfff9, 0xfffb], [0x1bca0, 0x1bca3], [0x1d173, 0x1d17a], [0xe0001, 0xe0001], [0xe0020, 0xe007f]];
+/** Whether UAX #14's LB9 folds a code point into the character before it, which it then takes the class of (R8e, round
+ *  8): ZWJ, and class CM (class SA's marks too, which LB1 makes CM): the marks but MARK_NOT_CM, and CM_NOT_MARK. */
+export const isLineBreakCombining = (cp) => cp === 0x200d || (MARK.test(String.fromCodePoint(cp)) ? !MARK_NOT_CM.has(cp) : CM_NOT_MARK.some(([a, b]) => cp >= a && cp <= b));
+/** The code point that ends at offset j of s (a surrogate pair read whole), and the offset it begins at. */
+function codePointBefore(s, j) {
+  const lo = s.charCodeAt(j - 1), hi = j >= 2 ? s.charCodeAt(j - 2) : 0;
+  return lo >= 0xdc00 && lo <= 0xdfff && hi >= 0xd800 && hi <= 0xdbff ? [((hi - 0xd800) << 10) + (lo - 0xdc00) + 0x10000, j - 2] : [lo, j - 1];
+}
+/** The character whose class LB9 gives to what ends at offset j of s, the run of what it folds before j passed over:
+ *  [its code point, the offset it begins at], or [-1, 0] where only such a run is there. */
+function baseBefore(s, j) {
+  while (j > 0) { const [cp, at] = codePointBefore(s, j); if (!isLineBreakCombining(cp)) return [cp, at]; j = at; }
+  return [-1, 0];
+}
+/** Whether UAX #14 breaks before a GL character after the code unit at offset i of s (LB12a, breaksBeforeGlue), but where
+ *  the character there is a hyphen-minus after a Hebrew letter (LB21a: HL HY x, unless a Hebrew letter follows). What
+ *  LB9 folds into a character (a mark, ZWJ, and the characters of class CM that are not marks: ALM, ZWNJ, LRM, RLM...)
+ *  takes its class: between the letter and the hyphen, and after the hyphen or the space; but no break after ZWJ
+ *  (LB8a), and none after such a run where it follows a space (SP) or nothing, as LB9 folds nothing into a space and LB10
+ *  then takes the run as a letter (AL). Z2, round 7: the reader broke after a Hebrew letter's hyphen as after a Latin
+ *  letter's (ICU 78.3 breaks before U+00A0 after 'abcd-', and gives no break in a Hebrew word, '-', U+00A0 and a Hebrew
+ *  word); R8e, round 8: and did where ALM, ZWNJ, LRM or RLM stood between the letter and the hyphen (round 7's check). What
+ *  is before i is read from s, so that a line laid out from its start is the same as from the text's. */
 function breaksBeforeGlueAt(s, i) {
-  const g = s.charCodeAt(i);
+  let [g, at] = codePointBefore(s, i + 1);
+  if (g === 0x200d) return false;
+  if (isLineBreakCombining(g)) {
+    [g, at] = baseBefore(s, at);
+    if (g < 0 || g === 0x20) return false;
+  }
   if (!breaksBeforeGlue(g)) return false;
   if (g !== 0x2d) return true;
-  for (let j = i; j > 0;) {
-    let cp = s.charCodeAt(j - 1), n = 1;
-    if (cp >= 0xdc00 && cp <= 0xdfff && j >= 2) { const hi = s.charCodeAt(j - 2); if (hi >= 0xd800 && hi <= 0xdbff) { cp = ((hi - 0xd800) << 10) + (cp - 0xdc00) + 0x10000; n = 2; } }
-    if (cp === 0x200d || MARK.test(String.fromCodePoint(cp))) { j -= n; continue; }
-    return !isHebrewLetter(cp);
-  }
-  return true;
+  return !isHebrewLetter(baseBefore(s, at)[0]);
+}
+/** Whether a grapheme cluster is made only of what LB9 folds into the character before it (LRM after a letter, say, or
+ *  a mark after LRM, which a cluster boundary follows): it goes to a line with that character. */
+function foldsWhole(c) {
+  for (const ch of c) if (!isLineBreakCombining(ch.codePointAt(0))) return false;
+  return c !== '';
 }
 
 /** Where to end a line that a cluster of class GL (isGlue) does not fit at the end of (Y3 (e), round 6): the index, in
@@ -213,7 +244,9 @@ function glueBreak(s, starts, widths, at, cw, n) {
   let k = starts.length;
   while (k > 0 && isGlue(s.charCodeAt(starts[k - 1]))) k--;
   const run = k < starts.length ? starts[k] : at;
-  const cut = run > 0 && breaksBeforeGlueAt(s, run - 1) ? k : k - 1;
+  let cut = run > 0 && breaksBeforeGlueAt(s, run - 1) ? k : k - 1;
+  // LB9 (R8e, round 8): a cluster made only of what it folds goes with the cluster it follows, but a space (SP)
+  if (cut < k) while (cut > 0 && foldsWhole(s.slice(starts[cut], cut + 1 < starts.length ? starts[cut + 1] : at)) && s.charCodeAt(starts[cut - 1]) !== 0x20) cut--;
   if (cut < 1 || cut === starts.length) return -1;
   let w = cw;
   for (let i = cut; i < widths.length; i++) w += widths[i];

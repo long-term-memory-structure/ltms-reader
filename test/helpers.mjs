@@ -143,12 +143,31 @@ export function sameLines(got, want, what, memo = new Map()) {
 /** UAX #14's class HL, the Hebrew letters: the letters (General_Category Lo) of the Hebrew blocks, as UnicodeData.txt
  *  17.0.0 has them; ICU 78.3 (Unicode 17.0) gives the same 75 code points the class (measured in round 7). */
 export const HEBREW_LETTER = /^[\u05d0-\u05ea\u05ef-\u05f2\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40-\ufb41\ufb43-\ufb44\ufb46-\ufb4f]$/;
-/** Whether what is before offset i of s is a Hebrew letter, its marks and ZWJ after it passed over (UAX #14 LB9): after
- *  a Hebrew letter, a hyphen-minus gives no break (LB21a: HL HY ×, unless a Hebrew letter follows). */
+/** UAX #14's LB9, as the tests have it (R8e, round 8): what it folds into the character before it, class CM and ZWJ, by
+ *  LineBreak.txt 17.0.0, as ICU 78.3 gives it (round 8's probe cmsets.py: 2,704 code points, class SA's marks among them,
+ *  which LB1 makes CM): the marks (General_Category M) but 31 of other classes (21 GL, U+0F7F BA, 2 VF, 7 VI), and 192
+ *  that are not marks: C0 and C1 controls, ALM, ZWNJ, ZWJ, LRM, RLM, the embeddings, overrides and isolates, U+206A to
+ *  U+206F, U+3035, U+FFF9 to U+FFFB, U+1BCA0 to U+1BCA3, U+1D173 to U+1D17A, the tags. */
+export const MARKS_NOT_CM = [0x35c, 0x35d, 0x35e, 0x35f, 0x360, 0x361, 0x362, 0xf7f, 0x1aeb, 0x1b44, 0x1bf2, 0x1bf3, 0x1dcd, 0x1dfc, 0xa9c0, 0xfe20, 0xfe22, 0xfe24, 0xfe26, 0xfe27, 0xfe29, 0xfe2b, 0xfe2d, 0xfe2e, 0x11046, 0x1107f, 0x1134d, 0x113d0, 0x1193e, 0x11f42, 0x16fe4];
+export const CM_NOT_MARK = /^[\u0000-\u0008\u000e-\u001f\u007f-\u0084\u0086-\u009f\u061c\u200c-\u200f\u202a-\u202e\u2066-\u206f\u3035\ufff9-\ufffb\u{1bca0}-\u{1bca3}\u{1d173}-\u{1d17a}\u{e0001}\u{e0020}-\u{e007f}]$/u;
+export const lb9Folds = (cp) => { const c = String.fromCodePoint(cp); return /^\p{M}$/u.test(c) ? !MARKS_NOT_CM.includes(cp) : CM_NOT_MARK.test(c); };
+/** The code point that ends at offset j of s (a surrogate pair read whole), and where it begins. */
+export function codePointBefore(s, j) {
+  const lo = s.charCodeAt(j - 1), hi = j >= 2 ? s.charCodeAt(j - 2) : 0;
+  return lo >= 0xdc00 && lo <= 0xdfff && hi >= 0xd800 && hi <= 0xdbff ? [((hi - 0xd800) << 10) + (lo - 0xdc00) + 0x10000, j - 2] : [lo, j - 1];
+}
+/** The character LB9 gives the class of what ends at offset j of s, the run of what it folds before j passed over:
+ *  [its code point, where it begins], or [-1, 0] where there is none. */
+export function lb9Base(s, j) {
+  while (j > 0) { const [cp, at] = codePointBefore(s, j); if (!lb9Folds(cp)) return [cp, at]; j = at; }
+  return [-1, 0];
+}
+/** Whether what is before offset i of s is a Hebrew letter, what LB9 folds into it after it passed over (its marks, ZWJ,
+ *  and the characters of class CM that are not marks: R8e, round 8): after a Hebrew letter, a hyphen-minus gives no
+ *  break (LB21a: HL HY ×, unless a Hebrew letter follows). */
 export function afterHebrewLetter(s, i) {
-  let j = i;
-  while (j > 0 && /[\p{M}\u200d]/u.test(s[j - 1])) j--;
-  return j > 0 && HEBREW_LETTER.test(s[j - 1]);
+  const [cp] = lb9Base(s, i);
+  return cp >= 0 && HEBREW_LETTER.test(String.fromCodePoint(cp));
 }
 
 /** The left-to-right override "reader" mode writes around a row that holds right-to-left text (Y1, round 6). */
