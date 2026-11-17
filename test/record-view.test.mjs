@@ -126,6 +126,18 @@ test('V1: in a right-to-left paragraph of 200,000 paths, a page at its end costs
     // the marks are 256 lines apart; the start page as far from the first as the end page is from the last
     assert.equal(lines.marks.length, Math.ceil(lines.length / 256), 'a mark every 256 lines (src/views.mjs STEP)');
     const same = last % 256;
+    // as many lines walked to the start page as to the end page, each from its mark (Z4, round 7: round 6's check planted
+    // the start page at line 0 again, 'y3f-start-at-0', and on Node 26 the bound held: the comparison was unfair, and
+    // nothing said so)
+    const walked = (at) => {
+      let n = 0;
+      const walk = lines.walk;
+      lines.walk = function* (...args) { for (const l of walk.apply(this, args)) { n++; yield l; } };
+      try { lines.slice(at, at + rows); } finally { delete lines.walk; }
+      return n;
+    };
+    assert.equal(walked(same), walked(last), `the lines walked to the start page (line ${same}) and to the end page (line ${last}), each from its mark`);
+    assert.equal(walked(last), last % 256 + rows);
     const page = (at) => { const t0 = performance.now(); frameBytes(lines.slice(at, at + rows), { cols, rows, colour: true, rtl: 'reader' }); return performance.now() - t0; };
     const first = page(0);
     const start = [], end = [];

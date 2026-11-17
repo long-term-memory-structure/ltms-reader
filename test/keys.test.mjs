@@ -729,6 +729,62 @@ test('Y2: r reads Projects again: a project folder made after the list was read 
   } finally { app.dispose(); source.dispose(); r.dispose(); }
 });
 
+// Z4 (round 7): two of the mutants round 6's check planted on Y2 passed every test (its y2probe killed them): r pressed
+// while a project's Sessions list was still being read started a second reading, with no note ('y2-reading-reread');
+// and after a reading that failed, r said the list was being read, and read nothing ('y2-error-blocks').
+test('Z4: r while a project\'s Sessions list is being read: a note says so, and no second reading starts; once read, the list is shown', async () => {
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const calls = [], sessions = source.sessions.bind(source);
+  let release = () => {};
+  const held = new Promise((res) => { release = res; });
+  // the first reading held until let go, as a large project's takes a while; each call counted
+  source.sessions = (p, o) => { calls.push(o ?? null); return calls.length === 1 ? held.then(() => sessions(p, o)) : sessions(p, o); };
+  const app = new App({ source, cols: 120, rows: 30, timeZone: 'UTC' });
+  try {
+    app.start(); await app.idle();
+    // the keys given as the screen gives them, not waiting for the App to be idle, which it is not until the reading is
+    // let go
+    app.key('\r', { name: 'return', sequence: '\r' });
+    await new Promise((res) => setTimeout(res, 20));
+    let v = top(app.state);
+    assert.equal(v.kind, 'sessions');
+    assert.ok(!v.data && !v.error, 'being read');
+    app.key('r', { name: 'r', sequence: 'r' });
+    assert.equal(app.state.note?.text, 'the sessions of -work-demo are being read');
+    assert.equal(calls.length, 1, 'no second reading');
+    release();
+    await app.idle();
+    v = top(app.state);
+    assert.equal(v.rows.length, 2, 'the list, once read');
+    assert.equal(calls.length, 1);
+  } finally { release(); app.dispose(); source.dispose(); r.dispose(); }
+});
+
+test('Z4: r after a reading of a project\'s Sessions that failed: read again, afresh, and the list is shown', async () => {
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const calls = [], sessions = source.sessions.bind(source);
+  source.sessions = (p, o) => { calls.push(o ?? null); return calls.length === 1 ? Promise.reject(new Error('a planted failure of ltms index')) : sessions(p, o); };
+  const app = new App({ source, cols: 120, rows: 30, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press(KEY.enter);
+    let v = top(app.state);
+    assert.equal(v.kind, 'sessions');
+    assert.ok(v.error, 'the reading failed');
+    assert.equal(v.rows.length, 0);
+    await k.press('r');
+    v = top(app.state);
+    assert.equal(calls.length, 2, 'read again');
+    assert.deepEqual(calls[1], { fresh: true });
+    assert.equal(v.error, null);
+    assert.equal(v.rows.length, 2, 'the list shown');
+    assert.equal(app.state.note, null, 'no note');
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
 test('Y2: the keys screen, --help and the README list r', async () => {
   const { readFileSync } = await import('node:fs');
   const { KEYS } = await import('../src/views.mjs');

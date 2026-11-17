@@ -669,6 +669,37 @@ test('Z3: the override never in the first column: the LRO after the row\'s first
   }
 });
 
+// Z4 (round 7): two of the mutants round 6's check planted on Y1 passed every test (its pty probe killed them): a row of
+// Arabic letters alone, of class AL, without the override ('y1-no-al': the tests' rows held R or AN); and the PDF
+// written inside the row's last segment, before its style's end ('y1-pdf-in-style': the tests' last segments had no
+// style).
+test('Z4: a row of Arabic letters alone (class AL, no R nor AN) is written inside the override; and the PDF is the row\'s last character, after its last style\'s end', async () => {
+  const { frameBytes, LRO, PDF, holdsRtl } = await import('../src/screen.mjs');
+  const rowsOf = (lines) => frameBytes(lines, { cols: 80, rows: lines.length, colour: true, rtl: 'reader' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1);
+  const marhaba = '\u0645\u0631\u062d\u0628\u0627';
+  assert.equal(holdsRtl(marhaba), true);
+  assert.deepEqual(rowsOf([[{ text: marhaba, style: null }]]), [`\u0627${LRO}\u0628\u062d\u0631\u0645${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: `x ${marhaba}`, style: null, dir: 0 }]]), [`x${LRO} \u0627\u0628\u062d\u0631\u0645${PDF}`]);
+  // the last segment styled (an error's colour): the PDF after its style's end, the row's last character
+  const heb = '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd', laid = '\u05dd\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9';
+  assert.deepEqual(rowsOf([[{ text: '> ', style: 'sel' }, { text: heb, style: 'bad' }]]), [`\x1b[7m>${LRO} \x1b[0m\x1b[31m${laid}\x1b[0m${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: heb, style: 'addr', dir: 1 }]]), [`\x1b[36m\u05dd${LRO}${laid.slice(1)}\x1b[0m${PDF}`]);
+});
+
+// Z4 (round 7): round 6's check's mutant 'y3e-width-unchecked' (the line a no-break space begins with the character
+// before it not checked against the columns) passed every test: with only one-column clusters, the line it makes is no
+// wider than the one it came from. Where the line's first cluster takes no column, or the character before is wide,
+// it would be.
+test('Z4: a no-break space moved to the next line with the character before it never makes that line wider than the columns: after a first cluster that takes no column, or a wide character, the cut stays', () => {
+  assert.deepEqual(wrap('\u200ba\u00a0\u00a0', 2), ['\u200ba\u00a0', '\u00a0'], 'ZWSP first (round 6\'s check\'s case)');
+  assert.deepEqual(wrap('\u0301a\u00a0\u00a0', 2), ['\u0301a\u00a0', '\u00a0'], 'a lone mark first');
+  assert.deepEqual(wrap('\u200b\u4e2d\u00a0', 2), ['\u200b\u4e2d', '\u00a0'], 'a wide character before it');
+  assert.deepEqual(wrap('\u200bab\u00a0\u00a0', 3), ['\u200ba', 'b\u00a0\u00a0'], 'where it fits, moved');
+  for (const [s, cols] of [['\u200ba\u00a0\u00a0', 2], ['\u0301a\u00a0\u00a0', 2], ['\u200b\u4e2d\u00a0', 2], ['\u200bab\u00a0\u00a0', 3], ['\u200b\u200bx\u2007\u202f\u2011', 3]]) {
+    for (const l of wrap(s, cols)) assert.ok(width(l) <= cols, `${JSON.stringify(s)} at ${cols}: ${JSON.stringify(l)} is ${width(l)} wide`);
+  }
+});
+
 test('V7: in "terminal", a line of a paragraph takes its paragraph\'s direction, not its own: an RLM after a left-to-right line of a right-to-left paragraph, none after a right-to-left line of a left-to-right one', () => {
   const rtl = 'שלום world and more', ltr = 'hello שלום עולם';
   assert.equal(directionOf(rtl), 1); assert.equal(directionOf('world and more'), 0);
