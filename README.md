@@ -118,8 +118,8 @@ pasted acts as a key.
   - `LTMS_READER_BIDI=terminal` writes the text as stored instead (mode `terminal`), with a right-to-left mark (RLM) at
     the end of each right-to-left paragraph, for a terminal that lays bidirectional text out itself (on Konsole the RLM
     puts the paragraph's end punctuation where it belongs, though its brackets are not mirrored); `LTMS_READER_BIDI=reader`
-    is the default; a value it does not take is refused. Until this version, Konsole (`KONSOLE_VERSION` set) got
-    `terminal`; it gets the reader's layout now, over ssh too, where `KONSOLE_VERSION` did not reach the reader.
+    is the default; a value it does not take is refused. Konsole is not detected: it gets the reader's layout, as
+    every terminal does, over ssh too, where `KONSOLE_VERSION` does not reach the reader.
 
   A paragraph is a cell of a list, the reader's own words before a transcript's text being a paragraph of their own, or
   a text wrapped into lines: a line of a record's text (its lines share its direction), a message, an error. A wrapped
