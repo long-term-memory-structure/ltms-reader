@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { App } from '../src/app.mjs';
 import { RootSource } from '../src/sources.mjs';
 import { notTerminal, parseArgs, startOf } from '../src/start.mjs';
+import { before } from '../src/main.mjs';
 import { KEY, keyboard, makeRoot, plainOf } from './helpers.mjs';
 
 test('the arguments: none, one path, --help, --version, --; anything else is a usage error', () => {
@@ -31,6 +32,42 @@ test('no terminal: which stream is not one, and ltms as the command for lines', 
   assert.match(notTerminal(tty, pipe), /^ltms-reader: stdout is not a terminal, so nothing was read\./);
   assert.match(notTerminal(pipe, pipe), /^ltms-reader: stdin and stdout are not terminals, so nothing was read\./);
   assert.match(notTerminal(tty, pipe), /ltms is the command, from the package ltms-reader is built on/);
+});
+
+// O1 (S379, the 0.1.0 claims run): what was refused before the screen opened was written to the terminal as it was given:
+// the path (no file or folder at it, not a transcript, a link to nothing), CLAUDE_CONFIG_DIR's value and an unknown option
+// (JSON.stringify escapes C0 controls, not C1 controls or the bidirectional ones), so that a path holding an OSC sequence set
+// the terminal's title and one holding ESC [2J cleared the screen. Each now goes through visible(), as the
+// LTMS_READER_BIDI refusal did. The controls here are built from their numbers, so that the source holds none.
+test('O1: what is refused before the screen opens shows the path given, CLAUDE_CONFIG_DIR and an unknown option made visible: no control of theirs reaches the terminal', () => {
+  const ch = (n) => String.fromCodePoint(n), BS = ch(92), tty = { isTTY: true };
+  const bad = `${ch(0x1b)}]0;TITLE${ch(7)}${ch(0x1b)}[2J${ch(0x9b)}2J${ch(0x202e)}`;
+  const shown = `${ch(0x241b)}]0;TITLE${BS}x07${ch(0x241b)}[2J${BS}x9b2J${BS}u202e`;
+  const raw = (s) => [...s].filter((c) => {
+    const n = c.codePointAt(0);
+    return (n < 0x20 && c !== ch(10) && c !== ch(9)) || (n >= 0x7f && n <= 0x9f) || (n >= 0x202a && n <= 0x202e) || (n >= 0x2066 && n <= 0x2069);
+  });
+  const home = mkdtempSync(path.join(tmpdir(), 'ltms-reader-o1-'));
+  try {
+    writeFileSync(path.join(home, `notes${bad}.txt`), 'x');
+    symlinkSync(path.join(home, 'nothing-here'), path.join(home, `link${bad}`));
+    const cases = [
+      [[path.join(home, `no-such${bad}.jsonl`)], {}, 'no file or folder at', shown],
+      [[path.join(home, `notes${bad}.txt`)], {}, 'is not a transcript', shown],
+      [[path.join(home, `link${bad}`)], {}, 'is a symbolic link to nothing', shown],
+      [[], { CLAUDE_CONFIG_DIR: path.join(home, `conf${bad}`) }, 'no folder at', shown],
+      [[`--x${bad}`], {}, 'no option', `${BS}x9b2J${BS}u202e`],
+    ];
+    for (const [argv, env, why, form] of cases) {
+      let out = '';
+      const code = before(argv, { stdin: tty, stdout: tty, stderr: { write(s) { out += s; } }, env });
+      const what = `${JSON.stringify(argv)} ${JSON.stringify(env)}`;
+      assert.equal(code, 2, what);
+      assert.ok(out.startsWith('ltms-reader: ') && out.includes(why), `${what}: ${JSON.stringify(out.slice(0, 200))}`);
+      assert.deepEqual(raw(out).map((c) => c.codePointAt(0).toString(16)), [], `${what}: no control reaches the terminal`);
+      assert.ok(out.includes(form), `${what}: shown as ${JSON.stringify(form)} in ${JSON.stringify(out.slice(0, 300))}`);
+    }
+  } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
 test('the three ways in, and the refusals', () => {

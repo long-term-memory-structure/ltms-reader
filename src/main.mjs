@@ -38,13 +38,13 @@ export function before(argv, { stdin = process.stdin, stdout = process.stdout, s
   const a = parseArgs(argv);
   if (a.help) { stdout.write(USAGE); return 0; }
   if (a.version) { stdout.write(`ltms-reader ${version()}\n`); return 0; }
-  if (a.usage) { stderr.write(`ltms-reader: ${a.usage}\n${USAGE}`); return 2; }
+  if (a.usage) { stderr.write(`${visible(`ltms-reader: ${a.usage}\n`)}${USAGE}`); return 2; }
   const tty = notTerminal(stdin, stdout);
   if (tty) { stderr.write(tty); return 2; }
   const rtl = rtlModeOf(env);
   if (rtl.refused) { stderr.write(visible(`ltms-reader: ${rtl.refused}; nothing was read\n`)); return 2; }
   const start = startOf(a.path, { env, home: homedir() });
-  if (start.refused) { stderr.write(`ltms-reader: ${start.refused}\n`); return 2; }
+  if (start.refused) { stderr.write(visible(`ltms-reader: ${start.refused}\n`)); return 2; }
   return { a, start, rtl: rtl.mode };
 }
 
