@@ -89,9 +89,12 @@ pasted acts as a key.
   row. The light marks Hebrew and Arabic text use (U+200E, U+200F, U+061C) are written as they are.
 - **Width by grapheme cluster** (`Intl.Segmenter`): combining marks, niqqud and cantillation take no column of their
   own; East Asian wide characters and emoji take two. A line is cut by columns, never inside a cluster, and a space
-  where it is cut stays at the end of the line before. The wide characters come from a table generated from Unicode's
-  `EastAsianWidth.txt`, version 17.0.0 (`src/width-table.mjs`, which names the file's sha256; `scripts/width-table.mjs`
-  writes it). Characters of ambiguous width take one column.
+  where it is cut stays at the end of the line before; a no-break space or a non-breaking hyphen (U+00A0, U+202F,
+  U+2011: UAX #14's class GL) where it would be cut goes to the next line with the character before it, as UAX #14 gives
+  no break before one but after a space or a hyphen (where that would leave the line before empty, or the next too
+  wide, as on a line of one column, it begins the line all the same). The wide characters come from a table generated
+  from Unicode's `EastAsianWidth.txt`, version 17.0.0 (`src/width-table.mjs`, which names the file's sha256;
+  `scripts/width-table.mjs` writes it). Characters of ambiguous width take one column.
 - **Right to left** (Hebrew, Arabic): terminals differ, and the reader follows the terminal. Measured on three
   (S377): Konsole 26.08.3 lays out a line's right-to-left runs itself, with a left-to-right base for the line; Alacritty
   0.17.0 and VS Code 1.146.0's terminal (xterm.js) draw the text in the order it is stored, so that Hebrew reads

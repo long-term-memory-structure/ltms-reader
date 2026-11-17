@@ -542,7 +542,22 @@ test('V7: a space at a break stays at the end of the line it follows (hanging pa
   assert.deepEqual(lines('   ', 1), [''], 'a message of spaces only: one empty line');
 });
 
-test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80, no line of a record\'s text but its first begins with whitespace, none is wider than the columns but a cluster wider than them alone, and between two lines there is only whitespace (what hangs); a message\'s lines likewise', (t) => {
+/** Y3 (e), round 6: how a line [a, b) of text, after the line [pa, pb) before it, comes to begin with a character of
+ *  class GL (U+00A0, U+202F, U+2011), if it does: 'after a break' where UAX #14 breaks before one, after a space, a
+ *  hyphen or a space of class BA (LB12a); 'kept' where the cut by columns had to stay, the line before holding no
+ *  cluster but its first before the GL ones it ends in, or that cluster, those and this line's first not fitting in
+ *  the columns; else 'wrong'. */
+const GL_FIRST = /^[\u00a0\u202f\u2011]/, GL_AFTER = /^[\u0020\u002d\u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]$/;
+function glueStart(text, [pa, pb], [a, b], cols) {
+  if (!GL_FIRST.test(text.slice(a, b))) return 'none';
+  if (GL_AFTER.test(text[a - 1] ?? '')) return 'after a break';
+  const prev = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text.slice(pa, pb))].map((x) => x.segment);
+  let k = prev.length;
+  while (k > 0 && GL_FIRST.test(prev[k - 1])) k--;
+  return k <= 1 || width(prev.slice(k - 1).join('') + text[a]) > cols ? 'kept' : 'wrong';
+}
+
+test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80, no line of a record\'s text but its first begins with whitespace, none is wider than the columns but a cluster wider than them alone, and between two lines there is only whitespace (what hangs); a message\'s lines likewise; and none begins with a no-break space or a non-breaking hyphen where UAX #14 gives no break before one', (t) => {
   // and texts whose words begin with other spaces after a space: an em space, an ideographic space (UAX #14 breaks after
   // the space; the ones after it hang too, as CSS has a line's other space separators); two whose word ends in such a
   // space before two spaces, which a narrow message cuts by columns (Y3 (b), round 6); three that end in whitespace,
@@ -550,6 +565,9 @@ test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80
   const others = ['abc \u3000def ghi jkl', 'אבג \u2003\u2003דהו זחט', 'one \u205f two \u1680three', 'שלום \u2009\u200aעולם ומלואו', 'abcdef  \u3000g h', 'ab\u3000  x y', 'אבגד\u2003  ה ו', 'abc def ', 'one two three  ', '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd \u3000 '];
   const rnd = randomOf(381), texts = [...fixtureLines(), ...randomParagraphs(1000, 2614), ...randomParagraphs(500, 2615, { bn: true }), '   ', ' a', 'a   ', '\u3000\u3000\u3000', 'a \u3000 b', ...others];
   let lines = 0, hung = 0, messages = 0;
+  // the lines that begin with a character of class GL, by how (glueStart: Y3 (e), round 6), of a record's and a message's
+  const glued = { record: { 'after a break': 0, kept: 0, wrong: [] }, message: { 'after a break': 0, kept: 0, wrong: [] } };
+  const glue = (kind, text, prev, span, cols) => { const g = glueStart(text, prev, span, cols); if (g === 'wrong') glued[kind].wrong.push(`${JSON.stringify(text.slice(prev[0], span[1]))} at ${cols}`); else if (g !== 'none') glued[kind][g]++; };
   for (const text of texts) {
     for (const cols of [1 + rnd(10), 10 + rnd(71)]) {
       const spans = [...lineSpans(text, cols)];
@@ -564,6 +582,7 @@ test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80
           const gap = text.slice(spans[i - 1][1], a);
           assert.ok(gap === '' || BLANK.test(gap), `${JSON.stringify(text)} at ${cols}: between lines ${i - 1} and ${i}: ${JSON.stringify(gap)}`);
           if (gap) hung++;
+          glue('record', text, spans[i - 1], spans[i], cols);
         }
       }
       const end = text.slice(spans[spans.length - 1][1]);
@@ -577,9 +596,13 @@ test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80
         assert.ok(i === 0 ? !line.startsWith(' ') : !BLANK.test(first), `message ${JSON.stringify(text)} at ${cols}: line ${i}, ${JSON.stringify(line)}`);
         assert.ok(width(line) <= cols || [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)].length === 1, `message ${JSON.stringify(text)} at ${cols}: ${JSON.stringify(line)} is ${width(line)} wide`);
         assert.ok(line !== '' || ms.length === 1, `message ${JSON.stringify(text)} at ${cols}: line ${i} of ${ms.length} is empty`);
+        if (i > 0) glue('message', text, ms[i - 1], ms[i], cols);
       }
     }
   }
   t.diagnostic(`${texts.length} paragraphs at 2 widths each: ${lines} record lines, ${hung} of them after whitespace that hung at the break before; ${messages} message lines`);
+  const said = (k) => `${k}: ${glued[k]['after a break']} after a space, BA or a hyphen, ${glued[k].kept} where the cut by columns stayed, ${glued[k].wrong.length} where UAX #14 gives no break`;
+  t.diagnostic(`lines that begin with a no-break space or a non-breaking hyphen: ${said('record')}; ${said('message')}`);
+  assert.deepEqual([...glued.record.wrong.slice(0, 3), ...glued.message.wrong.slice(0, 3)], [], `${said('record')}; ${said('message')}`);
   assert.ok(lines > 10000 && hung > 1000 && messages > 10000, `${lines} record lines, ${hung} after whitespace that hung, ${messages} message lines`);
 });

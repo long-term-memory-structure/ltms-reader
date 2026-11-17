@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RTL_MODES, clusterWidth, cut, directionOf, displayOrder, expandTabs, fit, fitParts, isWide, paragraphLine, pathUnits, rtlModeOf, visible, visualLine, width, wordSpans, wrap, wrapWords } from '../src/text.mjs';
+import { RTL_MODES, clusterWidth, cut, directionOf, displayOrder, expandTabs, fit, fitParts, isWide, lineSpans, paragraphLine, pathUnits, rtlModeOf, visible, visualLine, width, wordSpans, wrap, wrapWords } from '../src/text.mjs';
 import { SOURCE_SHA256, SOURCE_URL, UNICODE_VERSION, WIDE } from '../src/width-table.mjs';
 import { SHA256, VERSION } from '../scripts/width-table.mjs';
 
@@ -123,6 +123,55 @@ test('wrap: lines of at most the columns, cut between clusters, that join back t
   assert.deepEqual(wrap('ab  cd', 2), ['ab', 'cd']);
   assert.deepEqual(wrap('ab  cd', 3), ['ab ', 'cd']);
   assert.deepEqual(wrap('  ab', 1), [' ', 'a', 'b'], 'a paragraph\'s first line begins with its spaces');
+});
+
+// Y3 (e) (round 6): UAX #14 gives no break before a character of class GL but after a space, a character of class BA or
+// a hyphen (LB12a): a no-break space (U+00A0, U+202F) or the non-breaking hyphen (U+2011). A line cut by columns
+// before one ends instead before the character the run of them follows, which begins the next line with them; where
+// that would leave the line empty, or make the next one too wide, the cut stays where it was. Round 5's check counted
+// 221 record lines and 201 message lines of its population beginning with U+00A0, 201 and 292 with U+202F (of 113,398
+// and 129,439).
+const GLUE = /^[\u00a0\u202f\u2011]/, BEFORE_GLUE = /[\u0020\u002d\u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]/;
+test('Y3 (e): a line cut by columns does not begin with a no-break space or a non-breaking hyphen (UAX #14 class GL) where UAX #14 gives no break before one: the character it follows begins the line with it; a message\'s word cut likewise', () => {
+  assert.deepEqual(wrap('abc\u00a0def', 3), ['ab', 'c\u00a0d', 'ef']);
+  assert.deepEqual(wrap('abc\u202fdef', 3), ['ab', 'c\u202fd', 'ef']);
+  assert.deepEqual(wrap('abc\u2011def', 3), ['ab', 'c\u2011d', 'ef']);
+  assert.deepEqual(wrap('ab\u00a0\u00a0cd', 3), ['a', 'b\u00a0\u00a0', 'cd'], 'a run of them, with the character before it');
+  assert.deepEqual(wrap('\u05e9\u05dc\u05d5\u05dd\u00a0\u05e2\u05d5\u05dc\u05dd', 4), ['\u05e9\u05dc\u05d5', '\u05dd\u00a0\u05e2\u05d5', '\u05dc\u05dd'], 'Hebrew');
+  assert.deepEqual(wrap('abc\u00a0\u0301def', 3), ['ab', 'c\u00a0\u0301d', 'ef'], 'a mark on the no-break space, one cluster with it');
+  // after a space or a hyphen UAX #14 breaks before it (LB12a), and so does the reader
+  assert.deepEqual(wrap('ab \u00a0cd', 3), ['ab ', '\u00a0cd']);
+  assert.deepEqual(wrap('ab-\u00a0cd', 3), ['ab-', '\u00a0cd']);
+  assert.deepEqual(wrap('ab\u3000\u00a0cd', 4), ['ab\u3000', '\u00a0cd']);
+  // where the line would be left empty, or the next too wide, the cut stays: the column is the limit
+  assert.deepEqual(wrap('a\u00a0b', 1), ['a', '\u00a0', 'b']);
+  assert.deepEqual(wrap('a\u00a0\u00a0\u00a0b', 2), ['a\u00a0', '\u00a0\u00a0', 'b']);
+  // a paragraph's first line begins with what it begins with
+  assert.deepEqual(wrap('\u00a0abc', 2), ['\u00a0a', 'bc']);
+  // a message: a word longer than its line, cut by columns, likewise
+  assert.deepEqual(wrapWords('x abcde\u00a0fg', 5), ['x', 'abcd', 'e\u00a0fg']);
+  // over the fixtures' kind of text: words joined by no-break spaces, at every width from 1 to 30, from the start and
+  // from every line's start (RecordLines lays a page out from a line's start): no line but the first begins with one but
+  // after a space, BA or a hyphen, or where the cut had to stay
+  const texts = ['the price is 100\u00a0km and more\u202fthan that', '\u05e9\u05dc\u05d5\u05dd 12\u00a0\u05e7"\u05de \u05d5-\u00a0\u05e2\u05d5\u05d3 a\u2011b', 'x\u00a0\u00a0\u00a0y\u00a0\u00a0z w\u00a0v'];
+  let glued = 0;
+  for (const s of texts) {
+    for (let cols = 1; cols <= 30; cols++) {
+      const spans = [...lineSpans(s, cols)];
+      for (const [i, [a, b]] of spans.entries()) {
+        if (i > 0) assert.deepEqual([...lineSpans(s, cols, a)], spans.slice(i), `${JSON.stringify(s)} at ${cols}: from line ${i}'s start`);
+        if (i === 0 || !GLUE.test(s.slice(a))) continue;
+        glued++;
+        const [pa] = spans[i - 1], prev = [...SEG.segment(s.slice(pa, spans[i - 1][1]))].map((x) => x.segment);
+        let k = prev.length;
+        while (k > 0 && GLUE.test(prev[k - 1])) k--;
+        const allowed = BEFORE_GLUE.test(s[a - 1]) || BEFORE_GLUE.test(prev[k - 1]?.slice(-1) ?? '') || k <= 1 || width(prev.slice(k - 1).join('') + s.slice(a, b).slice(0, 1)) > cols;
+        assert.ok(allowed, `${JSON.stringify(s)} at ${cols}: line ${i} begins with ${JSON.stringify(s[a])}: ${JSON.stringify(s.slice(pa, b))}`);
+      }
+      assert.ok(spans.every(([a, b]) => width(s.slice(a, b)) <= cols || [...SEG.segment(s.slice(a, b))].length === 1), `${JSON.stringify(s)} at ${cols}: within the columns`);
+    }
+  }
+  assert.ok(glued > 0, `${glued} lines begin with one where UAX #14 or the columns allow it`);
 });
 
 test('expandTabs: a tab is spaces to the next multiple of 8 columns, counted by width', () => {

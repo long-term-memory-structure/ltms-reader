@@ -165,13 +165,43 @@ export function pad(s, cols) {
  *  not break before the others but after a space (LB12a, LB21); L1 gives those that end a line the paragraph's level. */
 const HANGS = /^[\u0020\u1680\u2000-\u200a\u205f\u3000]+$/;
 
+/** Whether the code unit g begins a cluster that UAX #14 gives no break before but after a space, a character of class
+ *  BA or a hyphen (LB12a, class GL: LineBreak.txt): a no-break space (U+00A0, U+202F) or the non-breaking hyphen
+ *  (U+2011). U+2007, a no-break space of the class too, is UAX #9 whitespace, and hangs at a break (HANGS). */
+const isGlue = (g) => g === 0xa0 || g === 0x202f || g === 0x2011;
+/** Whether UAX #14 breaks before a GL character after the code unit g (LB12a): a space (SP), a hyphen-minus (HY), a
+ *  space of class BA (U+1680, U+2000 to U+2006, U+2008 to U+200A, U+205F, U+3000). */
+const breaksBeforeGlue = (g) => g === 0x20 || g === 0x2d || g === 0x1680 || (g >= 0x2000 && g <= 0x200a && g !== 0x2007) || g === 0x205f || g === 0x3000;
+
+/** Where to end a line that a cluster of class GL (isGlue) does not fit at the end of (Y3 (e), round 6): the index, in
+ *  the line's clusters (`starts`: where each begins in s; `widths`: its columns), of the first cluster of the next line,
+ *  which takes the rest of them and the GL cluster (of `cw` columns), at most `n` columns: after the clusters of class GL
+ *  the line ends in and the character before them, where that is a space, BA or a hyphen (LB12a), else before that
+ *  character too, so that the next line does not begin with a GL character UAX #14 gives no break before; -1 where the
+ *  line ends before the GL cluster all the same: UAX #14 breaks there, or the line would be left empty, or the next
+ *  would not fit in the columns (a column is the limit, as a cluster wider than the columns is). */
+function glueBreak(s, starts, widths, at, cw, n) {
+  let k = starts.length;
+  while (k > 0 && isGlue(s.charCodeAt(starts[k - 1]))) k--;
+  const run = k < starts.length ? starts[k] : at;
+  const cut = run > 0 && breaksBeforeGlue(s.charCodeAt(run - 1)) ? k : k - 1;
+  if (cut < 1 || cut === starts.length) return -1;
+  let w = cw;
+  for (let i = cut; i < widths.length; i++) w += widths[i];
+  return w <= n ? cut : -1;
+}
+
 /** Where the lines of one line of text s (no new line in it) begin and end, [start, end), when it is cut into lines of
  *  at most `cols` columns between clusters, a cluster wider than the columns on a line of its own; from offset `from`,
  *  where a line begins. Whitespace (HANGS) that does not fit at the end of a line stays at the end of that line, with
  *  the whitespace after it, as UAX #14 has a space: it hangs there, past the line's columns, and is in no line (nothing
  *  past the screen is drawn); the next line begins after it, so that no line but the first begins with whitespace (V7,
- *  round 5: the space that did not fit began the next line). Whitespace that fits ends its line. One pair at a time, so
- *  that a long text can be laid out without its lines being made. An empty s is one empty line. */
+ *  round 5: the space that did not fit began the next line). Whitespace that fits ends its line. A no-break space or
+ *  a non-breaking hyphen (class GL) that does not fit begins the next line with the character before it (glueBreak:
+ *  UAX #14 gives no break before it but after a space, BA or a hyphen; Y3 (e), round 6: it began the line by itself).
+ *  One pair at a time, so that a long text can be laid out without its lines being made; from a line's start, the lines
+ *  are those from the text's start (what a line holds depends only on the text from its start). An empty s is one empty
+ *  line. */
 export function* lineSpans(s, cols, from = 0) {
   const n = Math.max(1, cols);
   if (from >= s.length) { if (from === 0) yield [0, 0]; return; }
@@ -183,18 +213,28 @@ export function* lineSpans(s, cols, from = 0) {
     }
     return;
   }
-  let start = from, at = from, w = 0, hanging = false;
+  // the line being made: where it begins, its columns, where each of its clusters begins and the columns each takes
+  let start = from, at = from, w = 0, hanging = false, starts = [], widths = [];
   for (const c of clusters(from ? s.slice(from) : s)) {
     if (hanging) {
       if (HANGS.test(c)) { at += c.length; continue; }
-      hanging = false; start = at; w = 0;
+      hanging = false; start = at; w = 0; starts = []; widths = [];
     }
     const cw = clusterWidth(c);
     if (w + cw > n && at > start) {
-      yield [start, at];
-      if (HANGS.test(c)) { hanging = true; at += c.length; continue; }
-      start = at; w = 0;
+      const k = isGlue(c.charCodeAt(0)) ? glueBreak(s, starts, widths, at, cw, n) : -1;
+      if (k > 0) {
+        // the line ends before its k-th cluster, which begins the next with the rest and c
+        yield [start, starts[k]];
+        start = starts[k]; starts = starts.slice(k); widths = widths.slice(k); w = 0;
+        for (const x of widths) w += x;
+      } else {
+        yield [start, at];
+        if (HANGS.test(c)) { hanging = true; at += c.length; continue; }
+        start = at; w = 0; starts = []; widths = [];
+      }
     }
+    starts.push(at); widths.push(cw);
     at += c.length; w += cw;
   }
   if (!hanging) yield [start, s.length];
