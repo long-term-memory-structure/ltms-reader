@@ -3,9 +3,10 @@
 //
 // The state is a stack of views: the bottom one is Projects (a folder of projects) or the session (one transcript);
 // Enter pushes the row's view, Esc pops it. A search or an address pushes what it opens on top of where it was, so Esc
-// goes back there. r reads the list on screen again, Projects or a project's Sessions (Y2, round 6). Lists come from the source (src/sources.mjs): the projects at once, a project's sessions by ltms
-// index and a search by ltms search, each while the screen says what is being read; a session is read in this process,
-// after a frame that says which file is being read.
+// goes back there; r reads the list on screen again, Projects or a project's Sessions (Y2, round 6). Lists come from the
+// source (src/sources.mjs): the projects at once, a project's sessions by ltms index and a search by ltms search, each
+// while the screen says what is being read; a session is read in this process, after a frame that says which file is
+// being read.
 import { recordTooLarge } from './reading.mjs';
 import { clusters } from './text.mjs';
 import { recordIndexAt, recordView, recordViewBytes } from './view.mjs';
