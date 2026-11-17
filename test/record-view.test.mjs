@@ -104,24 +104,36 @@ test('Y3 (a): sameLines tells two lists of lines apart where assert.deepStrictEq
 // URLs (its units) a line holds by passing over every unit before the line, from the first. In a right-to-left paragraph
 // of 200,000 paths (round 4's check's probe, unitscost.mjs, run on 2026-11-17, twice), a page at its end took 44.8 and
 // 45.3 ms at 200 x 60 against 5.9 and 6.2 at its start, and 16.8 and 20.0 ms at 80 x 24 against 1.1 and 1.3, where round
-// 3 (b0ff6ac) drew every page alike (13.5 to 15.0 ms, 2.1 to 2.9). The probe made a test: the page at the end against the
+// 3 (b0ff6ac) drew every page alike (13.5 to 15.0 ms, 2.1 to 2.9). The probe made a test: the page at the end against a
 // page at the start, drawn one after the other, the median of 15 each, after the first frame (which resolves the
-// paragraph's levels); the bound leaves room for a machine's noise (the suite runs its files side by side), not for a
-// pass over the paths.
-test('V1: in a right-to-left paragraph of 200,000 paths, a page at its end costs about what a page at its start does (at most three times, and 3 ms), at 80 x 24 and 200 x 60', { timeout: 300_000 }, async (t) => {
+// paragraph's levels).
+//
+// Y3 (f), round 6: the page at the start was line 0, laid out from the first kept mark, and the end page from the last,
+// some lines after it (a page is laid out from the nearest mark before it, 256 lines apart: src/views.mjs STEP), so that
+// the end page laid out more lines than the start page: about twice at 200 x 60 (69 lines before it and 60 of it,
+// against 60), and Node 20's segmenter is slower (round 5's check: 78 % of the bound inside the suite). The page at the
+// start is now as far from its mark as the end page is from its own: both lay out as many lines, and differ only in
+// what the units cost. Measured on 2026-11-17 (probes/v1cost.mjs, 3 runs each, the median of 15 pages), the end page
+// against that start page: at this round's head 0.92 to 1.13 times on Node 26.13.1 and 0.92 to 1.03 on Node 20.20.2;
+// at 853b878 (the pass over every unit before a line) 7.1 to 9.4 times on Node 26 and 2.9 to 4.9 on Node 20. The
+// bound, 1.7 times and 1 ms, leaves room on both, and fails at 853b878 on both.
+test('V1: in a right-to-left paragraph of 200,000 paths, a page at its end costs about what a page at its start does that is laid out from as far after its kept mark (at most 1.7 times, and 1 ms), at 80 x 24 and 200 x 60', { timeout: 300_000 }, async (t) => {
   const { frameBytes } = await import('../src/screen.mjs');
-  const text = 'אבגד' + '/srv/data/x.txt '.repeat(200_000);
+  const text = '\u05d0\u05d1\u05d2\u05d3' + '/srv/data/x.txt '.repeat(200_000);
   const median = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
   for (const [cols, rows] of [[80, 24], [200, 60]]) {
     const lines = new RecordLines([{ text, style: null }], cols), last = lines.length - rows;
+    // the marks are 256 lines apart; the start page as far from the first as the end page is from the last
+    assert.equal(lines.marks.length, Math.ceil(lines.length / 256), 'a mark every 256 lines (src/views.mjs STEP)');
+    const same = last % 256;
     const page = (at) => { const t0 = performance.now(); frameBytes(lines.slice(at, at + rows), { cols, rows, colour: true, rtl: 'reader' }); return performance.now() - t0; };
     const first = page(0);
     const start = [], end = [];
-    for (let i = 0; i < 15; i++) { start.push(page(0)); end.push(page(last)); }
+    for (let i = 0; i < 15; i++) { start.push(page(same)); end.push(page(last)); }
     const s = median(start), e = median(end);
-    const said = `${cols} x ${rows}: the first frame ${first.toFixed(1)} ms; a page at the start ${s.toFixed(1)} ms, at the end (line ${last.toLocaleString('en-US')} of ${lines.length.toLocaleString('en-US')}) ${e.toFixed(1)} ms`;
+    const said = `${cols} x ${rows}: the first frame ${first.toFixed(1)} ms; a page at the start (line ${same}) ${s.toFixed(1)} ms, at the end (line ${last.toLocaleString('en-US')} of ${lines.length.toLocaleString('en-US')}) ${e.toFixed(1)} ms: ${(e / s).toFixed(2)} times`;
     t.diagnostic(said);
-    assert.ok(e <= 3 * s + 3, said);
+    assert.ok(e <= 1.7 * s + 1, said);
   }
 });
 
