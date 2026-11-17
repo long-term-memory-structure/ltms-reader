@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.1.0)
+## 0.1.0 (2026-11-17)
 
 The first version: a full-screen terminal reader of Claude Code transcripts, on ltms 0.3 (`long-term-memory-structure`
 `^0.3.0`, its one runtime dependency).
@@ -61,3 +61,76 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   than a call takes arguments (about 31,000 tool calls in one turn, on Node 26) no longer stops its session's view with
   a RangeError; and a text the view layer clips (a prompt, an input, a result, a reply) is cut where a grapheme cluster
   begins, never between a letter and its marks, and its row ends with … when the clip cut its first line.
+- Tests: 435 (Node 26.13.1: 435 passing; Node 24.22.3, 22.23.3 and 20.20.2 in docker: 428 passing, 0 failing,
+  7 skipped, as their images have no GNU FriBidi and no Electron).
+
+### Known limits
+
+Each was run on 2026-11-17 with a synthetic input, on this release's code before its last fix (of the refusals before
+the screen opens, which touches none of them). Most need characters a transcript seldom holds, records nested hundreds
+deep, or an old space set small (`--max-old-space-size`, in `NODE_OPTIONS` or on node's command line); the first does
+not.
+
+- A line whose first cluster that takes a column is right to left keeps that cluster outside the left-to-right
+  override, and a terminal that lays each line out with a left-to-right base would move that cluster to the line's
+  other end: the record row of the prompt `שלום עולם ומלואו` is written ו, LRO, the rest, PDF (read back from a
+  pseudo-terminal, Node 26.13.1, 80 x 24), and GNU FriBidi 1.0.18 with a left-to-right base (`fribidi --ltr`),
+  standing for such a terminal, puts the ו at the right end. Konsole itself was not run (the README's Right to left
+  says so too).
+- A no-break space that does not fit after a hyphen of UAX #14's class HH (U+2010, U+2013, U+058A, U+05BE) or a
+  character of class BA that is not a space (U+0F0B, U+1361, U+2027) takes that character with it to the next line,
+  where UAX #14 (LB12a) breaks before the no-break space: 'ab', U+2013, U+00A0, 'x' at 3 columns is cut into 'ab' and
+  U+2013 U+00A0 'x', where ICU 78.3's line breaker (Unicode 17.0) breaks at 0, 3 and 5; so for each of the seven, in a
+  record's text and in a message (Node 26.13.1).
+- After ZWSP or WJ before a no-break space, the line is cut before the ZWSP or WJ: 'אב-', U+200B, U+00A0, 'x' at 3
+  columns is cut into 'אב-' and U+200B U+00A0 'x', where ICU 78.3 breaks only after the ZWSP (0, 4, 6); with U+2060,
+  around which ICU gives no break (0, 6), the next line begins with the WJ and the no-break space; so too after a Latin
+  letter's hyphen and after a space (Node 26.13.1).
+- After a space of class BA that hangs at a break (U+3000), what UAX #14's LB9 folds into that space (ALM, LRM, RLM)
+  begins the next line, before a no-break space: 'ab', U+3000, U+061C, U+00A0, 'x' at 3 columns is cut into 'ab' and
+  U+061C U+00A0 'x', where ICU 78.3 breaks after the U+061C (0, 4, 6); with ZWNJ, which joins the space's grapheme
+  cluster, the next line begins with the U+3000 itself (Node 26.13.1).
+- Of UAX #14's class GL (41 code points in ICU 78.3) the reader keeps four with the character before them (U+00A0,
+  U+2007, U+202F, U+2011); the class's Tibetan marks that take a column (U+0F08, U+0F0C, U+0F12, U+0FD9, U+0FDA) begin a
+  line where UAX #14 gives no break: 'abc', U+0F08, 'def' at 3 columns is cut into 'abc', U+0F08 'de' and 'f', where
+  ICU 78.3 gives no break in it (Node 26.13.1).
+- In a line whose first cluster that takes a column is a letter followed by WJ and a mark, which the reader keeps with
+  the letter, the LRO is written between the letter and the WJ: 'שלום', U+2060, U+05B7 in a cell is written U+05DD,
+  U+202D, U+2060, U+05B7, the rest, U+202C (Node 26.13.1). Whether a terminal then draws the mark on the letter's cell
+  was not measured.
+- Under an old space set by `NODE_OPTIONS` or a flag, the Sessions list (`ltms index`, which the reader runs without
+  its `NODE_OPTIONS`) lists transcripts the reader then refuses: with `NODE_OPTIONS=--max-old-space-size=16` on Node
+  26.13.1, a project's transcript of 4,001,388 bytes was listed and, opened, refused ("it is 4 MB, and this process
+  reads a transcript of up to 1 MB"); on Node 24.22.3 under `--max-old-space-size=16` the list read one of 10,001,388
+  bytes, which `ltms index` under that flag does not survive.
+- A transcript whose parse takes more than the 8 times its size the size rules allow for can be admitted and run Node's
+  memory out, and so can a record of it that the record rule shows: under `--max-old-space-size=64`, where the
+  transcript rule admits up to 6,710,886 bytes, a tool result of empty objects (3 bytes an object) of 1,000,000 objects
+  (3,001,951 bytes) ended the screen's process by SIGABRT as the transcript was read, and one of 700,000 (2,101,951
+  bytes) when its record was opened, on Node 26.13.1, 24.22.3 and 20.20.2 (400,000 objects: shown).
+- A record of tabs that the record rule shows can run Node's memory out when it is opened: under
+  `--max-old-space-size=64`, a tool result of 1,100,000 tabs (a line of 2,200,433 bytes) ended the screen's process by
+  SIGABRT when its record was opened, on Node 26.13.1, 24.22.3 and 20.20.2 (600,000 tabs: shown); run as the command in
+  a pseudo-terminal on Node 26, it restored the terminal, said Node's heap ran out, named
+  `NODE_OPTIONS=--max-old-space-size=512`, and exited 134.
+- The record rule is one rule for every Node line, writing a record's JSON taken to need 1.5 times its size (Node 20's
+  measure), so that on Node 22 to 26 a record nested deep is refused at old spaces where it would open: a list nested
+  200 deep of 1,000,000 ones (a file of 2,002,359 bytes, 613,124,378 bytes of JSON) is refused at `--max-old-space-size`
+  600 to 1004 (as tried) and shown at 1005, and with the size rules set aside it opened as JSON at 640 on Node 26.13.1
+  (at 600 Node's heap ran out).
+- On Node 20 the old space a deep record's JSON view needs is not the same from run to run: with the size rules set
+  aside, a list nested 600 deep of 60,000 four-letter Hebrew strings (663,159 bytes, 220,943,956 bytes of JSON) opened
+  at `--max-old-space-size=240` once and ran out at 240 once, ran out at 242 (twice), 246 and 252, and opened at 300
+  (Node 20.20.2). The record rule refuses it at 240 to 360 and shows it at 400, where it opened on Node 20.
+- ltms's own commands (`long-term-memory-structure` 0.3.1, the dependency) read a file of up to a tenth of Node's heap
+  limit, not of the old space set: `ltms index` under `--max-old-space-size=16` on Node 24.22.3 read a 4 MB transcript,
+  ended by SIGABRT on 10 and 18 MB ones ("Reached heap limit"), and skipped one of 22 MB. The reader's own lists, under
+  the same flag, read the 10 MB one.
+- `src/helper.mjs`, the reading process the LTMS Reader extension takes from this package, reads a transcript of up to a
+  tenth of Node's heap limit, not of the old space set: under `--max-old-space-size=16` on Node 24.22.3 it gave its
+  limit as 21,810,380 bytes, and a transcript of 10,001,388 bytes ended it by SIGABRT ("Reached heap limit"), where the
+  reader refuses it. Not run under the extension's own runtime.
+- The rest are in the README's Limits, each run again on this code: the transcript rule (a tenth of Node's memory limit:
+  under `--max-old-space-size=16` on Node 26.13.1, transcripts of 2 to 10 MB were refused that opened with the rule set
+  aside), the first frame of a long right-to-left paragraph (158 to 188 ms on Node 26.13.1 for one of 200,000 paths),
+  and the rows wider than a narrow screen (at 25 columns: the loading line, 38 columns, and the search line, 26).

@@ -1,6 +1,6 @@
 {
   "name": "ltms-reader",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A terminal reader of your own Claude Code sessions: the turns, the tool calls, the compactions, and the text behind every address ltms prints. Read-only, local, no network.",
   "type": "module",
   "bin": {
