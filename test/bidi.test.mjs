@@ -27,7 +27,7 @@ import { BRACKETS, BRACKET_EQUIVALENTS, CLASSES, CLASS_RANGES, MIRRORS, SOURCE_S
 import { SOURCES, TEST_SOURCE, VERSION, readPinned } from '../scripts/bidi-table.mjs';
 import { directionOf, displayOrder, expandTabs, lineSpans, paragraphLine, pathUnits, visible, visualLine, width, wordSpans, wrap } from '../src/text.mjs';
 import { RecordLines } from '../src/views.mjs';
-import { FX, OWN, ROOT, withoutOverride } from './helpers.mjs';
+import { FX, OWN, ROOT, afterHebrewLetter, withoutOverride } from './helpers.mjs';
 import * as reference from './uba-reference.mjs';
 
 const UCD = process.env.LTMS_READER_UCD || null;
@@ -579,7 +579,8 @@ test('Y3 (g): on each of the FriBidi tests\' fault cases, whole, GNU FriBidi\'s 
 // with the rest: L1 gives the whitespace that ends a line the paragraph's level (in a right-to-left paragraph, the
 // line's left). The forms are the check's oracle's (its compare.py on its uba.py), and FriBidi's library's (test 'W1,
 // V7' above).
-const BLANK = /^[\u0020\u1680\u2000-\u200a\u205f\u3000]+$/;
+// U+2007 FIGURE SPACE is not whitespace that hangs: UAX #14 gives it class GL, a no-break space (Z2, round 7)
+const BLANK = /^[\u0020\u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]+$/;
 /** A record's text at `cols` columns: each line's text, and what the screen writes for it ("reader"). */
 const recordWritten = (text, cols) => new RecordLines([{ text, style: null }], cols).slice().map((l) => (l.length ? [l[0].text, displayOrder(l, 'reader')[0].text] : ['', '']));
 /** A message at `cols` columns, as the views wrap one (wordSpans, each line a line of the message): each line's text,
@@ -632,14 +633,14 @@ test('V7: a space at a break stays at the end of the line it follows (hanging pa
 });
 
 /** Y3 (e), round 6: how a line [a, b) of text, after the line [pa, pb) before it, comes to begin with a character of
- *  class GL (U+00A0, U+202F, U+2011), if it does: 'after a break' where UAX #14 breaks before one, after a space, a
- *  hyphen or a space of class BA (LB12a); 'kept' where the cut by columns had to stay, the line before holding no
- *  cluster but its first before the GL ones it ends in, or that cluster, those and this line's first not fitting in
- *  the columns; else 'wrong'. */
-const GL_FIRST = /^[\u00a0\u202f\u2011]/, GL_AFTER = /^[\u0020\u002d\u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]$/;
+ *  class GL (U+00A0, U+2007, U+202F, U+2011: U+2007 since Z2, round 7), if it does: 'after a break' where UAX #14 breaks
+ *  before one, after a space, a hyphen or a space of class BA (LB12a), but a hyphen-minus after a Hebrew letter (LB21a:
+ *  Z2); 'kept' where the cut by columns had to stay, the line before holding no cluster but its first before the GL
+ *  ones it ends in, or that cluster, those and this line's first not fitting in the columns; else 'wrong'. */
+const GL_FIRST = /^[\u00a0\u2007\u202f\u2011]/, GL_AFTER = /^[\u0020\u002d\u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]$/;
 function glueStart(text, [pa, pb], [a, b], cols) {
   if (!GL_FIRST.test(text.slice(a, b))) return 'none';
-  if (GL_AFTER.test(text[a - 1] ?? '')) return 'after a break';
+  if (GL_AFTER.test(text[a - 1] ?? '') && !(text[a - 1] === '-' && afterHebrewLetter(text, a - 1))) return 'after a break';
   const prev = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text.slice(pa, pb))].map((x) => x.segment);
   let k = prev.length;
   while (k > 0 && GL_FIRST.test(prev[k - 1])) k--;
@@ -652,7 +653,9 @@ test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80
   // space before two spaces, which a narrow message cuts by columns (Y3 (b), round 6); three that end in whitespace,
   // which a message breaks at, and gives no empty line after (Y3 (d))
   const others = ['abc \u3000def ghi jkl', 'אבג \u2003\u2003דהו זחט', 'one \u205f two \u1680three', 'שלום \u2009\u200aעולם ומלואו', 'abcdef  \u3000g h', 'ab\u3000  x y', 'אבגד\u2003  ה ו', 'abc def ', 'one two three  ', '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd \u3000 '];
-  const rnd = randomOf(381), texts = [...fixtureLines(), ...randomParagraphs(1000, 2614), ...randomParagraphs(500, 2615, { bn: true }), '   ', ' a', 'a   ', '\u3000\u3000\u3000', 'a \u3000 b', ...others];
+  // and paragraphs that put each GL character the reader keeps next to every kind of neighbour (Z2, round 7: these drew
+  // U+00A0 alone, between words): glueParagraphs
+  const rnd = randomOf(381), glues = glueParagraphs(600, 7071), texts = [...fixtureLines(), ...randomParagraphs(1000, 2614), ...randomParagraphs(500, 2615, { bn: true }), '   ', ' a', 'a   ', '\u3000\u3000\u3000', 'a \u3000 b', ...others, ...glues];
   let lines = 0, hung = 0, messages = 0;
   // the lines that begin with a character of class GL, by how (glueStart: Y3 (e), round 6), of a record's and a message's
   const glued = { record: { 'after a break': 0, kept: 0, wrong: [] }, message: { 'after a break': 0, kept: 0, wrong: [] } };
@@ -694,4 +697,28 @@ test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80
   t.diagnostic(`lines that begin with a no-break space or a non-breaking hyphen: ${said('record')}; ${said('message')}`);
   assert.deepEqual([...glued.record.wrong.slice(0, 3), ...glued.message.wrong.slice(0, 3)], [], `${said('record')}; ${said('message')}`);
   assert.ok(lines > 10000 && hung > 1000 && messages > 10000, `${lines} record lines, ${hung} after whitespace that hung, ${messages} message lines`);
+  // the glue paragraphs met both of Z2's classes: a hyphen-minus after a Hebrew letter before a GL character, and U+2007
+  const sites = (re) => glues.reduce((n, p) => n + [...p.matchAll(re)].filter((m) => !re.source.startsWith('-') || afterHebrewLetter(p, m.index)).length, 0);
+  const hebrewHyphen = sites(/-(?=[\u00a0\u2007\u202f\u2011])/g), figure = sites(/\u2007/g);
+  t.diagnostic(`the glue paragraphs: ${glues.length}, holding ${hebrewHyphen} hyphens after a Hebrew letter before a GL character, and ${figure} figure spaces`);
+  assert.ok(hebrewHyphen >= 100 && figure >= 300, `${hebrewHyphen} hyphens after a Hebrew letter before a GL character, ${figure} figure spaces`);
 });
+
+/** Paragraphs that put the characters of UAX #14's class GL the reader keeps with what is around them (U+00A0, U+2007,
+ *  U+202F, U+2011) next to every kind of neighbour (Z2, round 7): Hebrew words, some pointed, Latin, numbers; joined by
+ *  runs of them, by a hyphen-minus, the maqaf or U+2010 before one (after a Hebrew word, LB21a), by spaces of several
+ *  kinds before or after one, by ZWSP or WJ and a hyphen before one, or by a space; `n` of them, from `seed`. */
+function glueParagraphs(n, seed) {
+  const rnd = randomOf(seed), pick = (xs) => xs[rnd(xs.length)];
+  const GL = ['\u00a0', '\u2007', '\u202f', '\u2011'];
+  const words = ['\u05e9\u05dc\u05d5\u05dd', '\u05e2\u05d5\u05dc\u05dd', '\u05d5', '\u05e9\u05b8\u05c1\u05dc', '\u05d1\u05bc\u05b0', 'abc', 'de', 'x', '12', '3.14'];
+  const joins = [
+    () => pick(GL).repeat(1 + rnd(3)), () => `-${pick(GL)}`, () => `-${pick(GL)}`, () => `\u05be${pick(GL)}`, () => `\u2010${pick(GL)}`,
+    () => `${pick([' ', '\u2003', '\u3000'])}${pick(GL)}`, () => `${pick(GL)} `, () => `${pick(['\u200b', '\u2060'])}-${pick(GL)}`, () => ' ', () => ' ',
+  ];
+  return Array.from({ length: n }, () => {
+    let p = pick(words);
+    for (let i = 0, k = 2 + rnd(12); i < k; i++) p += pick(joins)() + pick(words);
+    return p;
+  });
+}

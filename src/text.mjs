@@ -162,30 +162,58 @@ export function pad(s, cols) {
 
 /** Whitespace that hangs at the end of a line (V7, round 5): a cluster made only of the spaces of UAX #9's class WS that
  *  take a column (U+0020, U+1680, U+2000 to U+200A, U+205F, U+3000: DerivedBidiClass.txt 17.0.0; the form feed and
- *  U+2028, of the class too, are shown as escapes). UAX #14 keeps a space on the line it follows (LB7, LB18) and does
- *  not break before the others but after a space (LB12a, LB21); L1 gives those that end a line the paragraph's level. */
-const HANGS = /^[\u0020\u1680\u2000-\u200a\u205f\u3000]+$/;
+ *  U+2028, of the class too, are shown as escapes), but U+2007 FIGURE SPACE, a no-break space (isGlue: Z2, round 7).
+ *  UAX #14 keeps a space on the line it follows (LB7, LB18) and does not break before the others but after a space
+ *  (LB12a, LB21); L1 gives those that end a line the paragraph's level. */
+const HANGS = /^[\u0020\u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]+$/;
 
 /** Whether the code unit g begins a cluster that UAX #14 gives no break before but after a space, a character of class
- *  BA or a hyphen (LB12a, class GL: LineBreak.txt): a no-break space (U+00A0, U+202F) or the non-breaking hyphen
- *  (U+2011). U+2007, a no-break space of the class too, is UAX #9 whitespace, and hangs at a break (HANGS). */
-const isGlue = (g) => g === 0xa0 || g === 0x202f || g === 0x2011;
+ *  BA or a hyphen (LB12a, class GL: LineBreak.txt; ICU 78.3, Unicode 17.0, measured): a no-break space (U+00A0, U+2007
+ *  FIGURE SPACE, U+202F) or the non-breaking hyphen (U+2011). Z2, round 7: U+2007, UAX #9 whitespace, hung at a break
+ *  as a space does, so that a line began with the GL character after it, or with U+2007 itself. */
+const isGlue = (g) => g === 0xa0 || g === 0x2007 || g === 0x202f || g === 0x2011;
 /** Whether UAX #14 breaks before a GL character after the code unit g (LB12a): a space (SP), a hyphen-minus (HY), a
- *  space of class BA (U+1680, U+2000 to U+2006, U+2008 to U+200A, U+205F, U+3000). */
+ *  space of class BA (U+1680, U+2000 to U+2006, U+2008 to U+200A, U+205F, U+3000); a hyphen-minus but after a Hebrew
+ *  letter (breaksBeforeGlueAt). */
 const breaksBeforeGlue = (g) => g === 0x20 || g === 0x2d || g === 0x1680 || (g >= 0x2000 && g <= 0x200a && g !== 0x2007) || g === 0x205f || g === 0x3000;
+
+/** Whether a code point is a Hebrew letter, UAX #14's class HL: the letters (General_Category Lo) of the Hebrew blocks,
+ *  U+05D0 to U+05EA, U+05EF to U+05F2 and those of U+FB1D to U+FB4F (UnicodeData.txt 17.0.0, test/text.test.mjs; ICU
+ *  78.3 gives the same 75 code points the class). */
+export const isHebrewLetter = (cp) => (cp >= 0x5d0 && cp <= 0x5ea) || (cp >= 0x5ef && cp <= 0x5f2) || (cp >= 0xfb1d && cp <= 0xfb4f && cp !== 0xfb1e && cp !== 0xfb29 && cp !== 0xfb37 && cp !== 0xfb3d && cp !== 0xfb3f && cp !== 0xfb42 && cp !== 0xfb45);
+const MARK = /^\p{M}$/u;
+/** Whether UAX #14 breaks before a GL character after offset i of s (LB12a, breaksBeforeGlue), but where the character
+ *  there is a hyphen-minus after a Hebrew letter, the letter's marks and ZWJ between (LB21a: HL HY x, unless a Hebrew
+ *  letter follows; LB9: a mark and ZWJ take the class of what they follow). Z2, round 7: the reader broke there as after
+ *  a Latin letter's hyphen (ICU 78.3 breaks before U+00A0 after 'abcd-', and gives no break in a Hebrew word, '-', U+00A0
+ *  and a Hebrew word). What is before i is read from s, so that a line laid out from its start is the same as from the
+ *  text's. */
+function breaksBeforeGlueAt(s, i) {
+  const g = s.charCodeAt(i);
+  if (!breaksBeforeGlue(g)) return false;
+  if (g !== 0x2d) return true;
+  for (let j = i; j > 0;) {
+    let cp = s.charCodeAt(j - 1), n = 1;
+    if (cp >= 0xdc00 && cp <= 0xdfff && j >= 2) { const hi = s.charCodeAt(j - 2); if (hi >= 0xd800 && hi <= 0xdbff) { cp = ((hi - 0xd800) << 10) + (cp - 0xdc00) + 0x10000; n = 2; } }
+    if (cp === 0x200d || MARK.test(String.fromCodePoint(cp))) { j -= n; continue; }
+    return !isHebrewLetter(cp);
+  }
+  return true;
+}
 
 /** Where to end a line that a cluster of class GL (isGlue) does not fit at the end of (Y3 (e), round 6): the index, in
  *  the line's clusters (`starts`: where each begins in s; `widths`: its columns), of the first cluster of the next line,
  *  which takes the rest of them and the GL cluster (of `cw` columns), at most `n` columns: after the clusters of class GL
- *  the line ends in and the character before them, where that is a space, BA or a hyphen (LB12a), else before that
- *  character too, so that the next line does not begin with a GL character UAX #14 gives no break before; -1 where the
- *  line ends before the GL cluster all the same: UAX #14 breaks there, or the line would be left empty, or the next
- *  would not fit in the columns (a column is the limit, as a cluster wider than the columns is). */
+ *  the line ends in and the character before them, where that is a space, BA or a hyphen (LB12a; a hyphen-minus not
+ *  after a Hebrew letter, LB21a: breaksBeforeGlueAt), else before that character too, so that the next line does not
+ *  begin with a GL character UAX #14 gives no break before; -1 where the line ends before the GL cluster all the same:
+ *  UAX #14 breaks there, or the line would be left empty, or the next would not fit in the columns (a column is the
+ *  limit, as a cluster wider than the columns is). */
 function glueBreak(s, starts, widths, at, cw, n) {
   let k = starts.length;
   while (k > 0 && isGlue(s.charCodeAt(starts[k - 1]))) k--;
   const run = k < starts.length ? starts[k] : at;
-  const cut = run > 0 && breaksBeforeGlue(s.charCodeAt(run - 1)) ? k : k - 1;
+  const cut = run > 0 && breaksBeforeGlueAt(s, run - 1) ? k : k - 1;
   if (cut < 1 || cut === starts.length) return -1;
   let w = cw;
   for (let i = cut; i < widths.length; i++) w += widths[i];
@@ -199,7 +227,8 @@ function glueBreak(s, starts, widths, at, cw, n) {
  *  past the screen is drawn); the next line begins after it, so that no line but the first begins with whitespace (V7,
  *  round 5: the space that did not fit began the next line). Whitespace that fits ends its line. A no-break space or
  *  a non-breaking hyphen (class GL) that does not fit begins the next line with the character before it (glueBreak:
- *  UAX #14 gives no break before it but after a space, BA or a hyphen; Y3 (e), round 6: it began the line by itself).
+ *  UAX #14 gives no break before it but after a space, BA or a hyphen, a hyphen-minus not after a Hebrew letter; Y3 (e),
+ *  round 6: it began the line by itself; Z2, round 7: after a Hebrew letter's hyphen, and U+2007, it still did).
  *  One pair at a time, so that a long text can be laid out without its lines being made; from a line's start, the lines
  *  are those from the text's start (what a line holds depends only on the text from its start). An empty s is one empty
  *  line. */

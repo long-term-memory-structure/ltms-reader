@@ -13,6 +13,8 @@ import assert from 'node:assert/strict';
 import { RTL_MODES, clusterWidth, cut, directionOf, displayOrder, expandTabs, fit, fitParts, isWide, lineSpans, paragraphLine, pathUnits, rtlModeOf, visible, visualLine, width, wordSpans, wrap, wrapWords } from '../src/text.mjs';
 import { SOURCE_SHA256, SOURCE_URL, UNICODE_VERSION, WIDE } from '../src/width-table.mjs';
 import { SHA256, VERSION } from '../scripts/width-table.mjs';
+import { readPinned } from '../scripts/bidi-table.mjs';
+import { HEBREW_LETTER, afterHebrewLetter } from './helpers.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SEG = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -131,7 +133,10 @@ test('wrap: lines of at most the columns, cut between clusters, that join back t
 // that would leave the line empty, or make the next one too wide, the cut stays where it was. Round 5's check counted
 // 221 record lines and 201 message lines of its population beginning with U+00A0, 201 and 292 with U+202F (of 113,398
 // and 129,439).
-const GLUE = /^[\u00a0\u202f\u2011]/, BEFORE_GLUE = /[\u0020\u002d\u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]/;
+const GLUE = /^[\u00a0\u2007\u202f\u2011]/, BEFORE_GLUE = /[\u0020\u002d\u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]/;
+/** Whether UAX #14 breaks before a GL character after the character at offset i of s: after a space, a space of class
+ *  BA or a hyphen-minus (LB12a), but not after a hyphen-minus that follows a Hebrew letter (LB21a: Z2, round 7). */
+const breaksBeforeGlueAt = (s, i) => i >= 0 && BEFORE_GLUE.test(s[i]) && !(s[i] === '-' && afterHebrewLetter(s, i));
 test('Y3 (e): a line cut by columns does not begin with a no-break space or a non-breaking hyphen (UAX #14 class GL) where UAX #14 gives no break before one: the character it follows begins the line with it; a message\'s word cut likewise', () => {
   assert.deepEqual(wrap('abc\u00a0def', 3), ['ab', 'c\u00a0d', 'ef']);
   assert.deepEqual(wrap('abc\u202fdef', 3), ['ab', 'c\u202fd', 'ef']);
@@ -165,13 +170,89 @@ test('Y3 (e): a line cut by columns does not begin with a no-break space or a no
         const [pa] = spans[i - 1], prev = [...SEG.segment(s.slice(pa, spans[i - 1][1]))].map((x) => x.segment);
         let k = prev.length;
         while (k > 0 && GLUE.test(prev[k - 1])) k--;
-        const allowed = BEFORE_GLUE.test(s[a - 1]) || BEFORE_GLUE.test(prev[k - 1]?.slice(-1) ?? '') || k <= 1 || width(prev.slice(k - 1).join('') + s.slice(a, b).slice(0, 1)) > cols;
+        const run = pa + prev.slice(0, k).join('').length;
+        const allowed = breaksBeforeGlueAt(s, a - 1) || breaksBeforeGlueAt(s, run - 1) || k <= 1 || width(prev.slice(k - 1).join('') + s.slice(a, b).slice(0, 1)) > cols;
         assert.ok(allowed, `${JSON.stringify(s)} at ${cols}: line ${i} begins with ${JSON.stringify(s[a])}: ${JSON.stringify(s.slice(pa, b))}`);
       }
       assert.ok(spans.every(([a, b]) => width(s.slice(a, b)) <= cols || [...SEG.segment(s.slice(a, b))].length === 1), `${JSON.stringify(s)} at ${cols}: within the columns`);
     }
   }
   assert.ok(glued > 0, `${glued} lines begin with one where UAX #14 or the columns allow it`);
+});
+
+// Z2 (round 7): two classes round 6's check found still beginning a line with a character of class GL where UAX #14
+// gives no break before it (its judge: ICU 78.3, Unicode 17.0). After a Hebrew letter and a hyphen-minus LB21a gives no
+// break (HL HY x, the letter's marks and ZWJ between: LB9), where the reader broke as after a Latin letter's hyphen (60
+// record lines and 52 message lines of the check's population). And U+2007 FIGURE SPACE, of class GL, which the reader
+// hung as whitespace at a break: a line began with the GL character after it (670 and 579), and since Y3 (e)'s move with
+// U+2007 itself (829 and 719). The forms are ICU 78.3's breaks (round 7's probe lb21a.py) with Y3 (e)'s cut by columns.
+test('Z2: no line begins with a GL character after a Hebrew letter and a hyphen-minus (UAX #14 LB21a); U+2007 FIGURE SPACE is a no-break space (class GL), kept with what is around it, not whitespace that hangs', () => {
+  const SHALOM = '\u05e9\u05dc\u05d5\u05dd', OD = '\u05e2\u05d5\u05d3';
+  // LB21a: the hyphen begins the next line with the no-break space (ICU 78.3: no break in the whole of it)
+  assert.deepEqual(wrap(`${SHALOM}-\u00a0${OD}`, 5), [SHALOM, `-\u00a0${OD}`]);
+  assert.deepEqual(wrap('\u05d0\u05d1\u05e9\u05b8-\u00a0x', 4), ['\u05d0\u05d1\u05e9\u05b8', '-\u00a0x'], 'a mark on the letter (LB9)');
+  assert.deepEqual(wrap('\u05d0\u05d1\u05e9\u200d-\u00a0x', 4), ['\u05d0\u05d1\u05e9\u200d', '-\u00a0x'], 'ZWJ after the letter (LB9)');
+  assert.deepEqual(wrap(`${SHALOM}-\u202f${OD}`, 5), [SHALOM, `-\u202f${OD}`], 'U+202F');
+  assert.deepEqual(wrap(`${SHALOM}-\u2011${OD}`, 5), [SHALOM, `-\u2011${OD}`], 'U+2011');
+  assert.deepEqual(wrap(`${SHALOM}-\u2007${OD}`, 5), [SHALOM, `-\u2007${OD}`], 'U+2007');
+  // where UAX #14 breaks after the hyphen: after a Latin letter, and where ZWSP or WJ stands between the letter and the
+  // hyphen (ICU 78.3: a break before the no-break space in each)
+  assert.deepEqual(wrap('abcd-\u00a0ef', 5), ['abcd-', '\u00a0ef']);
+  assert.deepEqual(wrap('\u05d0\u05d1\u200b-\u00a0x', 3), ['\u05d0\u05d1\u200b-', '\u00a0x']);
+  assert.deepEqual(wrap('\u05d0\u05d1\u2060-\u00a0x', 3), ['\u05d0\u05d1\u2060-', '\u00a0x']);
+  // a hyphen of class HH (U+2010, the maqaf): no break before a GL character after it (LB12a), as before
+  assert.deepEqual(wrap(`${SHALOM}\u2010\u00a0x`, 5), [SHALOM, '\u2010\u00a0x']);
+  assert.deepEqual(wrap(`${SHALOM}\u05be\u00a0x`, 5), [SHALOM, '\u05be\u00a0x']);
+  // U+2007: a no-break space, moved with the character before it as the others are (it hung, in no line)
+  assert.deepEqual(wrap('abc\u2007def', 3), ['ab', 'c\u2007d', 'ef']);
+  assert.deepEqual(wrap('abc\u2007\u00a0def', 4), ['ab', 'c\u2007\u00a0d', 'ef'], 'with U+00A0 (the check\'s case: U+2007 began a line)');
+  assert.deepEqual(wrap('6\u00a0\u2007\u202fab', 3), ['6\u00a0\u2007', '\u202fab'], 'a run of them after the line\'s first cluster: the cut stays');
+  assert.deepEqual(wrap('ab \u2007cd', 3), ['ab ', '\u2007cd'], 'after a space UAX #14 breaks before it, and it begins the line');
+  assert.deepEqual(wrap('ab\u2007', 2), ['a', 'b\u2007']);
+  // a message: a word cut by columns likewise; U+2007 after the space a line breaks at begins the line
+  assert.deepEqual(wrapWords('x abc\u2007de', 3), ['x', 'ab', 'c\u2007d', 'e']);
+  assert.deepEqual(wrapWords('abc \u2007def', 4), ['abc', '\u2007def']);
+  // texts of each class at every width from 1 to 30, from the start and from every line's start: no line but the first
+  // begins with a GL character but after a break UAX #14 gives, or where the cut by columns had to stay
+  const texts = [`${SHALOM}-\u00a0${OD} \u05e9\u05b8\u05bc-\u202f12 ab-\u00a0cd`, `x\u2007\u2007y 1\u2007000\u00a0km ${SHALOM}\u2007${OD}`, `${OD}-\u2011${SHALOM} a \u2007b`];
+  let glued = 0;
+  for (const s of texts) {
+    for (let cols = 1; cols <= 30; cols++) {
+      const spans = [...lineSpans(s, cols)];
+      for (const [i, [a, b]] of spans.entries()) {
+        if (i > 0) assert.deepEqual([...lineSpans(s, cols, a)], spans.slice(i), `${JSON.stringify(s)} at ${cols}: from line ${i}'s start`);
+        if (i > 0) assert.equal(s.slice(spans[i - 1][1], a).replace(/[\u0020\u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]/g, ''), '', `${JSON.stringify(s)} at ${cols}: only whitespace that hangs between lines (U+2007 is not)`);
+        if (i === 0 || !GLUE.test(s.slice(a))) continue;
+        glued++;
+        const [pa] = spans[i - 1], prev = [...SEG.segment(s.slice(pa, spans[i - 1][1]))].map((x) => x.segment);
+        let k = prev.length;
+        while (k > 0 && GLUE.test(prev[k - 1])) k--;
+        const run = pa + prev.slice(0, k).join('').length;
+        const allowed = breaksBeforeGlueAt(s, a - 1) || breaksBeforeGlueAt(s, run - 1) || k <= 1 || width(prev.slice(k - 1).join('') + s.slice(a, b).slice(0, 1)) > cols;
+        assert.ok(allowed, `${JSON.stringify(s)} at ${cols}: line ${i} begins with ${JSON.stringify(s[a])}: ${JSON.stringify(s.slice(pa, b))}`);
+      }
+    }
+  }
+  assert.ok(glued > 0, `${glued} lines begin with one where UAX #14 or the columns allow it`);
+});
+
+test('Z2: the Hebrew letters LB21a reads are the letters of the Hebrew blocks (General_Category Lo), each and no other, as the tests have them; and as UnicodeData.txt 17.0.0 has them, where LTMS_READER_UCD names the pinned files', async () => {
+  const { isHebrewLetter } = await import('../src/text.mjs');
+  assert.equal(typeof isHebrewLetter, 'function', 'src/text.mjs says which code points are Hebrew letters (UAX #14 HL)');
+  const mine = [];
+  for (let cp = 0; cp <= 0x10ffff; cp++) if (isHebrewLetter(cp)) mine.push(cp);
+  const theirs = [];
+  for (let cp = 0; cp <= 0xffff; cp++) if (cp < 0xd800 || cp > 0xdfff) { if (HEBREW_LETTER.test(String.fromCodePoint(cp))) theirs.push(cp); }
+  assert.deepEqual(mine, theirs);
+  assert.equal(mine.length, 75);
+  const UCD = process.env.LTMS_READER_UCD;
+  if (!UCD) return;
+  const lo = [];
+  for (const line of readPinned(UCD, 'UnicodeData.txt').lines) {
+    const f = line.split(';'), cp = parseInt(f[0], 16);
+    if (f[2] === 'Lo' && ((cp >= 0x590 && cp <= 0x5ff) || (cp >= 0xfb1d && cp <= 0xfb4f))) lo.push(cp);
+  }
+  assert.deepEqual(mine, lo);
 });
 
 test('expandTabs: a tab is spaces to the next multiple of 8 columns, counted by width', () => {

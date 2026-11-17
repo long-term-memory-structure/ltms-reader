@@ -140,6 +140,17 @@ export function sameLines(got, want, what, memo = new Map()) {
   assert.fail(`${what}: ${got.length} lines (sha256 ${da.slice(0, 12)}) where ${want.length} were wanted (sha256 ${db.slice(0, 12)}); the first that differs is line ${i}:\n  got:  ${show(got[i])}\n  want: ${show(want[i])}`);
 }
 
+/** UAX #14's class HL, the Hebrew letters: the letters (General_Category Lo) of the Hebrew blocks, as UnicodeData.txt
+ *  17.0.0 has them; ICU 78.3 (Unicode 17.0) gives the same 75 code points the class (measured in round 7). */
+export const HEBREW_LETTER = /^[\u05d0-\u05ea\u05ef-\u05f2\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40-\ufb41\ufb43-\ufb44\ufb46-\ufb4f]$/;
+/** Whether what is before offset i of s is a Hebrew letter, its marks and ZWJ after it passed over (UAX #14 LB9): after
+ *  a Hebrew letter, a hyphen-minus gives no break (LB21a: HL HY ×, unless a Hebrew letter follows). */
+export function afterHebrewLetter(s, i) {
+  let j = i;
+  while (j > 0 && /[\p{M}\u200d]/u.test(s[j - 1])) j--;
+  return j > 0 && HEBREW_LETTER.test(s[j - 1]);
+}
+
 /** The left-to-right override "reader" mode writes around a row that holds right-to-left text (Y1, round 6). */
 export const LRO = '\u202d', PDF = '\u202c';
 

@@ -90,12 +90,14 @@ pasted acts as a key.
   row. The light marks Hebrew and Arabic text use (U+200E, U+200F, U+061C) are written as they are.
 - **Width by grapheme cluster** (`Intl.Segmenter`): combining marks, niqqud and cantillation take no column of their
   own; East Asian wide characters and emoji take two. A line is cut by columns, never inside a cluster, and a space
-  where it is cut stays at the end of the line before; a no-break space or a non-breaking hyphen (U+00A0, U+202F,
-  U+2011: UAX #14's class GL) where it would be cut goes to the next line with the character before it, as UAX #14 gives
-  no break before one but after a space or a hyphen (where that would leave the line before empty, or the next too
-  wide, as on a line of one column, it begins the line all the same). The wide characters come from a table generated
-  from Unicode's `EastAsianWidth.txt`, version 17.0.0 (`src/width-table.mjs`, which names the file's sha256;
-  `scripts/width-table.mjs` writes it). Characters of ambiguous width take one column.
+  where it is cut stays at the end of the line before; a no-break space or a non-breaking hyphen (U+00A0, U+2007,
+  U+202F, U+2011: UAX #14's class GL) where it would be cut goes to the next line with the character before it, as UAX
+  #14 gives no break before one but after a space or a hyphen, a hyphen-minus only where it does not follow a Hebrew
+  letter (LB21a; where that would leave the line before empty, or the next too wide, as on a line of one column, it
+  begins the line all the same). The figure space (U+2007) is such a no-break space, not a space that hangs at a
+  break: a line begins with it only where UAX #14 breaks before it, after a space. The wide characters come from a
+  table generated from Unicode's `EastAsianWidth.txt`, version 17.0.0 (`src/width-table.mjs`, which names the file's
+  sha256; `scripts/width-table.mjs` writes it). Characters of ambiguous width take one column.
 - **Right to left** (Hebrew, Arabic): one layout for every terminal. The reader lays out each line itself (mode
   `reader`, the default), by the Unicode Bidirectional Algorithm (UAX #9, Unicode 17.0.0, written in this package: the
   implicit algorithm with paired brackets, its lines reordered and mirrored, a paragraph's direction from its first
@@ -132,8 +134,8 @@ pasted acts as a key.
   it does not. A message is broken at its spaces, and the space where a line breaks hangs, as UAX #14 has the
   whitespace at a break: it is in no line, and is not drawn, though the line has room for it; whitespace that ends a
   message after a break hangs too, and makes no line of its own. Either way no line but a paragraph's first begins with
-  whitespace. A long line of a list is cut in logical order, its beginning kept, then laid out by itself, the spaces at
-  its ends (a cell's padding) where they are.
+  whitespace that hangs (the figure space, a no-break space, does not hang). A long line of a list is cut in logical
+  order, its beginning kept, then laid out by itself, the spaces at its ends (a cell's padding) where they are.
   A path or a URL in a line (`/home/...`, `~/...`, `src/...`, `https://...`) is laid out as one left-to-right unit, its
   parts in order and a Hebrew name in it reading right (UAX #9's higher-level protocol HL4), in pieces where a line
   breaks inside it, as an isolate is. Each cluster is kept whole, its marks after its letter, as a terminal draws them;
