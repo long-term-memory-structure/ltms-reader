@@ -407,18 +407,18 @@ const drawn = (c, level) => {
 const marksAlone = (c) => { for (const ch of c) if (classOf(ch.codePointAt(0)) !== NSM) return false; return true; };
 
 /**
- * Items of a stretch of text, in order, each laid out whole (Z5, round 7): put by add(item, v), v the level of the
- * item's first character X9 kept, or -1 where X9 removed them all (`levelOf(c)`, for each cluster c, in order). Each item
- * is a grapheme cluster, but where a cluster of nonspacing marks alone follows clusters X9 removed whole (a soft hyphen,
- * ZWSP, WJ: the segmenter breaks after each, a control, so that a mark after one is a cluster of its own) that follow a
- * cluster of the stretch: the mark goes with that cluster, and so do the removed characters between, in their order. UAX
- * #9 gives the mark the class of the character before it, the removed ones passed over (W1), and the reader keeps a
- * letter's marks after it, as a terminal draws them; as an item of its own, at an odd level, the mark was reversed with
- * its run, before its letter, on the cell before it (round 6's check: final nun, WJ, WJ, patah was written patah, WJ,
- * WJ, nun). Only after a cluster with a character X9 keeps: a mark after removed characters that begin the stretch, or
- * follow only removed ones, has no letter there, and is an item of its own, at its own level. `items` and `at` (its
- * levels) are the caller's, items added to the end of them, `fallback` the level of a first item X9 removed whole; a
- * cluster X9 removed whole is at the level of the item before it.
+ * The items of a stretch of text s, in order, each laid out whole (Z5, round 7), added to the end of the caller's
+ * `items`, and each one's level to `at`: the level of its first character X9 kept (`levelOf(c)`, asked of each cluster
+ * c of s in order, -1 where X9 removed them all). Each item is a grapheme cluster, but where a cluster of nonspacing
+ * marks alone follows clusters X9 removed whole (a soft hyphen, ZWSP, WJ: the segmenter breaks after each, a control,
+ * so that a mark after one is a cluster of its own) that follow a cluster of the stretch: the mark goes with that
+ * cluster, and so do the removed characters between, in their order. UAX #9 gives the mark the class of the character
+ * before it, the removed ones passed over (W1), and the reader keeps a letter's marks after it, as a terminal draws
+ * them; as an item of its own, at an odd level, the mark was reversed with its run, before its letter, on the cell
+ * before it (round 6's check: final nun, WJ, WJ, patah was written patah, WJ, WJ, nun). Only after a cluster with a
+ * character X9 keeps: a mark after removed characters that begin the stretch, or follow only removed ones, has no
+ * letter there, and is an item of its own, at its own level. A cluster X9 removed whole is at the level of the item
+ * before it, or at `fallback` when it is the first.
  */
 function addItems(s, levelOf, items, at, fallback) {
   const held = [];
