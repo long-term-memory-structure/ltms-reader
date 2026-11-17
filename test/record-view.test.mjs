@@ -105,7 +105,7 @@ test('Y3 (a): sameLines tells two lists of lines apart where assert.deepStrictEq
 // URLs (its units) a line holds by passing over every unit before the line, from the first. In a right-to-left paragraph
 // of 200,000 paths (round 4's check's probe, unitscost.mjs, run on 2026-11-17, twice), a page at its end took 44.8 and
 // 45.3 ms at 200 x 60 against 5.9 and 6.2 at its start, and 16.8 and 20.0 ms at 80 x 24 against 1.1 and 1.3, where round
-// 3 (b0ff6ac) drew every page alike (13.5 to 15.0 ms, 2.1 to 2.9). The probe made a test: the page at the end against a
+// 3 (da5b8bb) drew every page alike (13.5 to 15.0 ms, 2.1 to 2.9). The probe made a test: the page at the end against a
 // page at the start, drawn one after the other, the median of 15 each, after the first frame (which resolves the
 // paragraph's levels).
 //
@@ -116,8 +116,8 @@ test('Y3 (a): sameLines tells two lists of lines apart where assert.deepStrictEq
 // start is now as far from its mark as the end page is from its own: both lay out as many lines, and differ only in
 // what the units cost. Measured on 2026-11-17 (probes/v1cost.mjs, 3 runs each, the median of 15 pages), the end page
 // against that start page: at this round's head 0.92 to 1.13 times on Node 26.13.1 and 0.92 to 1.03 on Node 20.20.2;
-// at 853b878 (the pass over every unit before a line) 7.1 to 9.4 times on Node 26 and 2.9 to 4.9 on Node 20. The
-// bound, 1.7 times and 1 ms, leaves room on both, and fails at 853b878 on both.
+// at 4e889da (the pass over every unit before a line) 7.1 to 9.4 times on Node 26 and 2.9 to 4.9 on Node 20. The
+// bound, 1.7 times and 1 ms, leaves room on both, and fails at 4e889da on both.
 test('V1: in a right-to-left paragraph of 200,000 paths, a page at its end costs about what a page at its start does that is laid out from as far after its kept mark (at most 1.7 times, and 1 ms), at 80 x 24 and 200 x 60', { timeout: 300_000 }, async (t) => {
   const { frameBytes } = await import('../src/screen.mjs');
   const text = '\u05d0\u05d1\u05d2\u05d3' + '/srv/data/x.txt '.repeat(200_000);
@@ -327,7 +327,7 @@ test('N3, Node 20: a part whose JSON would pass the limit on a string\'s length 
 // Z1 (round 7) had the record rule read the old space set (memoryLimit) instead of Node's heap limit, but the rule's
 // margin for what a view needs beside the JSON it writes, BUILT_MARGIN, 96 MB, was measured against the heap limit, which
 // holds the young generation's reserve too: under an old space below about 107 MB every record was refused (round 7's
-// check, z1record.mjs: at --max-old-space-size=32 and 64, records of 11 KB and 513 KB that 6ca57c5 showed, on Node 20, 24
+// check, z1record.mjs: at --max-old-space-size=32 and 64, records of 11 KB and 513 KB that 522a3d5 showed, on Node 20, 24
 // and 26). The probe made a test: R.F1's transcript shape opened as R.F1's tests open it (Enter on the turn, down twice to
 // the result, Enter), then j, in a process of its own under that old space (test/fixtures/frame-once.mjs).
 /** R.F1's transcript shape as the check's probe wrote it: a typed prompt, a Bash call, and its result, `units` times

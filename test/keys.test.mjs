@@ -265,7 +265,7 @@ test('R.F11: the keys screen says so: q quits, any other key goes back', async (
 
 // V2 (round 5): the keys screen gave each key's words max(1, cols - 16 - 4) columns beside a key column of 16, so that
 // at 20 columns, the narrowest the reader draws, its lines took 2 + 16 + 2 + 1 = 21 (round 4's check: 55 of 55 frames
-// at 20 columns, heights 5 to 59; the same at b0ff6ac). Every size the reader draws, the keys screen within it.
+// at 20 columns, heights 5 to 59; the same at da5b8bb). Every size the reader draws, the keys screen within it.
 test('V2: the keys screen at every size from 20 x 5 to 200 x 60: no line wider than the screen, the last one column short of it', async () => {
   const r = makeRoot();
   const source = new RootSource({ root: r.root });

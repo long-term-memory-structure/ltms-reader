@@ -271,7 +271,7 @@ test('Z2: the Hebrew letters LB21a reads are the letters of the Hebrew blocks (G
 // alef, X, '-', U+00A0, 'x' for X ZWNJ, LRM, RLM or ALM, as for a patah or ZWJ, and the head's wrap began a line with
 // U+00A0 after each, in a record line and in a message. Round 8's probes: ICU 78.3's breaks for alef bet, X, '-', U+00A0,
 // 'x' and seven other forms, X each character LB9 folds that visible() leaves, and each mark of another class
-// (lb9cases.py); the reader's cut judged by them at every width from 1 to 12 (lb9judge.mjs): at ca347a3, 27 line starts
+// (lb9cases.py); the reader's cut judged by them at every width from 1 to 12 (lb9judge.mjs): at 2ad8814, 27 line starts
 // with U+00A0 where ICU gives no break and the cut did not have to stay with X between the letter and the hyphen, and 24
 // with X after the hyphen (as many after a Latin letter's hyphen, where ICU breaks after X, not before it).
 const FOLDED_SHOWN = [0x61c, 0x200c, 0x200e, 0x200f, 0x206a, 0x206b, 0x206c, 0x206d, 0x206e, 0x206f, 0x3035, 0xfff9, 0xfffa, 0xfffb, 0x1bca0, 0x1bca1, 0x1bca2, 0x1bca3, 0x1d173, 0x1d174, 0x1d175, 0x1d176, 0x1d177, 0x1d178, 0x1d179, 0x1d17a];
