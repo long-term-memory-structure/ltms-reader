@@ -210,11 +210,15 @@ Linux). `LTMS_READER_FIXTURES=<folder>` adds every `.jsonl` under a folder to th
 the pinned files (`scripts/bidi-table.mjs` names each with its sha256); GNU FriBidi's layout of the right-to-left page
 and fixtures is compared with the reader's where `fribidi` is on the PATH (or `LTMS_READER_FRIBIDI` names it); and each
 line of paragraphs wrapped into lines (the fixtures', and random ones) with its library's, where `python3` can load
-`libfribidi` (`test/fribidi-lines.py`; `LTMS_READER_LIBFRIBIDI` names the library, `LTMS_READER_PYTHON` the Python):
+`libfribidi` (`test/fribidi-lines.py`; `LTMS_READER_LIBFRIBIDI` names the library, `LTMS_READER_PYTHON` the Python).
+GNU FriBidi 1.0.18 lays some paragraphs out otherwise than UAX #9 (brackets next to a nonspacing mark): a line on which
+the reader and FriBidi's library differ is laid out by the tests' own reference of UAX #9 too (`test/uba-reference.mjs`,
+checked on `BidiCharacterTest.txt`, every case, and on `BidiTest.txt` when the folder holds it), and counts as
+FriBidi's difference, said and not failed, where FriBidi differs from the reference and the reader does not:
 
 ```sh
 curl -sS --fail -o EastAsianWidth.txt https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt
-mkdir ucd && for f in extracted/DerivedBidiClass.txt UnicodeData.txt BidiBrackets.txt BidiMirroring.txt BidiCharacterTest.txt; do
+mkdir ucd && for f in extracted/DerivedBidiClass.txt UnicodeData.txt BidiBrackets.txt BidiMirroring.txt BidiCharacterTest.txt BidiTest.txt; do
   curl -sS --fail -o "ucd/${f##*/}" "https://www.unicode.org/Public/17.0.0/ucd/$f"; done
 LTMS_READER_EAW=EastAsianWidth.txt LTMS_READER_UCD=ucd npm test
 ```

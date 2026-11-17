@@ -10,7 +10,13 @@
 // - GNU FriBidi (fribidi --nopad --nobreak, its CLI), over the page measured on the screens in S377
 //   (test/fixtures/rtl-page.txt) and every line of Hebrew or Arabic in the Hebrew and mixed fixtures: the reader's line
 //   equals FriBidi's, but where it keeps a letter's marks after it (FriBidi with --reordernsm then equals it) and where a
-//   path or a URL is laid out as one unit. Run when `fribidi` is on the PATH (or LTMS_READER_FRIBIDI names it).
+//   path or a URL is laid out as one unit. Run when `fribidi` is on the PATH (or LTMS_READER_FRIBIDI names it). And
+//   its library (test/fribidi-lines.py), for paragraphs wrapped into lines.
+// - The tests' own reference of UAX #9 (test/uba-reference.mjs; round 6, Y3 (g)), checked on BidiCharacterTest.txt
+//   (every case) and BidiTest.txt: where FriBidi's library differs from the reader on a line, the line is laid out by
+//   the reference too, and is FriBidi's difference (counted and printed) when FriBidi differs from the reference and the
+//   reader gives the reference's line: GNU FriBidi 1.0.18 differs from UAX #9 on some paragraphs (brackets next to a
+//   nonspacing mark), so that the FriBidi tests stay right whatever their generators draw.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -22,6 +28,7 @@ import { SOURCES, TEST_SOURCE, VERSION, readPinned } from '../scripts/bidi-table
 import { directionOf, displayOrder, expandTabs, lineSpans, paragraphLine, pathUnits, visible, visualLine, width, wordSpans, wrap } from '../src/text.mjs';
 import { RecordLines } from '../src/views.mjs';
 import { FX, OWN, ROOT } from './helpers.mjs';
+import * as reference from './uba-reference.mjs';
 
 const UCD = process.env.LTMS_READER_UCD || null;
 const skipUcd = UCD ? false : 'LTMS_READER_UCD names no folder of the pinned Unicode files';
@@ -104,6 +111,60 @@ test('src/bidi-table.mjs is what scripts/bidi-table.mjs writes from the pinned s
   const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'bidi-table.mjs'), UCD, '--check'], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /is what .* gives \(763 ranges of classes, 64 bracket pairs, 2 equivalents, 428 mirrors\)/);
+});
+
+// Y3 (g), round 6: the tests' own reference of UAX #9 (test/uba-reference.mjs), which judges the lines on which FriBidi's
+// library and the reader differ, on Unicode's conformance files: BidiCharacterTest.txt, every case (those with an
+// explicit formatting character too, which the reference implements and the reader never meets), its paragraph level,
+// levels and visual order; and BidiTest.txt (classes only, each paragraph direction its bitset names), when the folder
+// holds it (it is not a source of the table; its first line must name 17.0.0, and its sha256 is printed).
+test(`the tests' reference of UAX #9: BidiCharacterTest.txt ${VERSION}, every case, and BidiTest.txt where the folder holds it`, { skip: skipUcd, timeout: 600_000 }, async (t) => {
+  const { createHash } = await import('node:crypto');
+  const U = reference, explicitOf = new Set([U.LRE, U.LRO, U.RLE, U.RLO, U.PDF, U.LRI, U.RLI, U.FSI, U.PDI]);
+  const { text } = readPinned(UCD, TEST_SOURCE.name);
+  let total = 0, withExplicit = 0, passed = 0;
+  const failed = [];
+  for (const line of text.split('\n')) {
+    if (line === '' || line.startsWith('#')) continue;
+    total++;
+    const [f0, f1, f2, f3, f4] = line.split(';');
+    const cps = f0.trim().split(' ').map((h) => parseInt(h, 16)), types = cps.map(U.classOf);
+    if (types.some((c) => explicitOf.has(c))) withExplicit++;
+    const para = f1 === '2' ? U.paragraphLevel(types) : Number(f1);
+    const lv = U.lineLevels(types, U.resolve(cps, types, para), para, 0, cps.length);
+    const want = f3.trim().split(' ').map((x) => (x === 'x' ? null : Number(x)));
+    if (para === Number(f2) && want.length === lv.length && want.every((v, i) => v === lv[i]) && U.visual(lv).join(' ') === f4.trim()) passed++; else failed.push(line);
+  }
+  t.diagnostic(`BidiCharacterTest.txt: ${total} cases, ${withExplicit} with an explicit formatting character: ${passed} passed, ${failed.length} failed`);
+  assert.deepEqual(failed.slice(0, 5), [], `${failed.length} failed`);
+  assert.equal(total, 91707);
+  assert.equal(passed, 91707);
+  let bytes = null;
+  try { bytes = readFileSync(path.join(UCD, 'BidiTest.txt')); } catch { t.diagnostic('BidiTest.txt: not in the folder, not run'); return; }
+  const lines = bytes.toString('utf8').split('\n');
+  assert.equal(lines[0], `# BidiTest-${VERSION}.txt`, 'BidiTest.txt of this version');
+  let cases = 0, ok = 0, levels = null, order = null;
+  const wrong = [];
+  for (const raw of lines) {
+    const line = raw.split('#')[0].trim();
+    if (!line) continue;
+    if (line.startsWith('@Levels:')) { levels = line.slice(8).trim().split(/\s+/).filter(Boolean).map((x) => (x === 'x' ? null : Number(x))); continue; }
+    if (line.startsWith('@Reorder:')) { order = line.slice(9).trim().split(/\s+/).filter(Boolean).join(' '); continue; }
+    if (line.startsWith('@')) continue;
+    const [input, bits] = line.split(';');
+    const types = input.trim().split(/\s+/).map((name) => CLASSES.indexOf(name)), cps = types.map(() => 0), set = parseInt(bits.trim(), 16);
+    for (const [bit, given] of [[1, null], [2, 0], [4, 1]]) {
+      if (!(set & bit)) continue;
+      const para = given === null ? U.paragraphLevel(types) : given;
+      const lv = U.lineLevels(types, U.resolve(cps, types, para), para, 0, types.length);
+      cases++;
+      if (levels.length === lv.length && levels.every((v, i) => v === lv[i]) && U.visual(lv).join(' ') === order) ok++; else if (wrong.length < 5) wrong.push(`${input} at ${given ?? 'auto'}`);
+    }
+  }
+  t.diagnostic(`BidiTest.txt (sha256 ${createHash('sha256').update(bytes).digest('hex')}): ${cases} cases, ${ok} passed, ${cases - ok} failed`);
+  assert.deepEqual(wrong, []);
+  assert.equal(ok, cases);
+  assert.ok(cases > 700_000, `${cases} cases`);
 });
 
 // R1 (e): every view that shows a transcript's text lays it out, its text a paragraph of its own; written by the screen
@@ -264,39 +325,51 @@ function fribidiLines(pars) {
   return out;
 }
 
-/** Paragraphs with a closing bracket right after a nonspacing mark (V6, round 5), each at its own direction (P2, P3):
- *  GNU FriBidi 1.0.18 does not pair the bracket, and resolves both brackets otherwise than UAX #9 (checked against round
- *  4's check's reference when this was written). Added to the paragraphs the FriBidi tests draw, so that the case is
- *  met on every run. */
-const FRIBIDI_FAULT_CASES = ['go אב (גד x|\u05b7) הו', 'שלום ab (cd ש|\u05b7) ef', 'go אב [גד x!\u05b7\u05b7] הו', 'see the words אבגד הוזח (טיכל x|\u05b7) מנסע and more words here', 'שלום לכם ab (cd שלום|\u05b7) ef וגם עוד מילים'];
+/** Paragraphs GNU FriBidi 1.0.18 lays out otherwise than UAX #9, each at its own direction (P2, P3), added to the
+ *  paragraphs the FriBidi library tests draw, so that FriBidi's differences are met, and judged by the tests' reference
+ *  (judged, below), on every run: the first five have a closing bracket right after a nonspacing mark (V6, round 5);
+ *  the next two a mark right after a bracket, then two a mark right before an opening bracket, the last one the same
+ *  after a bracket that pairs by canonical equivalence (Y3 (g), round 6: made as short as they go from round 6's probe's
+ *  dense random paragraphs, faultmin.mjs, then set in words). Test 'Y3 (g): ...' checks that FriBidi differs on each,
+ *  whole, and the reader gives what the reference gives. */
+const FRIBIDI_FAULT_CASES = ['go אב (גד x|\u05b7) הו', 'שלום ab (cd ש|\u05b7) ef', 'go אב [גד x!\u05b7\u05b7] הו', 'see the words אבגד הוזח (טיכל x|\u05b7) מנסע and more words here', 'שלום לכם ab (cd שלום|\u05b7) ef וגם עוד מילים',
+  'אב c(2]\u05b8) גד', 'אב e[f}\u05b7] גד', 'שלום e|\u0301(1) עולם ומלואו', 'see the words ז!\u0301{2} and more', 'see ש\u3009\u05b7{4} here and there'];
 
-// V6 (round 5): GNU FriBidi 1.0.18 does not pair a closing bracket that comes right after a nonspacing mark: for
-// 'א (ב x|ַ) ג' at level 0 it gives '(' level 1, where UAX #9's BD16 and N0 give 0 (the brackets hold x, the
-// embedding direction): round 4's check, against its own reference, which passes BidiCharacterTest and BidiTest whole.
-// BidiCharacterTest holds no closing bracket after a mark, so the conformance test above does not meet the case. The
-// tests below take FriBidi's library for their oracle, and would fail a reader that is right whenever their paragraphs
-// held such a bracket (each of FRIBIDI_FAULT_CASES does). So each paragraph is given to the reader and to FriBidi alike
-// without the marks that come right before a closing bracket (characters X9 removes passed over): leaving out a mark
-// changes no other character's level, since W1 makes a mark a copy of the type before it (ON after an isolate's
-// initiator or PDI), so that what is around it resolves as it did. How many paragraphs lost marks is printed; the case
-// itself, with its marks, is a known answer of its own (test 'V6: ...' below).
-const CLOSING = new Set(BRACKETS.filter((_, i) => i % 2 === 1));
-/** text without the nonspacing marks right before a closing bracket (BN passed over), and how many were left out. */
-function withoutFribidiFault(text) {
-  const cps = [...text], cl = cps.map((c) => bidi.classOf(c.codePointAt(0))), drop = new Set();
-  for (let i = 0; i < cps.length; i++) {
-    if (!CLOSING.has(cps[i].codePointAt(0))) continue;
-    for (let j = i - 1; j >= 0 && (cl[j] === bidi.BN || cl[j] === bidi.NSM); j--) if (cl[j] === bidi.NSM) drop.add(j);
-  }
-  return { text: drop.size ? cps.filter((_, i) => !drop.has(i)).join('') : text, left: drop.size };
+// Y3 (g), round 6: GNU FriBidi 1.0.18 differs from UAX #9 on more paragraphs than V6's (a closing bracket right after a
+// nonspacing mark): round 5's check found brackets with a mark right after one, or right before an opening one. Round
+// 6's probe (fbref.mjs: 20,000 dense random paragraphs, 43,845 lines) found FriBidi's library and the tests' reference
+// differing on 132 lines; made as short as they go, each case holds a mark next to a bracket (faultmin.mjs). V6 left the
+// marks before a closing bracket out of what the tests drew, which kept them right on that case only. Now a line on
+// which the reader and FriBidi differ is laid out by the tests' own reference of UAX #9 too (test/uba-reference.mjs,
+// checked below on BidiCharacterTest.txt and BidiTest.txt), from the same request and in FriBidi's own form: where
+// FriBidi's line differs from the reference's and the reader's is the reference's (the characters X9 removes, which each
+// implementation draws where it will, left out of the three), the line is FriBidi's difference, counted and printed;
+// any other difference fails, as before.
+const REMOVED = new Set([reference.BN, reference.LRE, reference.RLE, reference.LRO, reference.RLO, reference.PDF]);
+/** s without the characters X9 removes. */
+const keptOf = (s) => [...s].filter((c) => !REMOVED.has(reference.classOf(c.codePointAt(0)))).join('');
+
+/** The tests' reference's layout of the lines fribidiLines is asked for, from the same request: each line's characters
+ *  in visual order, in FriBidi's form (test/uba-reference.mjs linesAsFribidi), the marks put in for FriBidi left out. */
+function referenceLines(pars) {
+  return pars.map(({ text, level, lines }) => {
+    const f = forFribidi(text);
+    return reference.linesAsFribidi({ cps: f.cps, level, lines: lines.map(([a, b]) => [f.first[a], f.end[b - 1]]), drop: f.drop }).map((cps) => String.fromCodePoint(...cps));
+  });
 }
-/** A counter of the paragraphs withoutFribidiFault changed, and the text it gives. */
-function fribidiSafe() {
-  const n = { paragraphs: 0, marks: 0 };
-  const safe = (text) => { const g = withoutFribidiFault(text); if (g.left) { n.paragraphs++; n.marks += g.left; } return g.text; };
-  safe.said = () => `${n.paragraphs} paragraphs with a closing bracket right after a mark, laid out without ${n.marks} marks (FriBidi's fault, V6)`;
-  safe.n = n;
-  return safe;
+
+/** The reader's lines (`mine`, each { reader }) against FriBidi's (`theirs`), for the paragraphs `asked` (as fribidiLines
+ *  is asked): `same` the test's own equality. { differ: the lines that differ otherwise than by FriBidi's difference
+ *  from UAX #9; faults: the lines on which FriBidi differs from the tests' reference and the reader gives its line }. */
+function judged(asked, mine, theirs, same = (a, b) => a === b) {
+  const ref = referenceLines(asked).flat(), differ = [], faults = [];
+  assert.equal(ref.length, mine.length);
+  mine.forEach((m, i) => {
+    if (same(m.reader, theirs[i])) return;
+    const line = { ...m, fribidi: theirs[i], reference: ref[i] };
+    if (keptOf(theirs[i]) !== keptOf(ref[i]) && keptOf(m.reader) === keptOf(ref[i])) faults.push(line); else differ.push(line);
+  });
+  return { differ, faults };
 }
 
 /** A fixed sequence of pseudo-random whole numbers below k, from `seed` (mulberry32, in 32-bit integers: the linear
@@ -364,11 +437,11 @@ function recordViewLines(text, cols) {
 }
 
 test('W1, V7: wrapped paragraphs, each line whole as the record view writes it, equal GNU FriBidi\'s library (the paragraph\'s levels resolved once, then each line reordered): the fixtures\' lines at 10 to 80 columns, and 1,500 random paragraphs', { skip: hasLib ? false : `no ${PYTHON} that loads GNU FriBidi's library (libfribidi) here`, timeout: 600_000 }, (t) => {
-  const pars = [], safe = fribidiSafe();
-  for (const text of fixtureLines()) for (const cols of [10, 20, 30, 40, 60, 80]) pars.push({ text: safe(text), cols, what: 'fixture' });
+  const pars = [];
+  for (const text of fixtureLines()) for (const cols of [10, 20, 30, 40, 60, 80]) pars.push({ text, cols, what: 'fixture' });
   const rnd = randomOf(378), random = [...randomParagraphs(1500, 2611), ...FRIBIDI_FAULT_CASES];
   assert.equal(new Set(random).size, random.length, 'the random paragraphs are all different');
-  for (const text of random) pars.push({ text: safe(text), cols: 10 + rnd(71), what: 'random' });
+  for (const text of random) pars.push({ text, cols: 10 + rnd(71), what: 'random' });
   // each line whole, its whitespace at either end too: the screen lays a line of a paragraph out whole (V7, round 5)
   const asked = [], mine = [];
   for (const p of pars) {
@@ -382,11 +455,11 @@ test('W1, V7: wrapped paragraphs, each line whole as the record view writes it, 
   }
   const theirs = fribidiLines(asked).flat();
   assert.equal(theirs.length, mine.length);
-  const count = { fixture: [0, 0], random: [0, 0] }, differ = [];
-  mine.forEach((m, i) => { const ok = m.reader === theirs[i]; count[m.what][ok ? 0 : 1]++; if (!ok) differ.push({ ...m, fribidi: theirs[i] }); });
-  t.diagnostic(`fixtures: ${count.fixture[0] + count.fixture[1]} lines, ${count.fixture[0]} equal to FriBidi's, ${count.fixture[1]} differ; random paragraphs: ${count.random[0] + count.random[1]} lines, ${count.random[0]} equal, ${count.random[1]} differ; ${safe.said()}`);
-  assert.ok(safe.n.paragraphs >= FRIBIDI_FAULT_CASES.length, safe.said());
-  assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's`);
+  const count = { fixture: [0, 0], random: [0, 0] }, { differ, faults } = judged(asked, mine, theirs);
+  mine.forEach((m, i) => { count[m.what][m.reader === theirs[i] ? 0 : 1]++; });
+  t.diagnostic(`fixtures: ${count.fixture[0] + count.fixture[1]} lines, ${count.fixture[0]} equal to FriBidi's, ${count.fixture[1]} not; random paragraphs: ${count.random[0] + count.random[1]} lines, ${count.random[0]} equal, ${count.random[1]} not; of those not, ${faults.length} FriBidi's difference from UAX #9 (the reader's line the tests' reference's), ${differ.length} the reader's`);
+  assert.ok(faults.length > 0, 'FRIBIDI_FAULT_CASES met FriBidi\'s difference');
+  assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's and from the tests' reference`);
   // the population is not empty: 881 lines of the fixtures and 4,919 random ones when this was written
   assert.ok(count.fixture[0] + count.fixture[1] >= 800 && count.random[0] + count.random[1] >= 4000, JSON.stringify(count));
 });
@@ -398,7 +471,7 @@ test('W1, V7: wrapped paragraphs, each line whole as the record view writes it, 
 test('W2 (b): the same lines whole, their spaces at either end included (paragraphLine), equal GNU FriBidi\'s library: L1 gives the whitespace at each line\'s end the paragraph\'s level', { skip: hasLib ? false : `no ${PYTHON} that loads GNU FriBidi's library (libfribidi) here`, timeout: 600_000 }, async (t) => {
   const { paragraphLine } = await import('../src/text.mjs');
   assert.equal(typeof paragraphLine, 'function', 'text.mjs lays out a line of a paragraph (W1)');
-  const rnd = randomOf(379), safe = fribidiSafe(), pars = [...fixtureLines().map((text) => ({ text: safe(text), cols: 10 + rnd(71) })), ...randomParagraphs(1500, 2612).map((text) => ({ text: safe(text), cols: 10 + rnd(71) })), ...FRIBIDI_FAULT_CASES.map((text) => ({ text: safe(text), cols: 10 + rnd(71) }))];
+  const rnd = randomOf(379), pars = [...fixtureLines(), ...randomParagraphs(1500, 2612), ...FRIBIDI_FAULT_CASES].map((text) => ({ text, cols: 10 + rnd(71) }));
   const asked = [], mine = [];
   let ending = 0;
   for (const p of pars) {
@@ -408,10 +481,10 @@ test('W2 (b): the same lines whole, their spaces at either end included (paragra
   }
   const theirs = fribidiLines(asked).flat();
   assert.equal(theirs.length, mine.length);
-  const differ = mine.map((m, i) => ({ ...m, fribidi: theirs[i] })).filter((m) => m.reader !== m.fribidi);
-  t.diagnostic(`${mine.length} lines, ${ending} of them ending in a space: ${mine.length - differ.length} equal to FriBidi's, ${differ.length} differ; ${safe.said()}`);
-  assert.ok(safe.n.paragraphs >= FRIBIDI_FAULT_CASES.length, safe.said());
-  assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's`);
+  const { differ, faults } = judged(asked, mine, theirs);
+  t.diagnostic(`${mine.length} lines, ${ending} of them ending in a space: ${mine.length - differ.length - faults.length} equal to FriBidi's, ${faults.length} FriBidi's difference from UAX #9 (the reader's line the tests' reference's), ${differ.length} the reader's`);
+  assert.ok(faults.length > 0, 'FRIBIDI_FAULT_CASES met FriBidi\'s difference');
+  assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's and from the tests' reference`);
   // the population is not empty: 6,503 lines, 704 of them ending in a space, when this was written
   assert.ok(mine.length >= 4000 && ending >= 500, `${mine.length} lines, ${ending} ending in a space`);
 });
@@ -426,7 +499,7 @@ test('W2 (b): the same lines whole, their spaces at either end included (paragra
 // answers pin it. Either defect moves the characters around it, which this sees.
 test('V4: random paragraphs holding characters X9 removes (a soft hyphen, ZWSP, WJ), each line whole (paragraphLine): the rest of the line in the order of GNU FriBidi\'s library', { skip: hasLib ? false : `no ${PYTHON} that loads GNU FriBidi's library (libfribidi) here`, timeout: 600_000 }, async (t) => {
   const { paragraphLine } = await import('../src/text.mjs');
-  const rnd = randomOf(380), safe = fribidiSafe(), pars = [...randomParagraphs(1500, 2613, { bn: true }), ...FRIBIDI_FAULT_CASES].map((text) => ({ text: safe(text), cols: 10 + rnd(71) }));
+  const rnd = randomOf(380), pars = [...randomParagraphs(1500, 2613, { bn: true }), ...FRIBIDI_FAULT_CASES].map((text) => ({ text, cols: 10 + rnd(71) }));
   const BN = /[\u00ad\u200b\u2060]/, END = /\s[\u00ad\u200b\u2060]+$/;
   const asked = [], mine = [];
   let holding = 0, ending = 0;
@@ -443,11 +516,11 @@ test('V4: random paragraphs holding characters X9 removes (a soft hyphen, ZWSP, 
   const theirs = fribidiLines(asked).flat();
   assert.equal(theirs.length, mine.length);
   const removed = (s) => s.replace(/[\u00ad\u200b\u2060]/g, '');
-  const differ = mine.map((m, i) => ({ ...m, fribidi: theirs[i] })).filter((m) => removed(m.reader) !== removed(m.fribidi));
+  const { differ, faults } = judged(asked, mine, theirs, (a, b) => removed(a) === removed(b));
   const whole = mine.filter((m, i) => m.reader === theirs[i]).length;
-  t.diagnostic(`${mine.length} lines, ${holding} holding a character X9 removes, ${ending} ending in whitespace and one or more of them: ${mine.length - differ.length} equal to FriBidi's but for where those are (${whole} with them too), ${differ.length} differ; ${safe.said()}`);
-  assert.ok(safe.n.paragraphs >= FRIBIDI_FAULT_CASES.length, safe.said());
-  assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's`);
+  t.diagnostic(`${mine.length} lines, ${holding} holding a character X9 removes, ${ending} ending in whitespace and one or more of them: ${mine.length - differ.length - faults.length} equal to FriBidi's but for where those are (${whole} with them too), ${faults.length} FriBidi's difference from UAX #9 (the reader's line the tests' reference's), ${differ.length} the reader's`);
+  assert.ok(faults.length > 0, 'FRIBIDI_FAULT_CASES met FriBidi\'s difference');
+  assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's and from the tests' reference`);
   assert.ok(holding >= 1000 && ending >= 30, `${mine.length} lines, ${holding} holding one, ${ending} ending in whitespace and one`);
 });
 
@@ -472,10 +545,24 @@ test('V6: a closing bracket right after a nonspacing mark is paired (BD16), as U
   // the levels of the check's case: the brackets at 0, where FriBidi gives '(' 1
   const cps = [...'א (ב x|\u05b7) ג'].map((c) => c.codePointAt(0));
   assert.equal([...bidi.resolveLevels(cps, cps.map(bidi.classOf), 0)].join(' '), '1 0 0 1 0 0 0 0 0 0 1');
-  // what the FriBidi tests give FriBidi instead: the marks before a closing bracket left out, and only those
-  assert.deepEqual(withoutFribidiFault('א (ב x|\u05b7) ג'), { text: 'א (ב x|) ג', left: 1 });
-  assert.deepEqual(withoutFribidiFault('[ab\u05b7\u00ad\u05b7] \u05b7(x)\u05b7'), { text: '[ab\u00ad] \u05b7(x)\u05b7', left: 2 });
-  assert.deepEqual(withoutFribidiFault('שָׁלוֹם (abc)'), { text: 'שָׁלוֹם (abc)', left: 0 });
+  // the tests' own reference gives the same forms (Y3 (g), round 6: it judges the lines on which FriBidi differs)
+  for (const [par, level, want] of KNOWN) {
+    const cps = [...par].map((c) => c.codePointAt(0));
+    assert.equal(String.fromCodePoint(...reference.linesAsFribidi({ cps, level, lines: [[0, cps.length]] })[0]), want, `the tests' reference: ${JSON.stringify(par)} at ${level}`);
+  }
+});
+
+// Y3 (g), round 6: the paragraphs FriBidi's library lays out otherwise than UAX #9, whole, at their own direction: on
+// each, FriBidi's line differs from the tests' reference's, and the reader's is the reference's; so that judged() above
+// takes its path for FriBidi's difference on every run.
+test('Y3 (g): on each of the FriBidi tests\' fault cases, whole, GNU FriBidi\'s library differs from the tests\' reference of UAX #9, and the reader gives what the reference gives', { skip: hasLib ? false : `no ${PYTHON} that loads GNU FriBidi's library (libfribidi) here` }, () => {
+  const asked = FRIBIDI_FAULT_CASES.map((text) => ({ text, level: directionOf(text), lines: [[0, text.length]] }));
+  const theirs = fribidiLines(asked).flat(), ref = referenceLines(asked).flat();
+  asked.forEach(({ text, level }, i) => {
+    assert.notEqual(keptOf(theirs[i]), keptOf(ref[i]), `FriBidi differs from the reference: ${JSON.stringify(text)} at ${level}`);
+    assert.equal(paragraphLine(text, level, 0, text.length), ref[i], `the reader is the reference: ${JSON.stringify(text)} at ${level}`);
+  });
+  assert.equal(asked.length, 10);
 });
 
 // ---- V7 (round 5): a space at a line's end -----------------------------------------------------------------------------
