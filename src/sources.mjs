@@ -71,8 +71,9 @@ export class RootSource {
     return { rootShown: p.rootShown, state: p.state, projects: list, links: p.links };
   }
 
-  /** A project's sessions, as `ltms index` lists them, newest first. */
-  sessions(project) { return this.engine.index(project); }
+  /** A project's sessions, as `ltms index` lists them, newest first; `fresh`: read again, not answered from the list kept
+   *  (r, Y2). */
+  sessions(project, { fresh = false } = {}) { return this.engine.index(project, { fresh }); }
 
   /** One transcript of a project, read here. */
   open(project, file) { return { project, file, ...readTranscript(this.engine.sessionFile(project, file).abs, this.reading) }; }

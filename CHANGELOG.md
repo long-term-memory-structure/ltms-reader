@@ -13,7 +13,8 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   JSON on `j`); Search (`ltms search`, with what was searched and what was not); Open (`:` and an address, as ltms prints
   it). Every row starts with its address; the selected row's is on the last line.
 - The keys: ↑ ↓ PgUp PgDn Home End move, Enter or → opens, Esc or ← goes back, `/` searches, `:` opens an address,
-  `j` shows a record's JSON, `?` the keys, `q` or Ctrl-C quits.
+  `r` reads Projects or a project's Sessions again (the selection kept on its row), `j` shows a record's JSON, `?` the
+  keys, `q` or Ctrl-C quits.
 - The screen, with no library: raw mode, keypress events, the alternate screen, the cursor hidden, wrapping at the last
   column off, bracketed paste on (a paste is text, never keys); each frame drawn whole, each row erased first, again on
   a resize; from 20 x 5, the status line (the selected row's address, `? keys`, `q quits`) always the last line drawn;

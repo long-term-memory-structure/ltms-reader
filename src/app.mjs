@@ -3,7 +3,7 @@
 //
 // The state is a stack of views: the bottom one is Projects (a folder of projects) or the session (one transcript);
 // Enter pushes the row's view, Esc pops it. A search or an address pushes what it opens on top of where it was, so Esc
-// goes back there. Lists come from the source (src/sources.mjs): the projects at once, a project's sessions by ltms
+// goes back there. r reads the list on screen again, Projects or a project's Sessions (Y2, round 6). Lists come from the source (src/sources.mjs): the projects at once, a project's sessions by ltms
 // index and a search by ltms search, each while the screen says what is being read; a session is read in this process,
 // after a frame that says which file is being read.
 import { recordTooLarge } from './reading.mjs';
@@ -49,6 +49,13 @@ export function sessionRows(view) {
   });
   return rows;
 }
+
+/** The rows of a Sessions view: one per session `ltms index` lists (src/engine.mjs index), newest first. */
+export const sessionsRows = (d) => d.sessions.map((s) => ({ kind: 'session', p: s.p, first: s.first, last: s.last, turns: s.turns, calls: s.calls, failures: s.failures, compactions: Array.isArray(s.compactions) ? s.compactions.length : 0, agents: s.agents, file: s.file, firstPrompt: s.firstPrompt, lastReply: s.lastReply, copies: s.copies?.length ?? 0 }));
+
+/** Where the selection goes in a list read again: the row `same` finds, when there is one; else the place it was at,
+ *  within the list (Y2, round 6). */
+const keptAt = (rows, same, at) => { const i = rows.findIndex(same); return i >= 0 ? i : Math.max(0, Math.min(at, rows.length - 1)); };
 
 /** The rows of a turn view: its prompt, then its items in the order they were written; a call's result right after it. */
 export function turnRows(t) {
@@ -143,10 +150,35 @@ export class App {
     const v = this.push({ kind: 'sessions', project, data: null, rows: [], since: this.now() });
     let p;
     try { p = Promise.resolve(this.source.sessions(project)); } catch (e) { p = Promise.reject(e); }
-    this.track(p.then((d) => {
-      v.data = d;
-      v.rows = d.sessions.map((s) => ({ kind: 'session', p: s.p, first: s.first, last: s.last, turns: s.turns, calls: s.calls, failures: s.failures, compactions: Array.isArray(s.compactions) ? s.compactions.length : 0, agents: s.agents, file: s.file, firstPrompt: s.firstPrompt, lastReply: s.lastReply, copies: s.copies?.length ?? 0 }));
-    }, (e) => { v.error = message(e); }));
+    this.track(p.then((d) => { v.data = d; v.rows = sessionsRows(d); }, (e) => { v.error = message(e); }));
+  }
+
+  /**
+   * r (Y2, round 6, his F2: a list was read once, and a project whose files changed showed the list as it was read until
+   * the reader started again): the list on screen read again, Projects by the projects folder's walk, a project's
+   * Sessions by `ltms index` run afresh (a list kept from an earlier reading too), its view saying what is being read
+   * meanwhile, as when it was opened; the selection on the same row when it is still there (a project by its name, a
+   * session by its file), else at the place it was. On another view, or while a Sessions list is being read, a note.
+   */
+  reread(v) {
+    if (v.kind === 'projects') {
+      const name = v.rows[v.sel]?.name;
+      let data;
+      try { data = this.source.projects(); } catch (e) { Object.assign(v, { data: null, error: message(e), rootShown: this.source.rootShown, rows: [], sel: 0 }); return; }
+      const rows = data.projects.map((p) => ({ kind: 'project', ...p }));
+      Object.assign(v, { data, error: null, rows, sel: keptAt(rows, (x) => x.name === name, v.sel) });
+      return;
+    }
+    if (v.kind === 'sessions') {
+      if (!v.data && !v.error) { this.note(`the sessions of ${v.project} are being read`); return; }
+      const file = v.rows[v.sel]?.file, at = v.sel;
+      Object.assign(v, { data: null, error: null, rows: [], since: this.now() });
+      let p;
+      try { p = Promise.resolve(this.source.sessions(v.project, { fresh: true })); } catch (e) { p = Promise.reject(e); }
+      this.track(p.then((d) => { v.data = d; v.rows = sessionsRows(d); v.sel = keptAt(v.rows, (x) => x.file === file, at); }, (e) => { v.error = message(e); }));
+      return;
+    }
+    this.note('r reads a list again: Projects, or a project\'s Sessions');
   }
 
   /** The transcript, read in this process: the one read last when it is the same file, unchanged. */
@@ -278,6 +310,7 @@ export class App {
     else if (str === ':') this.state.input = { kind: 'address', text: '' };
     else if (str === '?') this.state.help = true;
     else if (str === 'j' && v.kind === 'record' && v.rec) { v.json = !v.json; v.top = 0; }
+    else if (str === 'r') this.reread(v);
     this.changed();
   }
 

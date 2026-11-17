@@ -16,7 +16,8 @@ export const USAGE = `usage: ltms-reader                      the projects under
 
 A full-screen reader of your Claude Code sessions, on this terminal's alternate screen: the projects, a project's
 sessions, a session's turns, a turn's tool calls, a record's text. Read-only, local, no network.
-Keys: arrows, PgUp PgDn, Home End move; Enter opens; Esc goes back; / searches; : opens an address; ? the keys; q quits.
+Keys: arrows, PgUp PgDn, Home End move; Enter opens; Esc goes back; / searches; : opens an address; r reads a list
+again (Projects, a project's Sessions); ? the keys; q quits.
 For lines to read or to pipe, ltms is the command (npx long-term-memory-structure).
 
 Right to left (Hebrew, Arabic): in every terminal the reader lays out each line itself, by the Unicode Bidirectional

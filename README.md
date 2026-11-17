@@ -56,6 +56,7 @@ screen too small for all of it, its first lines), and `q` still quits.
 | Esc or ← | go back |
 | `/` | search: type the words, Enter runs `ltms search` |
 | `:` | open an address |
+| `r` | in Projects and in a project's Sessions: read the list again, the selection kept on the same row while it is there |
 | `j` | in a record: its JSON, and back |
 | `?` | the keys |
 | `q` or Ctrl-C | quit |
@@ -177,7 +178,8 @@ pasted acts as a key.
 - A list of sessions waits for `ltms index` to read every transcript of the project (on one machine, 39 s for a project
   of 385 sessions), and a search for `ltms search`; the screen says what is being read and for how long. A list that
   took 3 s or more is kept: opened again after its files changed, it is shown as it was read, and says when that was
-  and how many files changed since; it is read again when `ltms-reader` starts again.
+  and how many files changed since; `r` reads it again (as it reads Projects again), and so does `ltms-reader` started
+  again.
 - Some clusters are drawn wider by some terminals than by the cluster rule (an Indic conjunct, an emoji sequence a
   terminal does not join); a row then ends early, at the screen's edge.
 - A paragraph's levels are resolved once, when a line of it is first drawn, and kept for the last two drawn of 4,096

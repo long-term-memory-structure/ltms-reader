@@ -9,7 +9,7 @@ import { App } from '../src/app.mjs';
 import { RootSource } from '../src/sources.mjs';
 import { width } from '../src/text.mjs';
 import { top } from '../src/views.mjs';
-import { KEY, keyboard, makeRoot, plainOf, withoutOverride } from './helpers.mjs';
+import { FX, KEY, keyboard, makeRoot, plainOf, withoutOverride } from './helpers.mjs';
 
 const CC = /[\u0000-\u001f\u007f-\u009f]/;
 function frameOf(app) {
@@ -370,7 +370,7 @@ test('R.F2: a project\'s sessions answered from the list kept after its files ch
     assert.equal(f[0], 'ltms-reader  Sessions  -work-demo');
     // its counts on the line under the title, the notice on a line of its own (N2: at first it led the counts' line)
     assert.match(f[1], /^2 sessions /, f[1]);
-    assert.match(f[2], /^this list was read at \d{4}-\d\d-\d\d \d\d:\d\d, and 1 file changed since: it is read again when ltms-reader starts again$/, f[2]);
+    assert.match(f[2], /^this list was read at \d{4}-\d\d-\d\d \d\d:\d\d, and 1 file changed since: r reads it again$/, f[2]);
   } finally { app.dispose(); source.dispose(); r.dispose(); }
 });
 
@@ -391,7 +391,7 @@ test('N2: a kept list at 80 and 100 columns: the counts and coverage whole on th
     const d = top(app.state).data, c = d.coverage.files;
     const counts = `${d.sessions.length} sessions  ${c.found} files found, ${c.read} read, ${c.failed} failed  ${(d.ms / 1000).toFixed(1)} s`;
     const at = new Date(d.changed.since).toISOString();
-    const notice = `this list was read at ${at.slice(0, 10)} ${at.slice(11, 16)}, and 1 file changed since: it is read again when ltms-reader starts again`;
+    const notice = `this list was read at ${at.slice(0, 10)} ${at.slice(11, 16)}, and 1 file changed since: r reads it again`;
     for (const cols of [80, 100, 120, 200]) {
       app.resize(cols, 24);
       const f = frameOf(app);
@@ -428,7 +428,7 @@ test('N2: with the notice above the list, a page is the rows in sight less one: 
     app.start(); await app.idle();
     await k.press(KEY.enter);
     let f = frameOf(app);
-    assert.equal(f[2], 'this list was read at 2026-11-16 05:43, and 1 file changed since: it is read', 'the notice, on two lines at 80 columns');
+    assert.equal(f[2], 'this list was read at 2026-11-16 05:43, and 1 file changed since: r reads it', 'the notice, on two lines at 80 columns');
     const first = f.findIndex((l) => l.startsWith('> s0000000'));
     const last = f.findIndex((l, i) => i > first && !/^ {2}s\d{7} /.test(l)) - 1;
     assert.ok(first > 0 && last > first, 'the list in sight');
@@ -647,4 +647,102 @@ test('W3: under 20 x 5, the size the reader needs, wrapped over the lines there 
     await k.press('q');
     assert.deepEqual(exits, [0], 'q quits at 20 x 2');
   } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
+// ---- Y2 (round 6, his F2, pick (a)): r reads the list on screen again ---------------------------------------------------
+// The lists were read once: a project whose files changed showed its sessions as they were read (saying when, and how
+// many files changed since: R.F2) until the reader started again. r reads Projects, or a project's Sessions, again (ltms
+// index afresh), and keeps the selection on its row while that row is there.
+test('Y2: r reads a project\'s Sessions again: a transcript added after the list was read is listed, the selection kept on its session; one removed is gone, the selection at its place; the list kept before r says so', async () => {
+  const { cpSync, rmSync } = await import('node:fs');
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const app = new App({ source, cols: 200, rows: 24, timeZone: 'UTC' });
+  const k = keyboard(app);
+  const dir = path.join(r.root, '-work-demo'), added = '55555555-5555-4555-8555-555555555555.jsonl';
+  try {
+    app.start(); await app.idle();
+    await k.press(KEY.enter);
+    assert.equal(frameOf(app)[0], 'ltms-reader  Sessions  -work-demo');
+    // as if that reading had taken a minute, as a large project's does: kept, not read again by itself (R.F2)
+    source.engine.indexCache.get(dir).value.ms = 60_000;
+    await k.press(KEY.escape);
+    cpSync(path.join(FX, 'unicode.jsonl'), path.join(dir, added));
+    await k.press(KEY.enter);
+    let v = top(app.state), f = frameOf(app);
+    assert.ok(!v.rows.some((x) => x.file === added), 'the list as it was read: the new transcript not in it');
+    assert.match(f[2], /changed since: r reads it again$/, f[2]);
+    await k.press(KEY.down);
+    const chosen = v.rows[v.sel].file;
+    assert.equal(v.rows.length, 2);
+    await k.press('r');
+    v = top(app.state); f = frameOf(app);
+    assert.deepEqual(v.rows.map((x) => x.file).sort(), [...['11111111-1111-4111-8111-111111111111.jsonl', '22222222-2222-4222-8222-222222222222.jsonl'], added].sort(), 'read again: the new transcript listed');
+    assert.equal(v.rows[v.sel].file, chosen, 'the selection on the same session');
+    assert.ok(f.some((l) => l.startsWith('  55555555 ')), `its row: ${JSON.stringify(f)}`);
+    assert.ok(f.some((l) => l.startsWith(`> ${v.rows[v.sel].p} `)), 'the selected row in sight');
+    assert.doesNotMatch(f[2], /changed since/, 'read now: no notice');
+    assert.match(f[1], /^3 sessions /, f[1]);
+    // the selected session's file removed: r, and the selection at the place it was
+    const at = v.sel;
+    rmSync(path.join(dir, chosen));
+    await k.press('r');
+    v = top(app.state);
+    assert.equal(v.rows.length, 2, 'the removed transcript is gone');
+    assert.ok(!v.rows.some((x) => x.file === chosen));
+    assert.equal(v.sel, Math.min(at, v.rows.length - 1), 'the selection at its place');
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
+test('Y2: r reads Projects again: a project folder made after the list was read is listed, the selection kept on its project; on another view r says what it reads; typed into a line, r is text', async () => {
+  const { cpSync, mkdirSync } = await import('node:fs');
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const app = new App({ source, cols: 80, rows: 24, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press(KEY.down);
+    let v = top(app.state);
+    assert.equal(v.rows[v.sel].name, '-work-other');
+    mkdirSync(path.join(r.root, '-work-new'));
+    cpSync(path.join(FX, 'demo.jsonl'), path.join(r.root, '-work-new', '66666666-6666-4666-8666-666666666666.jsonl'));
+    assert.deepEqual(v.rows.map((x) => x.name), ['-work-demo', '-work-other'], 'not listed before r');
+    await k.press('r');
+    v = top(app.state);
+    assert.deepEqual(v.rows.map((x) => x.name).sort(), ['-work-demo', '-work-new', '-work-other'], 'read again: the new project listed');
+    assert.equal(v.rows[v.sel].name, '-work-other', 'the selection on the same project');
+    let f = frameOf(app);
+    assert.ok(f.some((l) => l.startsWith('> -work-other ')), `the selected row: ${JSON.stringify(f)}`);
+    assert.match(f[1], /^3 project folders/, f[1]);
+    // on a session's view: a note, nothing read
+    await k.press(KEY.enter); await k.press(KEY.enter);
+    assert.equal(top(app.state).kind, 'session');
+    const rows = top(app.state).rows;
+    await k.press('r');
+    assert.equal(top(app.state).rows, rows, 'the session not read again');
+    f = frameOf(app);
+    assert.match(f[23], /^r reads a list again: Projects, or a project's Sessions/, f[23]);
+    // typed into the search line, r is a letter of the words
+    await k.press('/'); await k.press('rr');
+    assert.equal(app.state.input.text, 'rr');
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
+test('Y2: the keys screen, --help and the README list r', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { KEYS } = await import('../src/views.mjs');
+  const { USAGE } = await import('../src/start.mjs');
+  assert.deepEqual(KEYS.find(([key]) => key === 'r'), ['r', 'in Projects and in a project\'s Sessions: read the list again, the selection kept on its row']);
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const app = new App({ source, cols: 120, rows: 30, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press('?');
+    assert.ok(frameOf(app).some((l) => /^ {2}r {17}in Projects and in a project's Sessions: read the list again, the selection kept on its row$/.test(l)), JSON.stringify(frameOf(app)));
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+  assert.match(USAGE.replace(/\s+/g, ' '), /: opens an address; r reads a list again \(Projects, a project's Sessions\); \? the keys; q quits\./);
+  assert.match(readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'README.md'), 'utf8'), /^\| `r` \| in Projects and in a project's Sessions: read the list again, the selection kept on the same row while it is there \|$/m);
 });

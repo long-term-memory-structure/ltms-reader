@@ -228,7 +228,7 @@ export const WHOLE_FROM = 80;
 export function sessionsHead(state, v, cols, rows) {
   const d = v.data, c = d.coverage?.files ?? {};
   const counts = `${plural(d.sessions.length, 'session', 'sessions')}  ${num(c.found)} files found, ${num(c.read)} read, ${num(c.failed)} failed${c.notConversation ? `, ${num(c.notConversation)} with no conversation` : ''}${d.copies?.files ? `; ${plural(d.copies.files, 'identical copy', 'identical copies')} folded` : ''}  ${((d.ms ?? 0) / 1000).toFixed(1)} s`;
-  const notice = d.changed ? `this list was read at ${when(new Date(d.changed.since).toISOString(), state.timeZone)}, and ${plural(d.changed.count, 'file', 'files')} changed since: it is read again when ltms-reader starts again` : null;
+  const notice = d.changed ? `this list was read at ${when(new Date(d.changed.since).toISOString(), state.timeZone)}, and ${plural(d.changed.count, 'file', 'files')} changed since: r reads it again` : null;
   const lines = (text, style, whole) => (whole ? paragraph(text, cols, style).map((l) => [l]) : [line(text, cols, style)]);
   const of = (whole) => [...lines(counts, 'dim', whole), ...(notice ? lines(notice, null, whole) : [])];
   const whole = cols >= WHOLE_FROM ? of(true) : null;
@@ -478,6 +478,7 @@ export const KEYS = [
   ['Esc or Left', 'go back'],
   ['/', 'search: the turns that hold every word, by ltms search, in this project (in every project from Projects)'],
   [':', 'open an address as ltms prints it: <prefix>:L<line> (a record) or <prefix>:T<turn> (a turn)'],
+  ['r', 'in Projects and in a project\'s Sessions: read the list again, the selection kept on its row'],
   ['j', 'in a record: its JSON, and back'],
   ['?', 'these keys'],
   ['q or Ctrl-C', 'quit'],
