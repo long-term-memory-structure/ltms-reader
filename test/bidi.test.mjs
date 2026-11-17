@@ -531,13 +531,23 @@ test('V7: a space at a break stays at the end of the line it follows (hanging pa
   // said a message's was drawn where its line had room)
   assert.deepEqual(messageWritten('שלום עולם ומלואו', 10), [['שלום עולם', 'םלוע םולש'], ['ומלואו', 'ואולמו']]);
   assert.deepEqual(recordWritten('שלום עולם ומלואו', 10), [['שלום עולם ', ' םלוע םולש'], ['ומלואו', 'ואולמו']]);
+  // a message that ends in whitespace at a break ends with its last word: no empty line after it, which the screen drew
+  // as a blank row (Y3 (d), round 6: the empty word after the whitespace that hung made one)
+  assert.deepEqual(lines('abc ', 3), ['abc']);
+  assert.deepEqual(lines('abc def  ', 3), ['abc', 'def']);
+  assert.deepEqual(lines('שלום עולם \u3000 ', 9), ['שלום עולם']);
+  assert.deepEqual(lines('abc\u3000 ', 3), ['abc']);
+  assert.deepEqual(lines('abc ', 4), ['abc '], 'a space that fits ends its line');
+  assert.deepEqual(lines('', 3), [''], 'an empty message: one empty line');
+  assert.deepEqual(lines('   ', 1), [''], 'a message of spaces only: one empty line');
 });
 
 test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80, no line of a record\'s text but its first begins with whitespace, none is wider than the columns but a cluster wider than them alone, and between two lines there is only whitespace (what hangs); a message\'s lines likewise', (t) => {
   // and texts whose words begin with other spaces after a space: an em space, an ideographic space (UAX #14 breaks after
-  // the space; the ones after it hang too, as CSS has a line's other space separators); and the last two, a word that
-  // ends in such a space before two spaces (Y3 (b), round 6), which a narrow message cuts by columns
-  const others = ['abc \u3000def ghi jkl', 'אבג \u2003\u2003דהו זחט', 'one \u205f two \u1680three', 'שלום \u2009\u200aעולם ומלואו', 'abcdef  \u3000g h', 'ab\u3000  x y', 'אבגד\u2003  ה ו'];
+  // the space; the ones after it hang too, as CSS has a line's other space separators); two whose word ends in such a
+  // space before two spaces, which a narrow message cuts by columns (Y3 (b), round 6); three that end in whitespace,
+  // which a message breaks at, and gives no empty line after (Y3 (d))
+  const others = ['abc \u3000def ghi jkl', 'אבג \u2003\u2003דהו זחט', 'one \u205f two \u1680three', 'שלום \u2009\u200aעולם ומלואו', 'abcdef  \u3000g h', 'ab\u3000  x y', 'אבגד\u2003  ה ו', 'abc def ', 'one two three  ', '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd \u3000 '];
   const rnd = randomOf(381), texts = [...fixtureLines(), ...randomParagraphs(1000, 2614), ...randomParagraphs(500, 2615, { bn: true }), '   ', ' a', 'a   ', '\u3000\u3000\u3000', 'a \u3000 b', ...others];
   let lines = 0, hung = 0, messages = 0;
   for (const text of texts) {
@@ -558,12 +568,15 @@ test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80
       }
       const end = text.slice(spans[spans.length - 1][1]);
       assert.ok(end === '' || BLANK.test(end), `${JSON.stringify(text)} at ${cols}: after the last line: ${JSON.stringify(end)}`);
-      // a message: wordSpans breaks at spaces; no line but its first begins with whitespace, every line within the columns
-      for (const [i, [a, b]] of wordSpans(text, cols).entries()) {
+      // a message: wordSpans breaks at spaces; no line but its first begins with whitespace, every line within the columns,
+      // none empty but a message's only line (Y3 (d), round 6)
+      const ms = wordSpans(text, cols);
+      for (const [i, [a, b]] of ms.entries()) {
         messages++;
         const line = text.slice(a, b), first = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)][0]?.segment ?? '';
         assert.ok(i === 0 ? !line.startsWith(' ') : !BLANK.test(first), `message ${JSON.stringify(text)} at ${cols}: line ${i}, ${JSON.stringify(line)}`);
         assert.ok(width(line) <= cols || [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)].length === 1, `message ${JSON.stringify(text)} at ${cols}: ${JSON.stringify(line)} is ${width(line)} wide`);
+        assert.ok(line !== '' || ms.length === 1, `message ${JSON.stringify(text)} at ${cols}: line ${i} of ${ms.length} is empty`);
       }
     }
   }

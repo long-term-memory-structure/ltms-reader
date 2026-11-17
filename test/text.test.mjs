@@ -367,9 +367,10 @@ test('R4: walking the clusters of 160,000 units of Hebrew, pointed and plain, ta
 
 // ---- W1 (S378, round 4): the reader's own words wrapped, each line with its place in its paragraph ---------------------
 // A line a view wraps is laid out from its paragraph's levels (src/text.mjs paragraphLine): wrapWords gives the lines,
-// wordSpans where each begins and ends in the paragraph. The lines are those round 3's wrapWords gave.
+// wordSpans where each begins and ends in the paragraph. The lines are those round 3's wrapWords gave, but the empty
+// line it gave after a paragraph that ends in spaces at a break (Y3 (d), round 6: drawn as a blank row).
 test('W1: wordSpans: where each line of wrapWords begins and ends; each line is that slice, at widths from 1 to 40', () => {
-  // wrapWords as round 3 wrote it, here as the reference
+  // wrapWords as round 3 wrote it, here as the reference, its empty last line after a break left out
   const before = (s, cols) => {
     const out = [];
     let line = '';
@@ -381,7 +382,7 @@ test('W1: wordSpans: where each line of wrapWords begins and ends; each line is 
       line = pieces.pop();
       for (const piece of pieces) out.push(piece);
     }
-    out.push(line);
+    if (line !== '' || !out.length) out.push(line);
     return out;
   };
   const texts = ['', ' ', 'a', 'a b', ' a  b ', 'abcdefgh ij', 'one two three four five six seven', 'x'.repeat(30), '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd  abc', '\u6f22\u5b57 \u6f22\u5b57\u6f22\u5b57 a', 'a\u0301 b\u0301c  d', '  lead and trail  ', 'w\ud83d\udc4d\ud83c\udffd x'];

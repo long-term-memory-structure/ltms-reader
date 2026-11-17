@@ -116,9 +116,10 @@ pasted acts as a key.
   left. A record's text is cut into lines by columns: the whitespace where a line breaks stays at the end of the line
   before, as UAX #14 has it, drawn there where the line has room for it, and past the screen's edge, not drawn, where
   it does not. A message is broken at its spaces, and the space where a line breaks hangs, as UAX #14 has the
-  whitespace at a break: it is in no line, and is not drawn, though the line has room for it. Either way no line but a
-  paragraph's first begins with whitespace. A long line of a list is cut in logical order, its beginning kept, then
-  laid out by itself, the spaces at its ends (a cell's padding) where they are.
+  whitespace at a break: it is in no line, and is not drawn, though the line has room for it; whitespace that ends a
+  message after a break hangs too, and makes no line of its own. Either way no line but a paragraph's first begins with
+  whitespace. A long line of a list is cut in logical order, its beginning kept, then laid out by itself, the spaces at
+  its ends (a cell's padding) where they are.
   A path or a URL in a line (`/home/...`, `~/...`, `src/...`, `https://...`) is laid out as one left-to-right unit, its
   parts in order and a Hebrew name in it reading right (UAX #9's higher-level protocol HL4), in pieces where a line
   breaks inside it, as an isolate is. Each cluster is kept whole, its marks after its letter, as a terminal draws them;

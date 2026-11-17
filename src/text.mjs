@@ -235,7 +235,10 @@ export function wordSpans(s, cols) {
     for (const [c, d] of pieces) out.push([at + c, at + d]);
     line = word.slice(x, y); from = at + x; open = y === word.length;
   }
-  out.push([from, from + line.length]);
+  // a paragraph that ends in whitespace at a break ends with its last word: what is left after the break hangs, and
+  // makes no empty line (Y3 (d), round 6: it made one, drawn as a blank row); an empty s, or one of spaces only, is one
+  // empty line
+  if (line !== '' || !out.length) out.push([from, from + line.length]);
   return out;
 }
 
