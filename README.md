@@ -3,8 +3,10 @@
 A full-screen reader of your own Claude Code sessions, in the terminal: the projects, a project's sessions, a
 session's turns, a turn's prompt, replies and tool calls, and the text behind every address. Read-only, local, no
 network. It is built on [ltms](https://github.com/long-term-memory-structure/long-term-memory-structure)
-(`long-term-memory-structure`), its one dependency: the lists it draws are the lines `ltms index`, `ltms search` and
-`ltms skeleton` print, so an address on its screen is one an agent can be given as it is.
+(`long-term-memory-structure`), its one dependency: the sessions, turns, calls and hits it
+lists are the ones `ltms index`, `ltms search` and `ltms skeleton` print, with their addresses and counts, so an
+address on its screen is one an agent can be given as it is. Beside them it shows the transcript's own text: a
+prompt's first line, a call's input, and a channel's or a tool's name where ltms prints `(withheld)`, made visible.
 
 ## Run it
 
@@ -29,19 +31,21 @@ installing `ltms-reader` does not put `ltms` on the PATH, `npm install -g long-t
 |---|---|---|
 | Projects | each project folder, with the count of transcripts `ltms index` reads in it, newest first | ltms's walk of the folder |
 | Sessions | one per session, newest first: when it started, its turns, calls, failed calls, compactions, agents | `ltms index` |
-| A session | its turns: the channel, the prompt's first line, calls, failed calls; each compaction a row of its own, with its summary's address | the library, as `ltms skeleton` |
+| A session | its turns: the channel (the transcript's own word, made visible, where `ltms skeleton` prints `(withheld)`), the prompt's first line, calls, failed calls; each compaction a row of its own, with its summary's address | the library, as `ltms skeleton` |
 | A turn | its prompt, replies, tool calls (ok, or failed and the error class `ltms skeleton` gives), results, the harness's own notes, each with its address | the library, as `ltms skeleton` |
 | A record | its text, a page at a time, part by part (text, thinking, a tool call's input, a result); its address, kind, time, length and place in the file; `j` shows it as JSON | the transcript's line |
-| Search | a query, then the matching turns by session, with what was searched and what was not; Enter opens the turn at its first match | `ltms search` |
-| Open | `:` and an address, as ltms prints it: `<prefix>:L<line>` opens that record (above the turn that holds it), `<prefix>:T<turn>` that turn | the address rule |
+| Search | a query, then the matching turns by session, with what was searched and what was not (one line, which a narrow screen cuts: at 80 columns, before what was not searched); Enter opens the turn at its first match's row, or at its first row where that match is a thinking block, which a turn's view has no row for | `ltms search` |
+| Open | `:` and an address, as ltms prints it: `<prefix>:L<line>` opens that record (above the turn that lists it as a row; a record no turn lists, as a thinking block, above its session), `<prefix>:T<turn>` that turn | the address rule |
 
-A row's address is always on screen, at the start of the row, and the selected row's on the last line: a session's
+A row's address is at the start of the row (Search's lines of coverage and of more turns have none), whole where the row
+is wide enough for it (at 20 columns an agent's is cut with …), and the selected row's is on the last line: a session's
 prefix (the first 8 characters of its file's name; `agent-` and 8 for an agent's), a turn's id (`1a2b3c4d:T003`), a
 record's line (`1a2b3c4d:L120`). Search covers the project on screen, or every project from Projects. An agent's
 transcript is opened by its address, or from a search.
 
-It draws from 20 columns and 5 rows. The last line is always the status line (the selected row's address, `? keys`,
-`q quits`), or a message in its place: on a screen too low for every line, the line of details above it gives way
+It draws from 20 columns and 5 rows. The last line is always the status line (the selected row's address, then `? keys`
+and `q quits` as far as they fit: `q quits` is cut on a screen narrower than the address and 18 columns more), or a
+message in its place: on a screen too low for every line, the line of details above it gives way
 first, then a list's column headings. Under 20 x 5 it says the size it needs, wrapped over the lines it has (on a
 screen too small for all of it, its first lines), and `q` still quits.
 
@@ -63,18 +67,19 @@ screen too small for all of it, its first lines), and `q` still quits.
 
 While a line is typed: Backspace, Ctrl-U to clear it, Enter, Esc to leave it. A paste is text (the reader turns on
 the terminal's bracketed paste): pasted into a line, its new lines become spaces and do not run it; elsewhere, nothing
-pasted acts as a key.
+pasted acts as a key. A Ctrl-C character in a paste is the one exception: it quits, in a line too.
 
 ## Your transcripts, and who sees them
 
 - **It shows their text**, prompts, replies, tool inputs and outputs included, to you, on this terminal's alternate
   screen. Nothing it shows is written to stdout, a pipe or a log, and nothing stays on the screen when it quits. (ltms
-  itself prints no content of a transcript; this reader is for the person whose transcripts they are.)
+  itself prints no text of a transcript but a call's tool name and a word taken from its input, `grep` or `README`
+  say; this reader is for the person whose transcripts they are.)
 - **It writes no file and uses no network.** It reads the transcripts under the folder it is given, and runs ltms's
   commands (`index`, `search`, `skeleton`) as local processes, which read the same files and write only to the reader.
   Run through `npx`, npm writes files of its own: a log of each run under `~/.npm/_logs`, which names the folder or file
-  given, and a compile cache under `$TMPDIR`; installed (`npm install -g ltms-reader`, then `ltms-reader`), it runs
-  without npm, and without them.
+  given (npm 12.2.2 writes a UUID in a path as `***`, a transcript's name among them), and a compile cache under
+  `$TMPDIR`; installed (`npm install -g ltms-reader`, then `ltms-reader`), it runs without npm, and without them.
 - An error inside it, in the screen's process or in the command's own, is printed after the terminal is restored, by
   its kind and where in this package it happened, not by its message, which could quote a transcript.
 
@@ -82,8 +87,11 @@ pasted acts as a key.
 
 - **Control characters are shown, never sent.** A transcript can hold escape sequences (colours, cursor moves, a
   window's title, OSC 52, which writes the clipboard). Every C0 and C1 control character and DEL is shown as a visible
-  escape: ESC as `␛`, the others as `\x07`, `\x9b` and so on; tabs become spaces and new lines become lines. Nothing a
-  transcript holds can move the cursor, set the title, write the clipboard or leave the terminal in another mode.
+  escape: ESC as `␛`, the others as `\x07`, `\x9b` and so on; in a text, tabs become spaces and new lines become
+  lines, and in a name (a tool's, a channel's) they are shown as `\t` and `\n`; a tool's input is shown as JSON, with
+  JSON's escapes. Nothing a transcript holds can move the cursor, set the title, write the clipboard or leave the
+  terminal in another mode. A path, `CLAUDE_CONFIG_DIR` or an option it refuses before the screen opens is written the
+  same way.
 - **So is what reorders or hides text:** the bidirectional embeddings, overrides and isolates (U+202A to U+202E, U+2066
   to U+2069), the byte order mark (U+FEFF), the line and paragraph separators (U+2028, U+2029) and the tag characters
   (U+E0000 to U+E007F), as `\u202e`, `\u{e0041}` and so on: an override in a transcript cannot reorder the rest of its
@@ -97,7 +105,8 @@ pasted acts as a key.
   begins the line all the same). What UAX #14 takes as part of the character before it (LB9: its class CM, the marks
   and LRM, RLM, ALM and ZWNJ among it, and ZWJ) is read so: between a Hebrew letter and its hyphen, after the hyphen,
   and on the line it goes to. The figure space (U+2007) is such a no-break space, not a space that hangs at a
-  break: a line begins with it only where UAX #14 breaks before it, after a space. The wide characters come from a
+  break: a line begins with it where UAX #14 breaks before it, after a space, and, as with the others, where moving it
+  would leave a line empty or the next too wide. The wide characters come from a
   table generated from Unicode's `EastAsianWidth.txt`, version 17.0.0 (`src/width-table.mjs`, which names the file's
   sha256; `scripts/width-table.mjs` writes it). Characters of ambiguous width take one column.
 - **Right to left** (Hebrew, Arabic): one layout for every terminal. The reader lays out each line itself (mode
@@ -153,7 +162,8 @@ pasted acts as a key.
 - A transcript is read into memory whole, in the reader's own process. One over a tenth of Node's memory limit is
   refused with its size and that limit (the size rounded up, the limit down, so that the two differ) and the
   `NODE_OPTIONS=--max-old-space-size=...` that would let it be read (the rule ltms's commands follow, so the lists and
-  the reader agree on which files can be read); one over 480 MB cannot be read at all.
+  the reader agree on which files can be read while Node's memory limit is the same for both: the reader runs ltms's
+  commands without its own `NODE_OPTIONS` or flags); one over 480 MB cannot be read at all.
   Node's memory limit is its heap's, or, where `--max-old-space-size` or `--max-old-space-size-percentage` sets the old
   space (in `NODE_OPTIONS` or on node's command line), the old space's: a transcript's parse is kept there, and the
   heap's limit holds beside it a reserve for new objects that is sized from the machine's memory, not from the old space
@@ -230,29 +240,30 @@ npm test
 
 `npm test` runs `node --test test/*.test.mjs`, the pattern expanded by the shell, which runs the test files on Node 20,
 22, 24 and 26 alike. Given the folder `test/` instead, Node 20 runs every module under it as a test, the fixtures too,
-and Node 22 and 24 run none: they take the folder for a module, and fail.
-The whole suite was run on four Node lines on 2026-11-17, with no failure on any: Node 26.13.1, 434 tests, 434
-passed (GNU FriBidi 1.0.18 there, its command and its library); Node 24.22.3, 22.23.3 and 20.20.2 in docker (the
-images node:24-slim, node:22-slim and node:20-slim), 434 tests each, 427 passed and 7 skipped, as there is no GNU
-FriBidi and no Electron in them. Each with the pinned Unicode files named (`LTMS_READER_UCD`, `LTMS_READER_EAW`). So
-it was under `NODE_OPTIONS=--max-old-space-size=100` and `=500` too, on each line: no test reads the environment's
-`NODE_OPTIONS` where it means none, and the test of a turn of 33,000 calls reads it in a process of its own.
-The tests run every view at 80 x 24 and 200 x 60 over ltms's own synthetic transcripts (`test/fixtures/ltms`) and the
-reader's (`test/fixtures/hebrew-english.jsonl`, `escapes.jsonl` and `channels.jsonl`, written by
-`node test/fixtures/make-fixtures.mjs`), compare what each row says with ltms's own commands, read every byte the
-reader writes for a transcript full of escape sequences, and run it end to end in a pseudo-terminal (`script`, on
-Linux). `LTMS_READER_FIXTURES=<folder>` adds every `.jsonl` under a folder to the views' test (the core's own
-`test/fixtures`, say). The width table's regeneration is checked when `LTMS_READER_EAW` names the pinned
-`EastAsianWidth.txt`; the bidirectional table's regeneration, and Unicode's conformance test of the algorithm
-(`test/bidi.test.mjs`, which reports how many cases passed and failed), when `LTMS_READER_UCD` names a folder holding
-the pinned files (`scripts/bidi-table.mjs` names each with its sha256); GNU FriBidi's layout of the right-to-left page
-and fixtures is compared with the reader's where `fribidi` is on the PATH (or `LTMS_READER_FRIBIDI` names it); and each
-line of paragraphs wrapped into lines (the fixtures', and random ones) with its library's, where `python3` can load
-`libfribidi` (`test/fribidi-lines.py`; `LTMS_READER_LIBFRIBIDI` names the library, `LTMS_READER_PYTHON` the Python).
-GNU FriBidi 1.0.18 lays some paragraphs out otherwise than UAX #9 (brackets next to a nonspacing mark): a line on which
-the reader and FriBidi's library differ is laid out by the tests' own reference of UAX #9 too (`test/uba-reference.mjs`,
-checked on `BidiCharacterTest.txt`, every case, and on `BidiTest.txt` when the folder holds it), and counts as
-FriBidi's difference, said and not failed, where FriBidi differs from the reference and the reader does not:
+and Node 22 and 24 run none: they take the folder for a module, and fail. The whole suite was run on four Node lines on
+2026-11-17, with no failure on any: Node 26.13.1, 434 tests, 434 passed (GNU FriBidi 1.0.18 there, its command and its
+library); Node 24.22.3, 22.23.3 and 20.20.2 in docker (the images node:24-slim, node:22-slim and node:20-slim), 434
+tests each, 427 passed and 7 skipped, as there is no GNU FriBidi and no Electron in them. Each with the pinned Unicode
+files named (`LTMS_READER_UCD`, `LTMS_READER_EAW`). So it was under `NODE_OPTIONS=--max-old-space-size=100` and `=500`
+too, on each line: no test reads the environment's `NODE_OPTIONS` where it means none, and the test of a turn of 33,000
+calls reads it in a process of its own. The tests run the session, turn and record views (as text and as JSON) at 80 x
+24 and 200 x 60 over ltms's own synthetic transcripts (`test/fixtures/ltms`) and the reader's
+(`test/fixtures/hebrew-english.jsonl`, `escapes.jsonl` and `channels.jsonl`, written by `node
+test/fixtures/make-fixtures.mjs`), Projects and Sessions at both sizes and Search at 80 x 24, compare what each row says
+with ltms's own commands, read every byte the reader writes for a transcript full of escape sequences, and run it end to
+end in a pseudo-terminal (`script`, on Linux). `LTMS_READER_FIXTURES=<folder>` adds every `.jsonl` under a folder to the
+views' test (the core's own `test/fixtures`, say). The width table's regeneration is checked when `LTMS_READER_EAW`
+names the pinned `EastAsianWidth.txt`; the bidirectional table's regeneration, and Unicode's conformance test of the
+algorithm (`test/bidi.test.mjs`, which reports how many cases passed and failed), when `LTMS_READER_UCD` names a folder
+holding the pinned files (`scripts/bidi-table.mjs` names each with its sha256); GNU FriBidi's layout of the
+right-to-left page and fixtures is compared with the reader's where `fribidi` is on the PATH (or `LTMS_READER_FRIBIDI`
+names it); and each line of paragraphs wrapped into lines (the fixtures', and random ones) with its library's, where
+`python3` can load `libfribidi` (`test/fribidi-lines.py`; `LTMS_READER_LIBFRIBIDI` names the library,
+`LTMS_READER_PYTHON` the Python). GNU FriBidi 1.0.18 lays some paragraphs out otherwise than UAX #9 (brackets next to a
+nonspacing mark): a line on which the reader and FriBidi's library differ is laid out by the tests' own reference of
+UAX #9 too (`test/uba-reference.mjs`, checked on `BidiCharacterTest.txt`, every case, and on `BidiTest.txt` when the
+folder holds it), and counts as FriBidi's difference, said and not failed, where FriBidi differs from the reference and
+the reader does not:
 
 ```sh
 curl -sS --fail -o EastAsianWidth.txt https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt
