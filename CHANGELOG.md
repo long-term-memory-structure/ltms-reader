@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (2026-11-17)
+## 0.1.0 (2026-11-18)
 
 The first version: a full-screen terminal reader of Claude Code transcripts, on ltms 0.3 (`long-term-memory-structure`
 `^0.3.0`, its one runtime dependency).
