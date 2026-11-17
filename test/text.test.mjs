@@ -247,6 +247,14 @@ test('V3: a segment\'s whitespace at either end is taken in whole clusters: a ma
   assert.equal([...SEG2.segment('\u0600 ')].length, 1);
   assert.equal(displayOrder([{ text: prep, style: null, dir: 1 }], 'terminal')[0].text, `${prep}\u200f`);
   assert.equal(displayOrder([{ text: prep, style: null, dir: 1 }], 'reader')[0].text, '\u0600 \u05dd\u05d5\u05dc\u05e9');
+  // and past U+FFFF (Y3 (b), round 6): the space after U+111C2, a Prepend character written as a surrogate pair, is in
+  // its cluster, which the edge's look-up reads from the whole code point before it (round 5's check planted a read of
+  // its last code unit only, 'v3-no-pair', and every test passed): the RLM after that space in "terminal", the space
+  // drawn with its cluster in "reader"; U+2003 after it, a cluster of its own, is the edge
+  const astral = '\u05e9\u05dc\u05d5\u05dd\u{111c2} \u2003';
+  assert.deepEqual([...SEG2.segment(astral)].map((x) => x.segment).slice(-2), ['\u{111c2} ', '\u2003']);
+  assert.equal(displayOrder([{ text: astral, style: null, dir: 1 }], 'terminal')[0].text, '\u05e9\u05dc\u05d5\u05dd\u{111c2} \u200f\u2003');
+  assert.equal(displayOrder([{ text: astral, style: null, dir: 1 }], 'reader')[0].text, '\u{111c2} \u05dd\u05d5\u05dc\u05e9\u2003');
   // the edges as they were where no cluster crosses them: the cell's padding in place
   assert.equal(displayOrder([{ text: ` ${olam}  `, style: null, dir: 1 }], 'reader')[0].text, ` \u05dd\u05dc\u05d5\u05e2  `);
   assert.equal(displayOrder([{ text: ` ${olam}  `, style: null, dir: 1 }], 'terminal')[0].text, ` ${olam}\u200f  `);
@@ -441,7 +449,7 @@ test('V7: in "terminal", a line of a paragraph takes its paragraph\'s direction,
 // character X9 removed ending the whitespace at a line's end, so that L1 left it at its resolved level (202 lines: an em
 // space moved across an Arabic word before U+2060). No paragraph of the tests held one. These forms are GNU FriBidi's
 // library's too (test/fribidi-lines.py, its paragraph's levels resolved once, then the line reordered), checked when
-// this was written: the same nine lines.
+// this was written: the same nine lines; and the tenth, added in round 6 (Y3 (b)), when it was.
 const BN_CASES = [
   // [paragraph, its level, [line start, line end], the line in visual order]: a removed character inside a run of the
   // other direction stays inside it ('removed-at-p')
@@ -455,8 +463,12 @@ const BN_CASES = [
   ['abc مرحبا\u2003\u2060ملف def', 0, [0, 11], 'abc ابحرم\u2003\u2060'],
   ['abc مرحبا\u2003\u2060ملف def', 0, [11, 18], 'فلم def'],
   ['abc \u2060def', 1, [5, 8], 'def'],
+  // a removed character that begins a line: no item before it in the line, so the paragraph's level, here 1, the
+  // right-to-left run's end (Y3 (b), round 6: round 5's check planted level 0, 'v4-removed-first-at-0', which drew the
+  // soft hyphen at the line's left, and every test passed; FriBidi's library gives the same line as the reader)
+  ['\u05d0\u05d1\u05d2\u00ad\u05d3\u05d4\u05d5', 1, [3, 7], '\u05d5\u05d4\u05d3\u00ad'],
 ];
-test('V4: a character X9 removes (a soft hyphen, ZWSP, WJ) is drawn at the level of the item before it in its line, never at the paragraph\'s; and it does not end the whitespace at a line\'s end (L1): a line of a paragraph, a line the screen writes, a cell', () => {
+test('V4: a character X9 removes (a soft hyphen, ZWSP, WJ) is drawn at the level of the item before it in its line (beginning the line, at the paragraph\'s), never at the paragraph\'s otherwise; and it does not end the whitespace at a line\'s end (L1): a line of a paragraph, a line the screen writes, a cell', () => {
   for (const [par, level, [a, b], want] of BN_CASES) {
     assert.equal(paragraphLine(par, level, a, b), want, `${JSON.stringify(par)} [${a}, ${b})`);
     // the line as the screen writes it: a line of its paragraph (par, at), its direction given
@@ -464,7 +476,7 @@ test('V4: a character X9 removes (a soft hyphen, ZWSP, WJ) is drawn at the level
     // a whole paragraph, as a cell is (a paragraph of its own)
     if (a === 0 && b === par.length) assert.equal(visualLine(par, level), want, `a cell: ${JSON.stringify(par)}`);
   }
-  assert.equal(BN_CASES.length, 9);
+  assert.equal(BN_CASES.length, 10);
 });
 
 // L1 (UAX #9): on each line, the whitespace at its end (and before a segment separator) takes the paragraph's level. A

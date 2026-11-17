@@ -520,12 +520,18 @@ test('V7: a space at a break stays at the end of the line it follows (hanging pa
   assert.deepEqual(lines('abc \u3000def ghi', 6), ['abc', 'def', 'ghi']);
   assert.deepEqual(lines('abcdef  \u3000g h', 6), ['abcdef', 'g h']);
   assert.deepEqual(lines('abc \u3000def', 20), ['abc \u3000def'], 'inside a line, as they are');
+  // a word cut by columns whose last piece ends in whitespace that hangs, then more spaces: the next word begins a line
+  // of its own (Y3 (b), round 6: round 5's check planted 'v7-msg-open', a line that hanging whitespace ended taking the
+  // next word, which made 'ab' and U+3000 a line of 4 columns at 3, and every test passed)
+  assert.deepEqual(lines('ab\u3000  x', 3), ['ab', 'x']);
+  assert.deepEqual(lines('אבגד\u2003  ה ו', 4), ['אבגד', 'ה ו']);
 });
 
 test('V7: over the fixtures\' lines and random paragraphs at widths from 1 to 80, no line of a record\'s text but its first begins with whitespace, none is wider than the columns but a cluster wider than them alone, and between two lines there is only whitespace (what hangs); a message\'s lines likewise', (t) => {
   // and texts whose words begin with other spaces after a space: an em space, an ideographic space (UAX #14 breaks after
-  // the space; the ones after it hang too, as CSS has a line's other space separators)
-  const others = ['abc \u3000def ghi jkl', 'אבג \u2003\u2003דהו זחט', 'one \u205f two \u1680three', 'שלום \u2009\u200aעולם ומלואו', 'abcdef  \u3000g h'];
+  // the space; the ones after it hang too, as CSS has a line's other space separators); and the last two, a word that
+  // ends in such a space before two spaces (Y3 (b), round 6), which a narrow message cuts by columns
+  const others = ['abc \u3000def ghi jkl', 'אבג \u2003\u2003דהו זחט', 'one \u205f two \u1680three', 'שלום \u2009\u200aעולם ומלואו', 'abcdef  \u3000g h', 'ab\u3000  x y', 'אבגד\u2003  ה ו'];
   const rnd = randomOf(381), texts = [...fixtureLines(), ...randomParagraphs(1000, 2614), ...randomParagraphs(500, 2615, { bn: true }), '   ', ' a', 'a   ', '\u3000\u3000\u3000', 'a \u3000 b', ...others];
   let lines = 0, hung = 0, messages = 0;
   for (const text of texts) {
