@@ -148,6 +148,37 @@ test('Z1: the memory limit the size rules read: the heap limit, or the old space
   assert.match(tooLarge(2 * MiB, at({ execArgv: ['--max-old-space-size=16'] })), /^it is 2 MB, and this process reads a transcript of up to 2 MB .* NODE_OPTIONS=--max-old-space-size=256 npx ltms-reader$/);
 });
 
+// R8c (round 8): Node reads NODE_OPTIONS as its ParseNodeOptionsEnvVar does, a double-quoted stretch part of a word, and
+// applies a --max-old-space-size quoted, whole or in part (measured, round 8's probe quoteflags.sh, on Node 20.20.2,
+// 22.23.3, 24.22.3 and 26.13.1: quoted whole, its value quoted, a part of its name quoted, quoted with underscores, each
+// gave the heap limit the flag unquoted gives, 64, 64, 208 and 112 MB at 16; of two quoted, the last given; a quoted 16
+// then a plain 64, the 64's). memoryLimit reads the words so (nodeOptionWords), but no test pinned it: read as a word
+// with its quotes kept, the flag was not one, the heap limit was read instead (208 MB on Node 24), and there R.F14's
+// transcript was read and ran the old space out (round 7's check: its mutant z1-words-no-quote passed the whole suite).
+test('R8c: a --max-old-space-size quoted in NODE_OPTIONS, which Node applies, is read as Node reads it: quoted whole, its value quoted, a part of its name quoted', async () => {
+  const { memoryLimit } = await import('../src/reading.mjs');
+  const at = (o) => memoryLimit({ heap: 208 * MiB, execArgv: [], nodeOptions: '', memory: 3072 * MiB, ...o });
+  assert.equal(at({ nodeOptions: '"--max-old-space-size=16"' }), 16 * MiB, 'quoted whole');
+  assert.equal(at({ nodeOptions: '--max-old-space-size="16"' }), 16 * MiB, 'its value quoted');
+  assert.equal(at({ nodeOptions: '--max-old-"space"-size=16' }), 16 * MiB, 'a part of its name quoted');
+  assert.equal(at({ nodeOptions: '"--max_old_space_size=16"' }), 16 * MiB, 'quoted, with underscores');
+  assert.equal(at({ nodeOptions: '"--max-old-space-size=16" --no-warnings' }), 16 * MiB, 'quoted, another flag after it');
+  assert.equal(at({ nodeOptions: '"--max-old-space-size=64" "--max-old-space-size=16"' }), 16 * MiB, 'of two quoted, the last given');
+  assert.equal(at({ heap: 256 * MiB, nodeOptions: '"--max-old-space-size=16" --max-old-space-size=64' }), 64 * MiB, 'a quoted 16, then a plain 64: the 64 (measured: the heap limit of 64)');
+});
+
+test('R8c: under NODE_OPTIONS="--max-old-space-size=16" quoted whole, a transcript of 4 MB is refused, in a process of its own, on every Node line (read as no flag, it was read by a tenth of the heap limit: 6.4 MB on Node 20 and 22, 20.8 on 24, 11.2 on 26)', { timeout: 120_000 }, () => {
+  const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-quoted-'));
+  try {
+    bigTranscript(path.join(own, 'big4.jsonl'), 4 * MB);
+    const r = spawnSync(process.execPath, [path.join(OWN, 'frame-once.mjs'), 'big4.jsonl'], { cwd: own, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: own, CLAUDE_CONFIG_DIR: own, TZ: 'UTC', LTMS_COLS: '400', LTMS_ROWS: '12', LTMS_KEYS: '[]', NODE_OPTIONS: '"--max-old-space-size=16"' }, timeout: 100_000 });
+    assert.equal(r.status, 0, `status ${r.status}, signal ${r.signal}: ${r.stderr.slice(-600)}`);
+    const lines = JSON.parse(r.stdout.trim().split('\n').pop()).map((l) => l.trimEnd());
+    assert.equal(lines[1], 'this transcript could not be read', JSON.stringify(lines.slice(0, 4)));
+    assert.match(lines.slice(2).join(' '), /is not read: it is 5 MB, and this process reads a transcript of up to /);
+  } finally { rmSync(own, { recursive: true, force: true }); }
+});
+
 test('Z1: under an old space of 16 MB, transcripts of 10 and 4 MB are refused, on every Node line: by a tenth of the heap\'s limit Node 24 and 26 read both, and the first ran their old space out, and Node 20 and 22 read the second', { timeout: 120_000 }, () => {
   const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-old-'));
   try {
