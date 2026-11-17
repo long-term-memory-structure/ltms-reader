@@ -95,20 +95,33 @@ export const PARSE_PER_BYTE = 8;
  *  that holds one character outside Latin-1 takes two bytes a character, so up to 12; this is that with a margin. */
 export const RECORD_VIEW_PER_BYTE = 16;
 
-/** What a record's view needs beside the JSON it writes (N3), measured: over six records nested deep (lists 200 to 990
- *  deep, one of Hebrew strings), the view opened, its text and its JSON laid out, at an old space of 9 to 24 MB more
- *  than that JSON (recordViewBytes) on Node 26, and of 18 to 73 MB more on Node 20; Node's heap limit, which this rule
- *  read then, is the old space and 96 MB more on Node 26, 48 on Node 20. At the heap where each failed, on both, the rule
- *  refuses it; and so it does reading the old space set (memoryLimit, Z1), the smaller. */
-export const BUILT_MARGIN = 96 * MB;
+/** What writing a record's JSON takes in the old space, for each byte of that JSON (`built`, view.mjs recordViewBytes),
+ *  the JSON itself included (R8a, round 8). Measured (round 8's probe oldneed.mjs: the least --max-old-space-size at
+ *  which the reader, run as the tests run it, opened a record and laid out its JSON, with the size rules set aside), less
+ *  what the reader needs for a record of no size (BUILT_MARGIN's measure), over the JSON: for lists nested 200 to 990 deep
+ *  of 10,000 to 1,000,000 numbers, Latin or Hebrew strings, in files of up to 2.4 MB, up to 1.04 times on Node 22.23.3,
+ *  24.22.3 and 26.13.1 (13 records each), and up to 1.41 on Node 20.20.2 (19 records; a list nested 600 deep of 60,000
+ *  Hebrew strings, 212 MB of JSON, opened from an old space of 306 MB there, from 222 to 224 on the others). */
+export const BUILT_PER_BYTE = 1.5;
+/** What a record's view needs beside what writing its JSON takes and the transcript's parse, in the old space (R8a,
+ *  round 8): the reader's own, measured as the least old space at which it opened the smallest record (R.F1's shape, a
+ *  line of 11 KB) and laid out its JSON: 7 MB on Node 20.20.2 and 22.23.3, 8 on 26.13.1, 9 on 24.22.3. With these, the
+ *  rule refuses at every old space at which a measured record's view ran out (130 records over the four lines: text of
+ *  11 KB to 16 MB, lists nested deep, a list of a million numbers, objects of 100,000 and 200,000 keys), and shows the
+ *  smallest from an old space of 14 MB. N3 (S377) had 96 MB here, measured against Node's heap limit, which holds the
+ *  young generation's reserve beside the old space; since Z1 (round 7) the rule reads the old space set, and with 96 MB
+ *  it refused every record under an old space below about 107 MB (round 7's check: records of 11 KB and 513 KB at 32 and
+ *  64 MB, on Node 20, 24 and 26). */
+export const BUILT_MARGIN = 12 * MB;
 
 /**
  * Why the record written on a line of `bytes` bytes, in a transcript of `fileSize` bytes, is not shown here (with the
  * NODE_OPTIONS that would let it be, before `again`, the command that was run), or null when it is shown: its view, at
  * RECORD_VIEW_PER_BYTE times its size, must fit beside the transcript's parse, at PARSE_PER_BYTE times the file's size,
- * in nine tenths of the heap limit (R.F1: a record a transcript's size allowed ran Node's heap out, and the abort left
- * the terminal raw); and so must the JSON the view writes of it, `built` bytes (view.mjs recordViewBytes), and
- * BUILT_MARGIN (N3: a record nested deep, its line small, wrote JSON hundreds of times its size, and ran the heap out).
+ * in nine tenths of the memory limit (R.F1: a record a transcript's size allowed ran Node's heap out, and the abort left
+ * the terminal raw); and so must what writing the JSON the view writes of it takes, BUILT_PER_BYTE times its `built`
+ * bytes (view.mjs recordViewBytes), and BUILT_MARGIN (N3: a record nested deep, its line small, wrote JSON hundreds of
+ * times its size, and ran the heap out).
  */
 export function recordTooLarge(bytes, fileSize, heapLimit = memoryLimit(), again = 'npx ltms-reader', built = 0) {
   const room = 0.9 * heapLimit - PARSE_PER_BYTE * fileSize;
@@ -116,9 +129,10 @@ export function recordTooLarge(bytes, fileSize, heapLimit = memoryLimit(), again
   const size = (n, round) => (n < MB ? `${round(n / 1024).toLocaleString('en-US')} KB` : `${round(n / MB).toLocaleString('en-US')} MB`);
   // the setting at which both fit: its old space alone (Node's limit is that and more), and a tenth of it for the transcript
   const need = (view) => Math.ceil(Math.max(10 * fileSize, (PARSE_PER_BYTE * fileSize + view) / 0.9) / MB / 256) * 256;
-  const view = Math.max(RECORD_VIEW_PER_BYTE * bytes, built > 0 ? built + BUILT_MARGIN : 0);
+  const writing = built > 0 ? BUILT_PER_BYTE * built + BUILT_MARGIN : 0;
+  const view = Math.max(RECORD_VIEW_PER_BYTE * bytes, writing);
   if (bytes > limit) return `it is ${size(bytes, Math.ceil)}, and in a transcript of ${size(fileSize, Math.ceil)} this process shows a record of up to ${size(limit, Math.floor)} (its view takes up to ${RECORD_VIEW_PER_BYTE} times a record's size, the transcript's parse up to ${PARSE_PER_BYTE} times the file's, both within nine tenths of the memory limit). To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need(view)} ${again}`;
-  if (built > 0 && built + BUILT_MARGIN > room) return `it is ${size(bytes, Math.ceil)}, and its view would write ${size(built, Math.ceil)} of JSON (indented, as JSON is, once more at each level a value is nested in), which with what the view needs beside it (${size(BUILT_MARGIN, Math.ceil)}) does not fit beside the transcript's parse in nine tenths of the memory limit. To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need(view)} ${again}`;
+  if (built > 0 && writing > room) return `it is ${size(bytes, Math.ceil)}, and its view would write ${size(built, Math.ceil)} of JSON (indented, as JSON is, once more at each level a value is nested in), which takes up to ${BUILT_PER_BYTE} times that to write, and with what the view needs beside it (${size(BUILT_MARGIN, Math.ceil)}) does not fit beside the transcript's parse in nine tenths of the memory limit. To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=${need(view)} ${again}`;
   return null;
 }
 

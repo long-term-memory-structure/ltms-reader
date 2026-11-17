@@ -157,11 +157,14 @@ pasted acts as a key.
   (with `--max-old-space-size=16`, measured: a heap limit of 64 MB on Node 20 and 22, 208 MB on Node 24, 112 MB on Node
   26). By the heap's limit, under an old space of 16 MB, Node 24 read a transcript of 12 MB and ran out of memory.
 - A record is shown when its view (up to 16 times the record's size) fits beside the transcript's (up to 8 times the
-  file's) in nine tenths of Node's memory limit, and so does the JSON the view writes of it, with 96 MB beside it: JSON
-  is indented once more at each level a value is nested in, so that a record nested deep writes JSON hundreds of times
-  its size (a list nested 990 deep, on a line of 0.8 MB: 381 MB). That JSON is measured by walking the record, before
-  any of it is written. A record that does not fit is refused before it is drawn, with its size and the `NODE_OPTIONS`
-  that would show it. Its lines are laid out a page at a time.
+  file's) in nine tenths of Node's memory limit, and so does what writing the JSON the view writes of it takes, with
+  12 MB beside it, the reader's own: JSON is indented once more at each level a value is nested in, so that a record
+  nested deep writes JSON hundreds of times its size (a list nested 990 deep, on a line of 0.8 MB: 381 MB). That JSON is
+  measured by walking the record, before any of it is written, and writing it is taken to need 1.5 times its size.
+  Both were measured against the old space, on Node 20, 22, 24 and 26: the reader alone needed 7 to 9 MB, and writing
+  a list nested deep up to 1.04 times its JSON on Node 22, 24 and 26 and up to 1.41 times on Node 20. A record that does
+  not fit is refused before it is drawn, with its size and the `NODE_OPTIONS` that would show it. Its lines are laid out
+  a page at a time.
 - The screen runs in a process of its own, which the command waits for. If that process ends without restoring the
   terminal (Node's memory running out aborts it), the command restores it, then prints what Node said and what happened.
   An error in the command's own process (a module loaded through `NODE_OPTIONS` or `--import` that throws, say) ends the

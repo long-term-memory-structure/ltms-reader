@@ -4,6 +4,7 @@
 // by columns; its JSON), at widths from the narrowest the reader draws. A record too large for the record view beside
 // its transcript (src/reading.mjs recordTooLarge) is refused before anything of it is laid out, with its size and the
 // NODE_OPTIONS that would show it, the command given whole; at the setting it names, it is shown.
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -15,7 +16,7 @@ import { FileSource } from '../src/sources.mjs';
 import { againOf } from '../src/start.mjs';
 import { directionOf, expandTabs, fit, lineSpans, visible } from '../src/text.mjs';
 import { RecordLines, recordLines, top } from '../src/views.mjs';
-import { KEY, deepRecord, keyboard, plainOf, sameLines } from './helpers.mjs';
+import { KEY, OWN, deepRecord, keyboard, plainOf, sameLines } from './helpers.mjs';
 
 /** The lines as the record view made them whole before (44b868f's recordLines, cutting where lineSpans cuts: since V7,
  *  round 5, a space at a break hangs at the end of the line before, in no line); each line of a text with its text
@@ -239,8 +240,9 @@ test('N3: a record nested 990 deep, its line small, its JSON large: refused befo
         return { v, lines: plainOf(app.lines()).map((l) => l.trimEnd()) };
       } finally { app.dispose(); source.dispose(); }
     };
-    // a heap limit of 160 MB for the rule: the line (about 42 KB) passes 16 times its size; its JSON does not fit
-    const { v, lines } = await open(160 * MB);
+    // a memory limit of 96 MB for the rule: the line (about 42 KB) passes 16 times its size; what writing its JSON (60 MB)
+    // takes does not fit (R8a, round 8: 1.5 times the JSON, and 12 MB beside it; with 96 MB beside the JSON, 160 MB refused it)
+    const { v, lines } = await open(96 * MB);
     assert.equal(v.kind, 'record');
     assert.ok(v.rec === null, `nothing of the record was laid out: ${lines[1]}`);
     const said = lines.slice(2, lines.indexOf('', 2)).map((l) => l.trim()).join(' ');
@@ -295,9 +297,10 @@ test("N3: the checker's record (a list nested 990 deep, 400,000 ones): its view'
     assert.deepEqual(V.jsonSize(t.records[2].toolUseResult, 2), { units: 796_770_118, wide: false });
     assert.ok(796_770_118 > V.STRING_MAX_UNITS);
     assert.equal(V.recordViewBytes(t, 3), 399_389_570);
-    // Node's heap limit at --max-old-space-size=256 is 352 MB (measured)
-    const why = recordTooLarge(t.positions[2].bytes, Buffer.byteLength(text), 352 * MB, 'npx ltms-reader deep.jsonl', V.recordViewBytes(t, 3));
-    assert.equal(why, "it is 784 KB, and its view would write 381 MB of JSON (indented, as JSON is, once more at each level a value is nested in), which with what the view needs beside it (96 MB) does not fit beside the transcript's parse in nine tenths of the memory limit. To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=768 npx ltms-reader deep.jsonl");
+    // at --max-old-space-size=256 the rule reads 256 MB, the old space set (Z1, round 7; Node's heap limit there is 352 MB
+    // on Node 26, measured, which the rule read before)
+    const why = recordTooLarge(t.positions[2].bytes, Buffer.byteLength(text), 256 * MB, 'npx ltms-reader deep.jsonl', V.recordViewBytes(t, 3));
+    assert.equal(why, "it is 784 KB, and its view would write 381 MB of JSON (indented, as JSON is, once more at each level a value is nested in), which takes up to 1.5 times that to write, and with what the view needs beside it (12 MB) does not fit beside the transcript's parse in nine tenths of the memory limit. To show it, give Node more memory: NODE_OPTIONS=--max-old-space-size=768 npx ltms-reader deep.jsonl");
     assert.equal(recordTooLarge(t.positions[2].bytes, Buffer.byteLength(text), 768 * MB, 'x', V.recordViewBytes(t, 3)), null, 'shown at the setting named');
   } finally { rmSync(own, { recursive: true, force: true }); }
 });
@@ -318,4 +321,163 @@ test('N3, Node 20: a part whose JSON would pass the limit on a string\'s length 
     assert.ok(!asked.includes(r.toolUseResult), 'the structured part (796,770,118 units at indent 2) was not handed to JSON.stringify');
     assert.deepEqual(parts.find((p) => p.kind === 'structured'), { kind: 'structured', label: 'tool result, structured', text: '(too large to write out)', more: 0 });
   } finally { rmSync(own, { recursive: true, force: true }); }
+});
+
+// ---- R8a (round 8): a record under a small old space --------------------------------------------------------------------
+// Z1 (round 7) had the record rule read the old space set (memoryLimit) instead of Node's heap limit, but the rule's
+// margin for what a view needs beside the JSON it writes, BUILT_MARGIN, 96 MB, was measured against the heap limit, which
+// holds the young generation's reserve too: under an old space below about 107 MB every record was refused (round 7's
+// check, z1record.mjs: at --max-old-space-size=32 and 64, records of 11 KB and 513 KB that 6ca57c5 showed, on Node 20, 24
+// and 26). The probe made a test: R.F1's transcript shape opened as R.F1's tests open it (Enter on the turn, down twice to
+// the result, Enter), then j, in a process of its own under that old space (test/fixtures/frame-once.mjs).
+/** R.F1's transcript shape as the check's probe wrote it: a typed prompt, a Bash call, and its result, `units` times
+ *  "alef bet gimel space" (7 bytes each in the file), on line 3. */
+function resultRecord(file, units) {
+  const base = { isSidechain: false, userType: 'external', cwd: '/work/r', sessionId: 'oooooooo-0000-4000-8000-000000000000', version: '2.0.0', gitBranch: 'main', entrypoint: 'cli' };
+  const u = (n) => `oo000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const big = 'אבג '.repeat(units);
+  const recs = [
+    { ...base, parentUuid: null, type: 'user', message: { role: 'user', content: 'OOM-T1 read the big file' }, uuid: u(1), timestamp: '2026-03-01T10:00:00.000Z', promptSource: 'typed' },
+    { ...base, parentUuid: u(1), type: 'assistant', message: { id: 'msg_o1', type: 'message', role: 'assistant', model: 'm', content: [{ type: 'tool_use', id: 'toolu_o1', name: 'Bash', input: { command: 'cat big.txt' } }], stop_reason: 'tool_use', usage: { input_tokens: 1, output_tokens: 1 } }, requestId: 'req_o1', uuid: u(2), timestamp: '2026-03-01T10:00:01.000Z' },
+    { ...base, parentUuid: u(2), type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_o1', content: big, is_error: false }] }, uuid: u(3), timestamp: '2026-03-01T10:00:02.000Z' },
+  ];
+  writeFileSync(file, recs.map((r) => JSON.stringify(r)).join('\n') + '\n');
+}
+
+/** The screen's lines after the record on line 3 is opened and j pressed, in a process of its own under an old space of
+ *  `old` MB (no NODE_OPTIONS from this process's environment); the exit status and signal with them. */
+function openUnder(own, file, old) {
+  const keys = [KEY.enter, KEY.down, KEY.down, KEY.enter, 'j'];
+  const r = spawnSync(process.execPath, [`--max-old-space-size=${old}`, path.join(OWN, 'frame-once.mjs'), file], { cwd: own, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: own, CLAUDE_CONFIG_DIR: own, TZ: 'UTC', LTMS_COLS: '200', LTMS_ROWS: '20', LTMS_KEYS: JSON.stringify(keys) }, timeout: 100_000, maxBuffer: 64 * MB });
+  let lines = null;
+  try { lines = JSON.parse(r.stdout.trim().split('\n').pop()).map((l) => l.trimEnd()); } catch {}
+  return { status: r.status, signal: r.signal, lines, err: (r.stderr ?? '').slice(-600) };
+}
+
+test('R8a: under an old space of 32 and 64 MB, a record of 11 KB and one of 513 KB are shown, as JSON too (the rule read the old space with a margin measured against the heap limit, and refused them); a record whose view would run that old space out is still refused, and the reader goes on', { timeout: 200_000 }, () => {
+  const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-old-record-'));
+  try {
+    const file = path.join(own, 'oooooooo-0000-4000-8000-000000000000.jsonl');
+    for (const [units, bytes] of [[1_498, '10,919'], [74_898, '524,719']]) {
+      resultRecord(file, units);
+      for (const old of [32, 64]) {
+        const at = `${bytes} bytes at an old space of ${old} MB`, r = openUnder(own, file, old);
+        assert.equal(r.status, 0, `${at}: status ${r.status}, signal ${r.signal}: ${r.err}`);
+        assert.ok(r.lines, `${at}: the screen's lines`);
+        assert.match(r.lines[0], /^ltms-reader {2}Record oooooooo:L3 {2}/, `${at}: ${JSON.stringify(r.lines.slice(0, 4))}`);
+        assert.match(r.lines[1], new RegExp(`^lines 1 to \\d+ of [\\d,]+ {2}as JSON {2}.* ${bytes} bytes at offset `), `${at}: ${JSON.stringify(r.lines.slice(0, 4))}`);
+      }
+    }
+    // a list nested 990 deep holding 10,000 ones: a line of 22 KB whose view writes 31 MB of JSON; with the size rules set
+    // aside, its view ran out an old space of up to 42 MB on Node 20.20.2, 38 on 22.23.3, 39 on 24.22.3 and 26.13.1 (round
+    // 8's probe oldneed.mjs)
+    const deep = path.join(own, 'dddddddd-0000-4000-8000-000000000000.jsonl');
+    deepRecord(deep, 990, 10_000);
+    const r = openUnder(own, deep, 32);
+    assert.equal(r.status, 0, `the deep record at 32 MB: status ${r.status}, signal ${r.signal}: ${r.err}`);
+    assert.equal(r.lines?.[1], 'this record is not shown', JSON.stringify(r.lines?.slice(0, 4)));
+    assert.match(r.lines.slice(2).join(' '), /dddddddd:L3 is not shown: it is 22 KB, and its view would write 32 MB of JSON /);
+  } finally { rmSync(own, { recursive: true, force: true }); }
+});
+
+// The rule set from that measure (R8a): src/reading.mjs BUILT_PER_BYTE and BUILT_MARGIN. Round 8's probe oldneed.mjs found,
+// for each record, the least old space at which the reader opened it and laid out its JSON with the size rules set
+// aside, run as these tests run it, on Node 20.20.2, 22.23.3 and 24.22.3 (docker, node:<line>-slim) and 26.13.1; and
+// the greatest at which its view ran the old space out (a run above the least that died counts). Of its 130 records, here
+// are the 70 whose line R.F1's rule alone would show at the old space they died at, so that what decides there is what
+// writing their JSON takes, and the margin beside it. Each row: the Node line, the record (R.F1's shape and its size of
+// Hebrew text; or a list nested deep, its depth, its leaves, and their kind when not 1, with their length), the file's
+// bytes, the record's line's bytes, what its view writes (view.mjs recordViewBytes), the greatest old space (MB) it died
+// at, and the least it opened at.
+const MEASURED = [
+  [20, 'deep-100x300000-hebrew9', 6002146, 6000666, 199864956, 205, 206],
+  [22, 'deep-100x300000-hebrew9', 6002146, 6000666, 199864956, 212, 213],
+  [24, 'deep-100x300000-hebrew9', 6002146, 6000666, 199864956, 216, 217],
+  [26, 'deep-100x300000-hebrew9', 6002146, 6000666, 199864956, 215, 216],
+  [20, 'deep-200x1000000', 2002346, 2000866, 613124378, 679, 680],
+  [22, 'deep-200x1000000', 2002346, 2000866, 613124378, 599, 600],
+  [24, 'deep-200x1000000', 2002346, 2000866, 613124378, 601, 602],
+  [26, 'deep-200x1000000', 2002346, 2000866, 613124378, 600, 601],
+  [20, 'deep-300x100000-hebrew9', 2002546, 2001066, 187152556, 199, 198],
+  [22, 'deep-300x100000-hebrew9', 2002546, 2001066, 187152556, 190, 191],
+  [24, 'deep-300x100000-hebrew9', 2002546, 2001066, 187152556, 192, 193],
+  [26, 'deep-300x100000-hebrew9', 2002546, 2001066, 187152556, 192, 193],
+  [20, 'deep-300x50000', 102546, 101066, 45926278, 57, 58],
+  [22, 'deep-300x50000', 102546, 101066, 45926278, 51, 52],
+  [24, 'deep-300x50000', 102546, 101066, 45926278, 52, 53],
+  [26, 'deep-300x50000', 102546, 101066, 45926278, 52, 53],
+  [20, 'deep-500x100000-hebrew9', 2002946, 2001466, 308120156, 311, 312],
+  [20, 'deep-500x400000', 802946, 801466, 605960078, 610, 597],
+  [22, 'deep-500x400000', 802946, 801466, 605960078, 588, 589],
+  [24, 'deep-500x400000', 802946, 801466, 605960078, 589, 590],
+  [26, 'deep-500x400000', 802946, 801466, 605960078, 588, 589],
+  [20, 'deep-600x120000-hebrew9', 2403146, 2401666, 442103956, 443, 444],
+  [20, 'deep-600x20000-hebrew9', 403146, 401666, 75503956, 90, 91],
+  [22, 'deep-600x20000-hebrew9', 403146, 401666, 75503956, 80, 81],
+  [24, 'deep-600x20000-hebrew9', 403146, 401666, 75503956, 81, 82],
+  [26, 'deep-600x20000-hebrew9', 403146, 401666, 75503956, 81, 82],
+  [20, 'deep-600x200000', 403146, 401666, 363691978, 361, 362],
+  [20, 'deep-600x60000-hebrew4', 663146, 661666, 220943956, 252, 244],
+  [20, 'deep-600x60000-hebrew9', 1203146, 1201666, 222143956, 305, 306],
+  [22, 'deep-600x60000-hebrew9', 1203146, 1201666, 222143956, 221, 222],
+  [24, 'deep-600x60000-hebrew9', 1203146, 1201666, 222143956, 222, 223],
+  [26, 'deep-600x60000-hebrew9', 1203146, 1201666, 222143956, 223, 224],
+  [20, 'deep-600x60000-latin11', 843146, 841666, 111311978, 121, 119],
+  [22, 'deep-600x60000-latin11', 843146, 841666, 111311978, 115, 116],
+  [24, 'deep-600x60000-latin11', 843146, 841666, 111311978, 116, 117],
+  [26, 'deep-600x60000-latin11', 843146, 841666, 111311978, 116, 117],
+  [20, 'deep-600x90000-hebrew9', 1803146, 1801666, 332123956, 335, 336],
+  [20, 'deep-700x60000-hebrew9', 1203346, 1201866, 258927756, 275, 276],
+  [20, 'deep-900x150000', 303746, 302266, 409397678, 404, 405],
+  [22, 'deep-900x150000', 303746, 302266, 409397678, 398, 399],
+  [24, 'deep-900x150000', 303746, 302266, 409397678, 399, 400],
+  [26, 'deep-900x150000', 303746, 302266, 409397678, 398, 399],
+  [20, 'deep-990x10000', 23926, 22446, 32789688, 42, 43],
+  [22, 'deep-990x10000', 23926, 22446, 32789688, 38, 39],
+  [24, 'deep-990x10000', 23926, 22446, 32789688, 39, 40],
+  [26, 'deep-990x10000', 23926, 22446, 32789688, 39, 40],
+  [20, 'deep-990x100000', 203926, 202446, 301259688, 300, 301],
+  [22, 'deep-990x100000', 203926, 202446, 301259688, 295, 296],
+  [24, 'deep-990x100000', 203926, 202446, 301259688, 296, 297],
+  [26, 'deep-990x100000', 203926, 202446, 301259688, 296, 297],
+  [20, 'deep-990x20000-hebrew9', 403926, 402446, 126039376, 133, 131],
+  [22, 'deep-990x20000-hebrew9', 403926, 402446, 126039376, 128, 129],
+  [24, 'deep-990x20000-hebrew9', 403926, 402446, 126039376, 129, 130],
+  [26, 'deep-990x20000-hebrew9', 403926, 402446, 126039376, 129, 130],
+  [20, 'deep-990x30000', 63926, 62446, 92449688, 96, 97],
+  [22, 'deep-990x30000', 63926, 62446, 92449688, 95, 96],
+  [24, 'deep-990x30000', 63926, 62446, 92449688, 96, 97],
+  [26, 'deep-990x30000', 63926, 62446, 92449688, 96, 97],
+  [20, 'deep-990x400000', 803926, 802446, 399389570, 423, 410],
+  [22, 'deep-990x400000', 803926, 802446, 399389570, 391, 392],
+  [24, 'deep-990x400000', 803926, 802446, 399389570, 391, 392],
+  [26, 'deep-990x400000', 803926, 802446, 399389570, 391, 392],
+  [20, 'rf1-0.01MB', 11869, 10919, 13014, 6, 7],
+  [22, 'rf1-0.01MB', 11869, 10919, 13014, 6, 7],
+  [24, 'rf1-0.01MB', 11869, 10919, 13014, 8, 9],
+  [26, 'rf1-0.01MB', 11869, 10919, 13014, 7, 8],
+  [20, 'rf1-0.1MB', 106243, 105293, 120870, 6, 7],
+  [22, 'rf1-0.1MB', 106243, 105293, 120870, 7, 8],
+  [24, 'rf1-0.1MB', 106243, 105293, 120870, 8, 9],
+  [26, 'rf1-0.1MB', 106243, 105293, 120870, 7, 8],
+];
+
+test('R8a: the record rule refuses each record at every old space its view was measured to run out at, on Node 20, 22, 24 and 26 (70 records where what writing the JSON takes decides), and shows the smallest from an old space of 14 MB', async () => {
+  const { BUILT_MARGIN, BUILT_PER_BYTE } = await import('../src/reading.mjs');
+  assert.equal(BUILT_PER_BYTE, 1.5);
+  assert.equal(BUILT_MARGIN, 12 * MB);
+  // as src/app.mjs asks it: by the line's size, then with what the view writes
+  const rule = (file, line, built, old) => recordTooLarge(line, file, old * MB, 'x') ?? recordTooLarge(line, file, old * MB, 'x', built);
+  assert.equal(MEASURED.length, 70);
+  for (const [node, name, file, line, built, died] of MEASURED) {
+    assert.equal(16 * line <= 0.9 * died * MB - 8 * file, true, `${name} on Node ${node}: the line's rule alone would show it at ${died} MB`);
+    assert.ok(rule(file, line, built, died), `${name} on Node ${node}: refused at ${died} MB, where its view ran the old space out`);
+  }
+  // R8a's records (round 7's check): 11 KB and 513 KB, shown at 32 and 64 MB; the smallest from 14 MB
+  for (const old of [32, 64]) {
+    assert.equal(rule(11_869, 10_919, 13_014, old), null, `11 KB at ${old} MB`);
+    assert.equal(rule(525_669, 524_719, 600_214, old), null, `513 KB at ${old} MB`);
+  }
+  assert.equal(rule(11_869, 10_919, 13_014, 14), null);
+  assert.ok(rule(11_869, 10_919, 13_014, 13));
 });
