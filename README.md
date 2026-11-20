@@ -114,21 +114,22 @@ pasted acts as a key. A Ctrl-C character in a paste is the one exception: it qui
   implicit algorithm with paired brackets, its lines reordered and mirrored, a paragraph's direction from its first
   strong character), and writes it in visual order. A line that holds right-to-left text (a character of UAX #9's class
   R, AL or AN) is written inside a left-to-right override, U+202D (LRO) right after its first grapheme cluster that
-  takes a column (never at the line's first column: after ZWSP, a lone mark or an RLM that begins it, the next) and
-  U+202C (PDF) at its end, so that a terminal that lays bidirectional text out itself keeps the reader's order instead
-  of reordering it a second time; nothing else is written (no isolate), and a line without right-to-left text, or with
-  no cluster that takes a column, is written as it is. No terminal is detected.
+  takes a column (never at the line's first column: after ZWSP, a lone mark or an RLM that begins it, the next), a
+  left-to-right mark (U+200E, LRM) between that cluster and the LRO, and U+202C (PDF) at its end, so that a terminal that
+  lays bidirectional text out itself keeps the reader's order instead of reordering it a second time; nothing else is
+  written (no isolate), and a line without right-to-left text, or with no cluster that takes a column, is written as it
+  is. No terminal is detected.
   - Measured on four terminals (S378): Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 and VS Code 1.146.0's terminal
-    (xterm.js 6.1.0-beta.304). There, after a line's first column, LRO and PDF take no column. Konsole lays text out
+    (xterm.js 6.1.0-beta.304). There, after a line's first column, LRM, LRO and PDF take no column. Konsole lays text out
     itself, with a left-to-right base for each line, and applies the override from a line's second column on; at the
     first column an LRO is not applied by Konsole, dropped by tmux and given a column of its own by xterm.js (hence
     after the first cluster), and xterm.js gives an isolate (LRI, RLI, PDI) a column anywhere. Alacritty and xterm.js
     draw the text in the order it is written; tmux passes it on. No other terminal was measured (kitty, VTE's, as in
     GNOME Terminal, mlterm, WezTerm, foot, iTerm2, Windows Terminal, GNU screen and the rest are not): one that gives
-    LRO or PDF a column shifts such a line by it. Not measured either: how Konsole joins Arabic letters that come to it
-    in visual order under the override; and a line whose first cluster that takes a column is itself right to left,
-    which the override leaves out (laid out by UAX #9 with a left-to-right base, as Konsole lays a line out, that
-    cluster would go to the line's other end). That is a known limit, left as it is.
+    LRM, LRO or PDF a column shifts such a line by it. Not measured either: how Konsole joins Arabic letters that come to
+    it in visual order under the override. A line whose first cluster that takes a column is itself right to left keeps
+    that cluster outside the override; the LRM after it keeps it first on Konsole (measured, 0.1.1: without the mark,
+    Konsole drew it at the line's other end).
   - `LTMS_READER_BIDI=terminal` writes the text as stored instead (mode `terminal`), with a right-to-left mark (RLM) at
     the end of each right-to-left paragraph, for a terminal that lays bidirectional text out itself (on Konsole the RLM
     puts the paragraph's end punctuation where it belongs, though its brackets are not mirrored); `LTMS_READER_BIDI=reader`

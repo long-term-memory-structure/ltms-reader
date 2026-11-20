@@ -15,7 +15,11 @@
 // lays text out itself keeps the reader's order: measured on four terminals (S378, CONTROLS.md), the two take no column
 // in Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 and VS Code 1.146.0's terminal (xterm.js) there, and Konsole applies an
 // override from a row's second column on; at its first column an LRO is not applied by Konsole, dropped by tmux and
-// given a column by xterm.js, which gives an isolate (LRI, RLI, PDI) a column anywhere; so nothing else is written.
+// given a column by xterm.js, which gives an isolate (LRI, RLI, PDI) a column anywhere. Between that first cluster and the
+// LRO, a left-to-right mark (LRM, 0.1.1): a terminal that lays a row out with a left-to-right base (Konsole) moved a first
+// cluster that is right to left, standing outside the override, to the row's other end (0.1.0's first Known limit,
+// measured on Konsole 26.08.3 in S381), and with the mark it keeps it first (measured there too); S378 measured an LRM
+// past the first column as no column in all four. Nothing else is written.
 import readline from 'node:readline';
 import { AL, AN, R, classOf } from './bidi.mjs';
 import { clusterWidth, clusters, displayOrder, visible } from './text.mjs';
@@ -36,8 +40,13 @@ export const colourFrom = (env) => !(typeof env.NO_COLOR === 'string' && env.NO_
 /** One segment's text as it is written: visible, on one line. */
 const safe = (s) => visible(s).replace(/\n/g, '\\n').replace(/\t/g, '\\t');
 
+/** The left-to-right mark (U+200E) written between such a row's first cluster that takes a column and its override
+ *  (0.1.1). A transcript's own marks are written as they are, so a test finds the reader's by its place, never by its
+ *  character. */
+export const LRM = String.fromCharCode(0x200e);
 /** The left-to-right override (U+202D) and the pop that ends it (U+202C), written around a row laid out by the reader
- *  that holds right-to-left text (Y1): the only bidirectional controls the reader writes (a transcript's are escapes). */
+ *  that holds right-to-left text (Y1): with the mark, the only bidirectional controls the reader writes (a transcript's
+ *  overrides are escapes). */
 export const LRO = '\u202d', PDF = '\u202c';
 /** A text with no character that could be right to left (every R, AL and AN code point is at U+0590 or above). */
 const NO_RTL = /^[\u0000-\u058f]*$/;
@@ -59,7 +68,8 @@ function firstColumnEnd(text) {
 
 /** The bytes of one whole frame: each line at its row, the row erased whole first, then the line, styled; its segments in
  *  the order the right-to-left mode `rtl` writes them ("reader" or "terminal"); in "reader", a row that holds
- *  right-to-left text inside LRO (after its first grapheme cluster that takes a column) and PDF (last). */
+ *  right-to-left text inside LRO (after its first grapheme cluster that takes a column, and an LRM before it) and PDF
+ *  (last). */
 export function frameBytes(lines, { cols, rows, colour = true, rtl = 'reader' }) {
   let out = '';
   for (let i = 0; i < rows; i++) {
@@ -69,17 +79,18 @@ export function frameBytes(lines, { cols, rows, colour = true, rtl = 'reader' })
     const merged = [];
     for (const s of row) { const last = merged[merged.length - 1]; if (last && (last.style ?? null) === (s.style ?? null)) last.text += s.text; else merged.push({ text: s.text, style: s.style ?? null }); }
     const texts = merged.map((s) => safe(s.text));
-    // laid out by the reader and holding right-to-left text: LRO right after the row's first grapheme cluster that takes
-    // a column (where it ends, in whichever segment that is, a mark on its character kept with it; never in the row's
-    // first column, where the terminals measured drop it, give it a column or do not apply it: Z3, round 7), PDF last; a
-    // row with no cluster that takes a column has nothing a terminal could reorder, and neither
+    // laid out by the reader and holding right-to-left text: LRM and LRO right after the row's first grapheme cluster that
+    // takes a column (where it ends, in whichever segment that is, a mark on its character kept with it; never in the row's
+    // first column, where the terminals measured drop it, give it a column or do not apply it: Z3, round 7; the LRM keeps a
+    // right-to-left first cluster first on a terminal with a left-to-right base: 0.1.1), PDF last; a row with no cluster
+    // that takes a column has nothing a terminal could reorder, and none of the three
     let end = '';
     if (rtl === 'reader') {
       const whole = texts.join('');
       const first = holdsRtl(whole) ? firstColumnEnd(whole) : -1;
       if (first > 0) {
         for (let k = 0, at = 0; k < texts.length; at += texts[k++].length) {
-          if (at < first && first <= at + texts[k].length) { texts[k] = texts[k].slice(0, first - at) + LRO + texts[k].slice(first - at); break; }
+          if (at < first && first <= at + texts[k].length) { texts[k] = texts[k].slice(0, first - at) + LRM + LRO + texts[k].slice(first - at); break; }
         }
         end = PDF;
       }

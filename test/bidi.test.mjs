@@ -820,3 +820,26 @@ test('Z5: the same paragraphs, each line as GNU FriBidi\'s library lays it out, 
   assert.deepEqual(differ.slice(0, 4), [], `${differ.length} of ${mine.length} lines differ from FriBidi's and from the tests' reference`);
   assert.ok(mine.length >= 3000, `${mine.length} lines`);
 });
+
+// 0.1.1 (S381): a terminal that lays a row out with a left-to-right base moved the first cluster of a row the reader laid out
+// to the row's other end when that cluster was right to left, since it stood outside the override (0.1.0's first Known
+// limit; measured on Konsole 26.08.3 in S381). A left-to-right mark between that cluster and the override keeps it first: the
+// frame's row, laid out by GNU FriBidi with a left-to-right base (fribidi --ltr, standing for such a terminal), is the reader's
+// own order. The characters are built from their code points (the controls are invisible in a source)
+const cps = (hex) => String.fromCodePoint(...hex.split(' ').map((h) => parseInt(h, 16)));
+const READER_CONTROLS = new RegExp(`[${cps('200E 202C 202D')}]`, 'gu');
+test('0.1.1: a row whose first cluster is right to left keeps it first on a terminal with a left-to-right base (GNU FriBidi --ltr, standing for Konsole)', { skip: hasFribidi ? false : `no ${FRIBIDI}` }, async () => {
+  const { frameBytes } = await import('../src/screen.mjs');
+  const prompts = [
+    cps('05E9 05DC 05D5 05DD 0020 05E2 05D5 05DC 05DD 0020 05D5 05DE 05DC 05D5 05D0 05D5'),   // the Known limit's own prompt
+    cps('05E9 05DC 05D5 05DD 0020 05E2 05D5 05DC 05DD 0020 05D5 05D0 05D1 05DF'),             // its twin, a final nun last
+    cps('05E9 05DC 05D5 05DD'),                                                                // one word
+    cps('05D0 0020 0031 0032 0020 0061 0062 0063'),                                            // a row whose first cluster is left to right
+  ];
+  for (const p of prompts) {
+    const out = frameBytes([[{ text: p, style: null }]], { cols: 80, rows: 1, colour: false }), row = out.slice(out.indexOf('2K') + 2);
+    const theirs = spawnSync(FRIBIDI, ['--ltr', '--nopad', '--nobreak'], { input: `${row}\n`, encoding: 'utf8' }).stdout.split('\n')[0];
+    assert.equal(theirs.replace(READER_CONTROLS, ''), row.replace(READER_CONTROLS, ''), `a left-to-right base keeps the reader's order: ${JSON.stringify(row)}`);
+    withoutOverride(row);                                                                      // and the row's shape (helpers.mjs)
+  }
+});

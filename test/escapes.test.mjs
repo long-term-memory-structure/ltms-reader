@@ -14,7 +14,7 @@ import { main } from '../src/main.mjs';
 import { ENTER, LEAVE } from '../src/screen.mjs';
 import { width } from '../src/text.mjs';
 import { top } from '../src/views.mjs';
-import { KEY, LRO, OWN, PDF, terminal, withoutOverride } from './helpers.mjs';
+import { KEY, LRM, LRO, OWN, PDF, terminal, withoutOverride } from './helpers.mjs';
 
 const FILE = path.join(OWN, 'escapes.jsonl');
 /** The reader's own sequences: the alternate screen, the cursor, wrapping, bracketed paste, a position, a line erased,
@@ -270,9 +270,10 @@ test('the writer itself: a control character in a line, from anywhere, goes out 
   // transcript holds in it is shown as an escape all the same
   const rtl = frameBytes([[{ text: '\u05e9\u05dc\u05d5\u05dd \u202d x \u202c', style: null }]], { cols: 80, rows: 1, colour: false });
   assert.deepEqual(strangers(rtl), []);
-  const bare = rtl.replace(/[\u202c\u202d]/g, '');
+  const bare = rtl.replace(/\u200e(?=\u202d)|[\u202c\u202d]/g, '');
   assert.ok(bare.includes('\\u202d') && bare.includes('\\u202c'), `the transcript's own, shown (in visual order, the row being right to left): ${JSON.stringify(rtl)}`);
   assert.equal([...rtl].filter((c) => c === LRO).length + [...rtl].filter((c) => c === PDF).length, 2, 'one LRO and one PDF, the reader\'s');
+  assert.equal([...rtl].filter((c) => c === LRM).length, 1, 'and one LRM, the reader\'s (the transcript holds none)');
   // an override out of its place is a stranger: on a row without right-to-left text, before the row's first cluster
   assert.equal(strangers(`\x1b[1;1H\x1b[2Kab${LRO}c${PDF}`).length, 2);
   assert.equal(strangers(`\x1b[1;1H\x1b[2K${LRO}\u05e9\u05dc\u05d5\u05dd${PDF}`).length, 2);

@@ -177,20 +177,24 @@ export const LRO = '\u202d', PDF = '\u202c';
  *  mark, or a format character but the soft hyphen, or a Hangul medial vowel or final consonant. */
 export const takesNoColumn = (c) => [...c].every((ch) => ch !== '\u00ad' && /^[\p{Mn}\p{Me}\p{Cf}\u1160-\u11ff\ud7b0-\ud7ff]$/u.test(ch));
 
+/** The left-to-right mark "reader" mode writes between such a row's first cluster that takes a column and its LRO (0.1.1).
+ *  A transcript's own marks are written as they are, so the reader's is found by its place, never by its character. */
+export const LRM = String.fromCharCode(0x200e);
+
 /**
- * A row as the screen writes it (its escape sequences taken out), without the override around it, after checking it
- * (Y1, round 6; Z3, round 7): in "reader" mode, a row that holds right-to-left text (a character of class R, AL or AN, by
- * the tests' own reference of UAX #9) and a cluster that takes a column has LRO right after the first such cluster
- * (never in the row's first column: Z3) and PDF as its last character, and no other; a row that holds right-to-left
- * text but no cluster that takes a column, any other row, and every row in "terminal" mode, have neither. Throws an
- * AssertionError otherwise.
+ * A row as the screen writes it (its escape sequences taken out), without the reader's own controls, after checking it
+ * (Y1, round 6; Z3, round 7; 0.1.1): in "reader" mode, a row that holds right-to-left text (a character of class R, AL or
+ * AN, by the tests' own reference of UAX #9) and a cluster that takes a column has LRM and LRO right after the first such
+ * cluster (never in the row's first column: Z3) and PDF as its last character, and no other LRO or PDF; a row that holds
+ * right-to-left text but no cluster that takes a column, any other row, and every row in "terminal" mode, have none of
+ * the three. Throws an AssertionError otherwise.
  */
 export function withoutOverride(row, mode = 'reader') {
   const bare = row.replace(/[\u202c\u202d]/g, '');
   const rtl = mode === 'reader' && [...bare].some((c) => [REFERENCE.R, REFERENCE.AL, REFERENCE.AN].includes(REFERENCE.classOf(c.codePointAt(0))));
   const cs = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(bare)].map((x) => x.segment), k = cs.findIndex((c) => !takesNoColumn(c));
   if (!rtl || k < 0) { assert.equal(row, bare, `${mode}: a row without the override: ${JSON.stringify(row)}`); return row; }
-  const first = cs.slice(0, k + 1).join('');
-  assert.equal(row, `${first}${LRO}${bare.slice(first.length)}${PDF}`, `a row that holds right-to-left text, LRO after its first cluster that takes a column and PDF last: ${JSON.stringify(row)}`);
-  return bare;
+  const first = cs.slice(0, k + 1).join(''), rest = bare.slice(first.length + LRM.length);
+  assert.equal(row, `${first}${LRM}${LRO}${rest}${PDF}`, `a row that holds right-to-left text, LRM and LRO after its first cluster that takes a column and PDF last: ${JSON.stringify(row)}`);
+  return `${first}${rest}`;
 }

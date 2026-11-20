@@ -9,7 +9,7 @@ import { chmodSync, closeSync, openSync, readFileSync, writeFileSync, writeSync 
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BIN, KEY, LRO, OWN, PDF, deepRecord, makeRoot, withoutOverride } from './helpers.mjs';
+import { BIN, KEY, LRM, LRO, OWN, PDF, deepRecord, makeRoot, withoutOverride } from './helpers.mjs';
 
 const SCRIPT = process.platform === 'linux' && spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
 const skip = SCRIPT ? false : 'no `script` here (util-linux, Linux)';
@@ -53,7 +53,7 @@ function ptyRun(r, { args, steps, nodeArgs = '', env = {}, wait = 20_000 }) {
   // what the screen says: the received bytes without the reader's escape sequences, which split a styled row, and without
   // the override it writes around a row that holds right-to-left text (Y1, round 6: LRO after its first cluster), which
   // splits a row's text; the tests that read a row check the override where it is
-  const said = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/[\u202c\u202d]/g, '');
+  const said = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\u200e(?=\u202d)|[\u202c\u202d]/g, '');
   const until = (want, since) => new Promise((resolve, reject) => {
     const t0 = Date.now();
     const look = () => {
@@ -309,7 +309,7 @@ test("N3: the checker's record nested 990 deep (a line of 0.8 MB) at --max-old-s
 // escapes here, the visual one as test/bidi.test.mjs's oracles give it.
 const STORED = '\u05d1\u05b0\u05bc\u05e8\u05b5\u05d0\u05e9\u05b4\u05c1\u05d9\u05ea: read src/\u05de\u05d5\u05d3\u05d5\u05dc.ts (line 12) and fix [the bug] in \u05e4\u05d5\u05e0\u05e7\u05e6\u05d9\u05d4() \u2014 3.14 > 2';
 const LAID_OUT = '2 < 3.14 \u2014 ()\u05d4\u05d9\u05e6\u05e7\u05e0\u05d5\u05e4 read src/\u05dc\u05d5\u05d3\u05d5\u05de.ts (line 12) and fix [the bug] in :\u05ea\u05d9\u05e9\u05b4\u05c1\u05d0\u05e8\u05b5\u05d1\u05b0\u05bc';
-const OVERRIDDEN = `${LAID_OUT.slice(0, 1)}${LRO}${LAID_OUT.slice(1)}${PDF}`;
+const OVERRIDDEN = `${LAID_OUT.slice(0, 1)}${LRM}${LRO}${LAID_OUT.slice(1)}${PDF}`;
 for (const [what, env, want, mode] of [
   ['by default: laid out by the reader, inside the override', {}, OVERRIDDEN, 'reader'],
   ['under Konsole (KONSOLE_VERSION), which changes nothing: laid out by the reader, inside the override', { KONSOLE_VERSION: '260803' }, OVERRIDDEN, 'reader'],

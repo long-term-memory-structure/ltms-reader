@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.1 (not yet released)
+
+- **Right to left on Konsole.** A line laid out by the reader that holds right-to-left text is now written with a
+  left-to-right mark (U+200E, LRM) between its first grapheme cluster that takes a column and the LRO: that cluster,
+  LRM, LRO, the rest, PDF. Konsole lays each line out with a left-to-right base, and drew a first cluster that is right
+  to left, which stands outside the override, at the line's other end: 0.1.0's first Known limit, measured on
+  2026-11-20 in Konsole 26.08.3 (Liberation Mono 11, 80 x 24) with 0.1.0 itself, whose record row of the prompt
+  `שלום עולם ומלואו` showed its vav at the row's right end, and with the same bytes on a page, read from its pixels: the
+  vav at column 15 of 16, and a final nun at column 13 of 14 in a twin row. With the mark, the same page kept both at
+  column 0. In `test/bidi.test.mjs`, GNU FriBidi 1.0.18 with a left-to-right base (`fribidi --ltr`), standing for such a
+  terminal, keeps the reader's order on such rows; on 0.1.0's rows it moves the first cluster. An LRM past a line's first
+  column took no column in Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 and VS Code 1.146.0's terminal (measured on
+  2026-11-16, mid-line).
+
+0.1.0's other Known limits (below) still hold.
+
 ## 0.1.0 (2026-11-18)
 
 The first version: a full-screen terminal reader of Claude Code transcripts, on ltms 0.3 (`long-term-memory-structure`

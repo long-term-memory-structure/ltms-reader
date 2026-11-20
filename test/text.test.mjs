@@ -674,22 +674,22 @@ test('W2 (a): "terminal" writes an RLM after a right-to-left paragraph\'s text a
 // Code's xterm.js gives it a column), PDF (U+202C) last; nothing else (xterm.js gives an isolate a column). Measured on
 // Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 and VS Code 1.146.0's terminal (S378, CONTROLS.md).
 test('Y1: in "reader" mode a row that holds right-to-left text is written with LRO right after its first grapheme cluster and PDF last; a row without it, and every row in "terminal", with neither; each row as wide as before', async () => {
-  const { frameBytes, LRO, PDF, holdsRtl } = await import('../src/screen.mjs');
+  const { frameBytes, LRM, LRO, PDF, holdsRtl } = await import('../src/screen.mjs');
   const { withoutOverride } = await import('./helpers.mjs');
-  assert.equal(LRO, '\u202d'); assert.equal(PDF, '\u202c');
+  assert.equal(LRO, '\u202d'); assert.equal(PDF, '\u202c'); assert.equal(LRM, '\u200e');
   const rowsOf = (lines, rtl, colour = true) => frameBytes(lines, { cols: 80, rows: lines.length, colour, rtl }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1);
   const heb = '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd', laid = '\u05dd\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9';
   // a record's line, right to left: its first cluster a letter
-  assert.deepEqual(rowsOf([[{ text: heb, style: null, dir: 1 }]], 'reader'), [`\u05dd${LRO}${laid.slice(1)}${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: heb, style: null, dir: 1 }]], 'reader'), [`\u05dd${LRM}${LRO}${laid.slice(1)}${PDF}`]);
   // a list's row, styled: the LRO after '>' inside the selection's style, the PDF after the last style's end
-  assert.deepEqual(rowsOf([[{ text: '> ', style: 'sel' }, { text: 'demo.jso:L2', style: 'addr' }, { text: '  ' }, { text: heb, style: null }]], 'reader'), [`\x1b[7m>${LRO} \x1b[0m\x1b[36mdemo.jso:L2\x1b[0m  ${laid}${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: '> ', style: 'sel' }, { text: 'demo.jso:L2', style: 'addr' }, { text: '  ' }, { text: heb, style: null }]], 'reader'), [`\x1b[7m>${LRM}${LRO} \x1b[0m\x1b[36mdemo.jso:L2\x1b[0m  ${laid}${PDF}`]);
   // a mark on the first character stays with it: the LRO after the mark; and where the mark begins the next segment
-  assert.deepEqual(rowsOf([[{ text: 'e\u0301 \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`e\u0301${LRO} \u05dd\u05d5\u05dc\u05e9${PDF}`]);
-  assert.deepEqual(rowsOf([[{ text: 'e', style: 'dim' }, { text: '\u0301 abc \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`\x1b[2me\x1b[0m\u0301${LRO} abc \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: 'e\u0301 \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`e\u0301${LRM}${LRO} \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: 'e', style: 'dim' }, { text: '\u0301 abc \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`\x1b[2me\x1b[0m\u0301${LRM}${LRO} abc \u05dd\u05d5\u05dc\u05e9${PDF}`]);
   const pointed = '\u05e9\u05b8\u05c1\u05dc\u05d5\u05b9\u05dd', [p] = rowsOf([[{ text: pointed, style: null, dir: 1 }]], 'reader');
   assert.equal(withoutOverride(p), displayOrder([{ text: pointed, style: null, dir: 1 }], 'reader')[0].text);
   // an Arabic number among neutrals (class AN) is reordered by the reader, and so would be by the terminal: the override
-  assert.deepEqual(rowsOf([[{ text: '\u0661 \u0662', style: null }]], 'reader'), [`\u0662${LRO} \u0661${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: '\u0661 \u0662', style: null }]], 'reader'), [`\u0662${LRM}${LRO} \u0661${PDF}`]);
   // nothing right to left in it: neither, though the row holds Hebrew marks, escapes, wide characters or an LRM
   for (const text of ['plain ascii', 'na\u00efve caf\u00e9 \u2014 \u4e2d\u6587', 'a \u241b[31m red \\u202e x', 'C++ \u200e', '\u05b0\u05b4 marks alone']) {
     assert.deepEqual(rowsOf([[{ text, style: null }]], 'reader', false), [text], JSON.stringify(text));
@@ -734,23 +734,23 @@ test('Y1: in "reader" mode a row that holds right-to-left text is written with L
 // check built these (y1edge.mjs); none of its transcripts' rows began so. Now the LRO goes after the first cluster that
 // takes a column; and a row with none (nothing a terminal could reorder) is written without the override.
 test('Z3: the override never in the first column: the LRO after the row\'s first cluster that takes a column, not after one that takes none (ZWSP, a lone mark, an RLM, at the row\'s left); a row with no cluster that takes a column, none', async () => {
-  const { frameBytes, LRO, PDF } = await import('../src/screen.mjs');
+  const { frameBytes, LRM, LRO, PDF } = await import('../src/screen.mjs');
   const { takesNoColumn, withoutOverride } = await import('./helpers.mjs');
   const rowsOf = (lines, colour = false) => frameBytes(lines, { cols: 80, rows: lines.length, colour, rtl: 'reader' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1);
   const SHALOM = '\u05e9\u05dc\u05d5\u05dd', OLAM = '\u05e2\u05d5\u05dc\u05dd';
   // a right-to-left line whose logical end is ZWSP: ZWSP first on the row, then the line laid out
-  assert.deepEqual(rowsOf([[{ text: `${SHALOM} ${OLAM}\u200b`, style: null, dir: 1 }]]), [`\u200b\u05dd${LRO}\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: `${SHALOM} ${OLAM}\u200b`, style: null, dir: 1 }]]), [`\u200b\u05dd${LRM}${LRO}\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9${PDF}`]);
   // a row that begins with a lone mark, then Latin and Hebrew
-  assert.deepEqual(rowsOf([[{ text: `\u05b7abc ${SHALOM}`, style: null, dir: 0 }]]), [`\u05b7a${LRO}bc \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: `\u05b7abc ${SHALOM}`, style: null, dir: 0 }]]), [`\u05b7a${LRM}${LRO}bc \u05dd\u05d5\u05dc\u05e9${PDF}`]);
   // a row that begins with an RLM (class R: a run of its own at the left of a left-to-right line)
-  assert.deepEqual(rowsOf([[{ text: `\u200fabc ${SHALOM}`, style: null, dir: 0 }]]), [`\u200fa${LRO}bc \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: `\u200fabc ${SHALOM}`, style: null, dir: 0 }]]), [`\u200fa${LRM}${LRO}bc \u05dd\u05d5\u05dc\u05e9${PDF}`]);
   // the zero-width first cluster in a segment of its own, styled: the LRO in the next segment, inside its style
-  assert.deepEqual(rowsOf([[{ text: '\u200b', style: 'dim' }, { text: SHALOM, style: 'sel', dir: 1 }]], true), [`\x1b[2m\u200b\x1b[0m\x1b[7m\u05dd${LRO}\u05d5\u05dc\u05e9\x1b[0m${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: '\u200b', style: 'dim' }, { text: SHALOM, style: 'sel', dir: 1 }]], true), [`\x1b[2m\u200b\x1b[0m\x1b[7m\u05dd${LRM}${LRO}\u05d5\u05dc\u05e9\x1b[0m${PDF}`]);
   // a row of an RLM alone, or of marks and an RLM: right to left, and no column: written as it is
   assert.deepEqual(rowsOf([[{ text: '\u200f', style: null }]]), ['\u200f']);
   assert.deepEqual(rowsOf([[{ text: '\u05b7\u200f', style: null, dir: 0 }]]), ['\u05b7\u200f']);
   // and as before: a letter first, the LRO after it
-  assert.deepEqual(rowsOf([[{ text: `${SHALOM} ${OLAM}`, style: null, dir: 1 }]]), [`\u05dd${LRO}\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: `${SHALOM} ${OLAM}`, style: null, dir: 1 }]]), [`\u05dd${LRM}${LRO}\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9${PDF}`]);
   // the helper the tests check placement with says the same, and so it does of every row above
   assert.equal(takesNoColumn('\u200b'), true); assert.equal(takesNoColumn('\u05b7'), true); assert.equal(takesNoColumn('\u200f'), true);
   assert.equal(takesNoColumn('\u00ad'), false); assert.equal(takesNoColumn('a\u0301'), false); assert.equal(takesNoColumn('\u05dd'), false);
@@ -769,16 +769,16 @@ test('Z3: the override never in the first column: the LRO after the row\'s first
 // written inside the row's last segment, before its style's end ('y1-pdf-in-style': the tests' last segments had no
 // style).
 test('Z4: a row of Arabic letters alone (class AL, no R nor AN) is written inside the override; and the PDF is the row\'s last character, after its last style\'s end', async () => {
-  const { frameBytes, LRO, PDF, holdsRtl } = await import('../src/screen.mjs');
+  const { frameBytes, LRM, LRO, PDF, holdsRtl } = await import('../src/screen.mjs');
   const rowsOf = (lines) => frameBytes(lines, { cols: 80, rows: lines.length, colour: true, rtl: 'reader' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1);
   const marhaba = '\u0645\u0631\u062d\u0628\u0627';
   assert.equal(holdsRtl(marhaba), true);
-  assert.deepEqual(rowsOf([[{ text: marhaba, style: null }]]), [`\u0627${LRO}\u0628\u062d\u0631\u0645${PDF}`]);
-  assert.deepEqual(rowsOf([[{ text: `x ${marhaba}`, style: null, dir: 0 }]]), [`x${LRO} \u0627\u0628\u062d\u0631\u0645${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: marhaba, style: null }]]), [`\u0627${LRM}${LRO}\u0628\u062d\u0631\u0645${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: `x ${marhaba}`, style: null, dir: 0 }]]), [`x${LRM}${LRO} \u0627\u0628\u062d\u0631\u0645${PDF}`]);
   // the last segment styled (an error's colour): the PDF after its style's end, the row's last character
   const heb = '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd', laid = '\u05dd\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9';
-  assert.deepEqual(rowsOf([[{ text: '> ', style: 'sel' }, { text: heb, style: 'bad' }]]), [`\x1b[7m>${LRO} \x1b[0m\x1b[31m${laid}\x1b[0m${PDF}`]);
-  assert.deepEqual(rowsOf([[{ text: heb, style: 'addr', dir: 1 }]]), [`\x1b[36m\u05dd${LRO}${laid.slice(1)}\x1b[0m${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: '> ', style: 'sel' }, { text: heb, style: 'bad' }]]), [`\x1b[7m>${LRM}${LRO} \x1b[0m\x1b[31m${laid}\x1b[0m${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: heb, style: 'addr', dir: 1 }]]), [`\x1b[36m\u05dd${LRM}${LRO}${laid.slice(1)}\x1b[0m${PDF}`]);
 });
 
 // Z4 (round 7): round 6's check's mutant 'y3e-width-unchecked' (the line a no-break space begins with the character
