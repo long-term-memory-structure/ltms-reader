@@ -17,6 +17,9 @@
   xterm.js of VS Code 1.146.0 and 1.147.0 hold the mark in the first letter's cell; in all four the mark took no column.
   Those first letters carry no point: a first cluster with points or an Arabic one, Konsole's other bidi settings, and
   tmux inside Konsole were not measured.
+- Tests: 435 → 436 (Node 26.13.1: 436 passing; Node 24.18.0, on a second machine: 436 passing; Node 24.22.3, 22.23.3
+  and 20.20.2 in docker: 428 passing, 0 failing, 8 skipped, as their images have no GNU FriBidi and no Electron). The
+  new one is the FriBidi test above.
 
 0.1.0's other Known limits (below) still hold.
 

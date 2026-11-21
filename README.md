@@ -245,13 +245,13 @@ npm test
 `npm test` runs `node --test test/*.test.mjs`, the pattern expanded by the shell, which runs the test files on Node 20,
 22, 24 and 26 alike. Given the folder `test/` instead, Node 20 runs every module under it as a test, the fixtures too,
 and Node 22 and 24 run none: they take the folder for a module, and fail. The whole suite was run on four Node lines on
-2026-11-17, at this release's code, with no failure on any: Node 26.13.1, 435 tests, 435 passed (GNU FriBidi 1.0.18
+2026-11-21, at this release's code, with no failure on any: Node 26.13.1, 436 tests, 436 passed (GNU FriBidi 1.0.18
 there, its command and its library); Node 24.22.3, 22.23.3 and 20.20.2 in docker (the images node:24-slim, node:22-slim
-and node:20-slim, as a user who is not root), 435 tests each, 428 passed and 7 skipped, as there is no GNU FriBidi and
+and node:20-slim, as a user who is not root), 436 tests each, 428 passed and 8 skipped, as there is no GNU FriBidi and
 no Electron in them. Each with the pinned Unicode files named (`LTMS_READER_UCD`, `LTMS_READER_EAW`). So it was under
 `NODE_OPTIONS=--max-old-space-size=100` and `=500` too, once on each line: no test reads the environment's
 `NODE_OPTIONS` where it means none, and the test of a turn of 33,000 calls reads it in a process of its own. On Node 20
-under `=100`, `test/record-view.test.mjs` run alone ended by SIGABRT in 6 of 10 runs (Node's heap ran out in its test of
+under `=100`, `test/record-view.test.mjs` run alone ended by SIGABRT in 2 of 10 runs (Node's heap ran out in its test of
 a record nested 990 deep, in the test's own process): the irregularity on Node 20 that the CHANGELOG's Known limits
 name. The tests run the session, turn and record views (as text and as JSON) at 80 x 24 and 200 x 60 over ltms's own
 synthetic transcripts (`test/fixtures/ltms`) and the reader's (`test/fixtures/hebrew-english.jsonl`, `escapes.jsonl` and
