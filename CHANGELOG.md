@@ -10,9 +10,13 @@
   `שלום עולם ומלואו` showed its vav at the row's right end, and with the same bytes on a page, read from its pixels: the
   vav at column 15 of 16, and a final nun at column 13 of 14 in a twin row. With the mark, the same page kept both at
   column 0. In `test/bidi.test.mjs`, GNU FriBidi 1.0.18 with a left-to-right base (`fribidi --ltr`), standing for such a
-  terminal, keeps the reader's order on such rows; on 0.1.0's rows it moves the first cluster. An LRM past a line's first
-  column took no column in Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 and VS Code 1.146.0's terminal (measured on
-  2026-11-16, mid-line).
+  terminal, keeps the reader's order on such rows; on 0.1.0's rows it moves the first cluster. Measured again on
+  2026-11-21 with the reader itself, 0.1.1 against 0.1.0 on the same two transcripts and keys: the two outputs differ
+  only by the marks, each right before an LRO. Konsole 26.08.3 (its default bidi settings) drew the first letter at
+  column 0, where 0.1.0's was at the row's right end; Alacritty 0.17.0 drew the same pixels for both; tmux 3.6 and the
+  xterm.js of VS Code 1.146.0 and 1.147.0 hold the mark in the first letter's cell; in all four the mark took no column.
+  Those first letters carry no point: a first cluster with points or an Arabic one, Konsole's other bidi settings, and
+  tmux inside Konsole were not measured.
 
 0.1.0's other Known limits (below) still hold.
 
