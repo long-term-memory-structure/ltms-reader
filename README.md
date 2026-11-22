@@ -280,10 +280,10 @@ npm test
 `npm test` runs `node --test test/*.test.mjs`, the pattern expanded by the shell, which runs the test files on Node 20,
 22, 24 and 26 alike. Given the folder `test/` instead, Node 20 runs every module under it as a test, the fixtures too,
 and Node 22 and 24 run none: they take the folder for a module, and fail. The whole suite was run on five Node lines on
-2026-11-22, at this release's code, with no failure on any: Node 26.13.1, 443 tests, 443 passed (GNU FriBidi 1.0.18
-there, its command and its library); Node 24.18.0 on a second machine, 443 tests, 443 passed (GNU FriBidi 1.0.18 there
+2026-11-22, at this release's code, with no failure on any: Node 26.13.1, 444 tests, 444 passed (GNU FriBidi 1.0.18
+there, its command and its library); Node 24.18.0 on a second machine, 444 tests, 444 passed (GNU FriBidi 1.0.18 there
 too); Node 24.22.3, 22.23.3 and 20.20.2 in docker (the images node:24-slim, node:22-slim and node:20-slim, as a user who
-is not root), 443 tests each, 435 passed and 8 skipped, as there is no GNU FriBidi, no python3 (which the five tests of
+is not root), 444 tests each, 436 passed and 8 skipped, as there is no GNU FriBidi, no python3 (which the five tests of
 FriBidi's library run) and no Electron in them. Each with the pinned Unicode files named (`LTMS_READER_UCD`,
 `LTMS_READER_EAW`). So it was under `NODE_OPTIONS=--max-old-space-size=100` and `=500` too, once on each line: no test
 reads the environment's `NODE_OPTIONS` where it means none, and the test of a turn of 33,000 calls reads it in a process
