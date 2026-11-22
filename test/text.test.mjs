@@ -731,7 +731,9 @@ test('Y1: in "reader" mode a row that holds right-to-left text is written with L
 // without right-to-left text, on 46 and 104 of its rows). And so for a transcript of one prompt whose record lines
 // begin, as laid out, with a cluster of a letter and its mark: no row of the Hebrew fixture's views begins with a
 // cluster of more than one code point, and the repairs' re-check's P1 (the LRM and LRO after the first cluster's first
-// code point) passed this walk.
+// code point) passed this walk. Such rows are counted by the script of their first cluster, a Latin letter and its
+// mark (the transcript's left-to-right line) and a Hebrew letter and its mark (its right-to-left line), each required:
+// counted together, the walk passed with the right-to-left line taken out (a re-check of 0.1.1, its WK3).
 test('Y1: every row of every view of the Hebrew fixture, and of a transcript whose lines begin with a letter and its mark, at 80 x 24 and 200 x 60, in both modes: the override where it belongs, the row as wide as without it, and its text the one displayOrder lays out', async () => {
   const { frameBytes } = await import('../src/screen.mjs');
   // the text frameBytes writes of a line, its escape sequences and the reader's three taken out: displayOrder's segments,
@@ -749,7 +751,8 @@ test('Y1: every row of every view of the Hebrew fixture, and of a transcript who
   const prompt = 'e\u0301 \u05e9\u05dc\u05d5\u05dd\n\u05e9\u05dc\u05d5\u05dd \u05dc\u05b0\u05da\u05b8';
   writeFileSync(marked, `${JSON.stringify({ ...base, parentUuid: null, type: 'user', message: { role: 'user', content: prompt }, uuid: 'mm000000-0000-4000-8000-000000000001', timestamp: '2026-03-01T10:00:00.000Z', promptSource: 'typed' })}\n`);
   const firstCluster = (s) => [...SEG.segment(s)].map((x) => x.segment).find((c) => !takesNoColumn(c)) ?? '';
-  let rows = 0, overridden = 0, longFirst = 0;
+  let rows = 0, overridden = 0;
+  const longFirst = { latin: 0, hebrew: 0 };
   try {
     for (const [file, steps] of [[path.join(OWN, 'hebrew-english.jsonl'), [KEY.enter, KEY.enter, KEY.down, KEY.enter, KEY.escape, KEY.escape, KEY.end, KEY.enter, 'j']], [marked, [KEY.enter, KEY.enter, 'j']]]) {
       for (const [cols, height] of [[80, 24], [200, 60]]) {
@@ -765,7 +768,13 @@ test('Y1: every row of every view of the Hebrew fixture, and of a transcript who
                 assert.equal(bare, textOf(lines[i] ?? [], rtl), `${rtl}, row ${i + 1}: ${legible(plain)}`);
                 assert.equal(width(plain), width(bare), legible(plain));
                 assert.ok(width(plain) <= cols, `${width(plain)} columns: ${legible(plain)}`);
-                rows++; if (bare !== plain) { overridden++; if ([...firstCluster(bare)].length > 1) longFirst++; }
+                rows++;
+                if (bare !== plain) {
+                  overridden++;
+                  const c = firstCluster(bare);
+                  if ([...c].length > 1 && /^\p{Script=Latin}/u.test(c)) longFirst.latin++;
+                  if ([...c].length > 1 && /^\p{Script=Hebrew}/u.test(c)) longFirst.hebrew++;
+                }
               });
             }
           };
@@ -776,7 +785,7 @@ test('Y1: every row of every view of the Hebrew fixture, and of a transcript who
     }
   } finally { rmSync(own, { recursive: true, force: true }); }
   assert.ok(overridden >= 20 && overridden < rows, `${overridden} of ${rows} rows written with the override`);
-  assert.ok(longFirst > 0, `${longFirst} of ${overridden} rows with the override begin with a cluster of more than one code point`);
+  assert.ok(longFirst.latin > 0 && longFirst.hebrew > 0, `of ${overridden} rows with the override, ${longFirst.latin} begin with a Latin letter and its mark and ${longFirst.hebrew} with a Hebrew letter and its mark`);
 });
 
 // Z3 (round 7): a row whose first grapheme cluster takes no column put the LRO in the row's first column, where the
