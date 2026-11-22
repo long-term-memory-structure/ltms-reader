@@ -14,7 +14,7 @@ import { RTL_MODES, clusterWidth, cut, directionOf, displayOrder, expandTabs, fi
 import { SOURCE_SHA256, SOURCE_URL, UNICODE_VERSION, WIDE } from '../src/width-table.mjs';
 import { SHA256, VERSION } from '../scripts/width-table.mjs';
 import { readPinned } from '../scripts/bidi-table.mjs';
-import { HEBREW_LETTER, MARKS_NOT_CM, afterHebrewLetter, codePointBefore, lb9Base, lb9Folds } from './helpers.mjs';
+import { HEBREW_LETTER, LRM, LRO, MARKS_NOT_CM, PDF, afterHebrewLetter, codePointBefore, lb9Base, lb9Folds, legible, withoutOverride } from './helpers.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SEG = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -779,6 +779,83 @@ test('Z4: a row of Arabic letters alone (class AL, no R nor AN) is written insid
   const heb = '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd', laid = '\u05dd\u05dc\u05d5\u05e2 \u05dd\u05d5\u05dc\u05e9';
   assert.deepEqual(rowsOf([[{ text: '> ', style: 'sel' }, { text: heb, style: 'bad' }]]), [`\x1b[7m>${LRM}${LRO} \x1b[0m\x1b[31m${laid}\x1b[0m${PDF}`]);
   assert.deepEqual(rowsOf([[{ text: heb, style: 'addr', dir: 1 }]]), [`\x1b[36m\u05dd${LRM}${LRO}${laid.slice(1)}\x1b[0m${PDF}`]);
+});
+
+// The claims run on 0.1.1 (S384; the review's RV-1: its mutants M7, M7b and M9 passed every test): no row the tests wrote
+// in "reader" mode held both right-to-left text and a transcript's own LRM, so that a test could find the reader's LRM by
+// its character, and the reader could drop a transcript's, and nothing failed. A transcript's LRM is written as it is
+// (the README's light marks), where the layout puts it; the reader's is the one right before its LRO. Each row is spelled
+// out from its code points, in visual order by UAX #9: an LRM is of class L, in a right-to-left line a run of its own.
+test('0.1.1: a transcript\'s own LRM in a row laid out by the reader is written as it is, where the layout puts it; the reader\'s LRM is the one right before its LRO', async () => {
+  const { frameBytes } = await import('../src/screen.mjs');
+  const rowsOf = (lines) => frameBytes(lines, { cols: 80, rows: lines.length, colour: false, rtl: 'reader' }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1);
+  const SHALOM = '\u05e9\u05dc\u05d5\u05dd', OLAM = '\u05e2\u05d5\u05dc\u05dd';
+  // the two words in visual order
+  const MOLASH = '\u05dd\u05d5\u05dc\u05e9', MALO = '\u05dd\u05dc\u05d5\u05e2';
+  // [the line, its row as the screen writes it, that row without the reader's three]
+  const cases = [
+    // C++, an LRM, a Hebrew word (the pty test's line): the reader's LRM and LRO after the C, the transcript's before the word
+    [[{ text: `C++ ${LRM}${SHALOM}`, style: null, dir: 0 }], `C${LRM}${LRO}++ ${LRM}${MOLASH}${PDF}`, `C++ ${LRM}${MOLASH}`],
+    // right to left, the LRM between the words: a run of its own at level 2, between them in visual order
+    [[{ text: `${SHALOM} ${LRM}${OLAM}`, style: null, dir: 1 }], `\u05dd${LRM}${LRO}\u05dc\u05d5\u05e2${LRM} ${MOLASH}${PDF}`, `${MALO}${LRM} ${MOLASH}`],
+    // right to left, the LRM first: at the row's other end, right before the reader's PDF
+    [[{ text: `${LRM}${SHALOM}`, style: null, dir: 1 }], `\u05dd${LRM}${LRO}\u05d5\u05dc\u05e9${LRM}${PDF}`, `${MOLASH}${LRM}`],
+    // the LRM right after the first cluster: the reader's LRM and LRO before it
+    [[{ text: `a${LRM} ${SHALOM}`, style: null, dir: 0 }], `a${LRM}${LRO}${LRM} ${MOLASH}${PDF}`, `a${LRM} ${MOLASH}`],
+    // the LRM between a letter and a mark (a cluster of its own, so the mark is one too): the reader's after the letter
+    [[{ text: `a${LRM}\u0301 ${SHALOM}`, style: null, dir: 0 }], `a${LRM}${LRO}${LRM}\u0301 ${MOLASH}${PDF}`, `a${LRM}\u0301 ${MOLASH}`],
+    // a list's cell that begins with an LRM (its first strong character: the cell is left to right), after the selection's '>'
+    [[{ text: '> ', style: 'sel' }, { text: `${LRM}${SHALOM}`, style: null }], `\x1b[7m>${LRM}${LRO} \x1b[0m${LRM}${MOLASH}${PDF}`, `> ${LRM}${MOLASH}`],
+  ];
+  for (const [line, row, bare] of cases) {
+    const [got] = rowsOf([line]);
+    assert.equal(got, row, `the row as written: ${legible(got)}`);
+    const plain = got.replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(withoutOverride(plain), bare, `without the reader's three: ${legible(plain)}`);
+    // that is the text displayOrder lays out; the row holds one LRM more than the line: the reader's
+    assert.equal(bare, displayOrder(line, 'reader').map((s) => s.text).join(''), legible(bare));
+    const lrms = (s) => [...s].filter((c) => c === LRM).length;
+    assert.equal(lrms(got), lrms(line.map((s) => s.text).join('')) + 1, legible(got));
+  }
+});
+
+// withoutOverride (test/helpers.mjs) is what every test of the override reads a row with: its own known answers (the
+// claims run on 0.1.1: its M7, the reader's LRM found by its character, passed every test). And legible(), what a
+// failure's message writes a row with.
+test('0.1.1: withoutOverride, the tests\' reading of a row: the reader\'s LRM by its place, right before its LRO; a transcript\'s own anywhere, kept where it is; a row out of shape refused, its message legible', () => {
+  const SHALOM = '\u05e9\u05dc\u05d5\u05dd', MOLASH = '\u05dd\u05d5\u05dc\u05e9';
+  // [a row, it without the reader's three]
+  const accepted = [
+    [`\u05dd${LRM}${LRO}\u05d5\u05dc\u05e9${PDF}`, MOLASH],
+    // a transcript's LRM first (it takes no column), right after the reader's LRO, right before the PDF, between a letter and a mark
+    [`${LRM}\u05dd${LRM}${LRO}\u05d5\u05dc\u05e9${PDF}`, `${LRM}${MOLASH}`],
+    [`a${LRM}${LRO}${LRM} ${MOLASH}${PDF}`, `a${LRM} ${MOLASH}`],
+    [`\u05dd${LRM}${LRO}\u05d5\u05dc\u05e9${LRM}${PDF}`, `${MOLASH}${LRM}`],
+    [`a${LRM}${LRO}${LRM}\u0301 ${MOLASH}${PDF}`, `a${LRM}\u0301 ${MOLASH}`],
+  ];
+  for (const [row, bare] of accepted) assert.equal(withoutOverride(row), bare, legible(row));
+  // rows without the override, as they are, a transcript's LRM or RLM in them: none of right-to-left text; an RLM alone
+  // (right to left, no column); "terminal"'s rows
+  for (const [row, mode] of [[`C++ ${LRM}`, 'reader'], [LRM, 'reader'], [RLM, 'reader'], [`${SHALOM}${RLM}`, 'terminal'], [`C++ ${LRM}${SHALOM}`, 'terminal']]) assert.equal(withoutOverride(row, mode), row, legible(row));
+  // refused: 0.1.0's bytes (no LRM); the LRM after the LRO; the LRM before the first cluster; two; an RLM where it goes;
+  // no PDF; the PDF not last; the override at the row's first column; an override on a row without right-to-left text,
+  // and in "terminal"
+  const refused = [
+    [`\u05dd${LRO}\u05d5\u05dc\u05e9${PDF}`, 'reader'],
+    [`\u05dd${LRO}${LRM}\u05d5\u05dc\u05e9${PDF}`, 'reader'],
+    [`${LRM}\u05dd${LRO}\u05d5\u05dc\u05e9${PDF}`, 'reader'],
+    [`\u05dd${LRM}${LRM}${LRO}\u05d5\u05dc\u05e9${PDF}`, 'reader'],
+    [`\u05dd${RLM}${LRO}\u05d5\u05dc\u05e9${PDF}`, 'reader'],
+    [`\u05dd${LRM}${LRO}\u05d5\u05dc\u05e9`, 'reader'],
+    [`\u05dd${LRM}${LRO}\u05d5\u05dc${PDF}\u05e9`, 'reader'],
+    [`${LRM}${LRO}${MOLASH}${PDF}`, 'reader'],
+    [`a${LRM}${LRO}bc${PDF}`, 'reader'],
+    [`\u05dd${LRM}${LRO}\u05d5${PDF}`, 'terminal'],
+  ];
+  for (const [row, mode] of refused) assert.throws(() => withoutOverride(row, mode), (e) => e instanceof assert.AssertionError && e.message.includes(legible(row)), `${mode}: ${legible(row)}`);
+  // legible: what a terminal does not show, by its code point; JSON's own escapes as JSON writes them
+  assert.equal(legible(`a${LRM}${LRO}b${PDF}${RLM}\x7f\x9b\u2028`), '"a<U+200E><U+202D>b<U+202C><U+200F><U+007F><U+009B><U+2028>"');
+  assert.equal(legible('\x1b[7m'), '"\\u001b[7m"');
 });
 
 // Z4 (round 7): round 6's check's mutant 'y3e-width-unchecked' (the line a no-break space begins with the character

@@ -9,7 +9,7 @@ import { chmodSync, closeSync, openSync, readFileSync, writeFileSync, writeSync 
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BIN, KEY, LRM, LRO, OWN, PDF, deepRecord, makeRoot, withoutOverride } from './helpers.mjs';
+import { BIN, KEY, LRM, LRO, OWN, PDF, deepRecord, legible, makeRoot, withoutOverride } from './helpers.mjs';
 
 const SCRIPT = process.platform === 'linux' && spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
 const skip = SCRIPT ? false : 'no `script` here (util-linux, Linux)';
@@ -29,6 +29,23 @@ const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 // cursor, wrapping off, bracketed paste on; and back: bracketed paste off, styles reset, wrapping on, the cursor shown,
 // the main screen
 const ENTER = '\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[?2004h', LEAVE = '\x1b[?2004l\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l';
+
+/** What the screen says: the received bytes without the reader's escape sequences, which split a styled row, and
+ *  without the override it writes around a row that holds right-to-left text (Y1, round 6; 0.1.1: LRM and LRO after its
+ *  first cluster that takes a column, PDF last), which splits a row's text. The reader's LRM is the one right before an
+ *  LRO, taken out by its place; a transcript's own LRM, written as it is, is kept (the claims run on 0.1.1: its M7b,
+ *  every LRM taken out by its character, passed every test). The tests that read a row check the override where it is. */
+const said = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\u200e(?=\u202d)|[\u202c\u202d]/g, '');
+
+// said(), what every step of the tests below reads the screen by, and legible(), what their failures are written with:
+// known answers (the claims run on 0.1.1: its M7b passed every test; RV-4, a failure that turned on an RLM or an LRO
+// read the same as one that did not)
+test('0.1.1: said() takes out the reader\'s escape sequences, its LRM right before its LRO, the LRO and the PDF, and keeps a transcript\'s own LRM; legible() writes what a terminal does not show as <U+XXXX>', () => {
+  assert.equal(said(`\x1b[4;1H\x1b[2K\x1b[7m>${LRM}${LRO} x\x1b[0m C++ ${LRM}\u05dd${PDF}`), `> x C++ ${LRM}\u05dd`);
+  assert.equal(said(`a${LRM}b`), `a${LRM}b`, 'a row without the override: its LRM is a transcript\'s');
+  assert.equal(said(`\u05dd${LRM}${LRO}\u05d5${LRM}${PDF}`), `\u05dd\u05d5${LRM}`, 'a transcript\'s LRM right before the PDF');
+  assert.equal(legible(`a${LRM}${LRO}b${PDF}\u200f`), '"a<U+200E><U+202D>b<U+202C><U+200F>"');
+});
 
 /**
  * Run the reader in a pseudo-terminal of 80 x 24: each step waits for its text (a string, or a regular expression) in
@@ -50,17 +67,13 @@ function ptyRun(r, { args, steps, nodeArgs = '', env = {}, wait = 20_000 }) {
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (d) => { out += d; });
   child.stderr.on('data', (d) => { err += d; });
-  // what the screen says: the received bytes without the reader's escape sequences, which split a styled row, and without
-  // the override it writes around a row that holds right-to-left text (Y1, round 6: LRO after its first cluster), which
-  // splits a row's text; the tests that read a row check the override where it is
-  const said = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\u200e(?=\u202d)|[\u202c\u202d]/g, '');
   const until = (want, since) => new Promise((resolve, reject) => {
     const t0 = Date.now();
     const look = () => {
       const s = said(out.slice(since));
       if (typeof want === 'string' ? s.includes(want) : want.test(s)) return resolve();
       const ended = /<<exit=\d+>>/.exec(out);
-      if (ended || Date.now() - t0 > wait) return reject(new Error(`no ${want} ${ended ? `before the reader ended (${ended[0]})` : `within ${wait} ms`}; the terminal received, last: ${JSON.stringify(out.slice(-600))}${err ? `; script said ${err}` : ''}`));
+      if (ended || Date.now() - t0 > wait) return reject(new Error(`no ${want} ${ended ? `before the reader ended (${ended[0]})` : `within ${wait} ms`}; the terminal received, last: ${legible(out.slice(-600))}${err ? `; script said ${err}` : ''}`));
       setTimeout(look, 20);
     };
     look();
@@ -303,8 +316,9 @@ test("N3: the checker's record nested 990 deep (a line of 0.8 MB) at --max-old-s
 
 // ---- R1 (S377, round 3), Y1 (round 6): right to left, end to end ----------------------------------------------------------
 // The Hebrew fixture's first prompt, opened as a record, as the terminal receives it: laid out by the reader in every
-// terminal, inside the override (LRO after the row's first cluster, PDF last: Y1), KONSOLE_VERSION changing nothing (round
-// 3 gave Konsole the text as stored); as stored with an RLM after it, and no override, where LTMS_READER_BIDI=terminal
+// terminal, inside the override (LRM and LRO after the row's first cluster that takes a column, PDF last: Y1, 0.1.1),
+// KONSOLE_VERSION changing nothing (round 3 gave Konsole the text as stored); as stored with an RLM after it, and no
+// override, where LTMS_READER_BIDI=terminal
 // chooses it; a value LTMS_READER_BIDI does not take is refused before the screen opens. The two forms are spelled out with
 // escapes here, the visual one as test/bidi.test.mjs's oracles give it.
 const STORED = '\u05d1\u05b0\u05bc\u05e8\u05b5\u05d0\u05e9\u05b4\u05c1\u05d9\u05ea: read src/\u05de\u05d5\u05d3\u05d5\u05dc.ts (line 12) and fix [the bug] in \u05e4\u05d5\u05e0\u05e7\u05e6\u05d9\u05d4() \u2014 3.14 > 2';
@@ -400,5 +414,29 @@ test('W2 (a): in "terminal" mode (LTMS_READER_BIDI=terminal), a left-to-right pa
     assert.equal(record[first] + record[first + 1], WRAPPED, 'its two lines, as stored, are the paragraph');
     assert.ok(!record.some((x) => x.includes('\u200f') && x !== `${RTL_LINE}\u200f`), 'no other RLM');
     assert.ok(!res.out.includes(LRO) && !res.out.includes(PDF), 'no override');
+  } finally { r.dispose(); }
+});
+
+// The claims run on 0.1.1 (S384; the review's RV-1): the pty tests put a transcript's own LRM on the screen in "terminal"
+// mode only (W2 (a)), and no step of theirs waited on a text that holds one, so that said() could take every LRM out by
+// its character (its M7b) and the reader could drop a transcript's from a row it lays out (its M9), and every test
+// passed. The same record line in "reader" mode: the reader's LRM and LRO after its first cluster, the transcript's LRM
+// as it is, before the Hebrew; its last step waits on the screen's text that holds that LRM.
+test('0.1.1: in "reader" mode, a record\'s line that holds a transcript\'s own LRM before Hebrew reaches the terminal with that LRM where it was, and the reader\'s LRM and LRO after its first cluster; q, and the terminal as it was', { skip, timeout: 60_000 }, async () => {
+  const r = makeRoot('ltms-reader-pty-');
+  try {
+    const file = path.join(r.base, BIDI);
+    promptRecord(file, [...LTR_LINES, RTL_LINE, WRAPPED].join('\n'));
+    const kept = new RegExp(`Record bidibidi:L1[\\s\\S]*C\\+\\+ ${LRM}`);
+    const res = await ptyRun(r, { args: [file], steps: [{ until: '> bidibidi:T001', send: KEY.enter }, { until: 'Turn bidibidi:T001', send: KEY.enter }, { until: kept, send: 'q' }] });
+    assert.equal(res.exit, 0);
+    assert.equal(res.after, res.before, 'stty -g after = before');
+    const rows = rowsOf(res.out), at = rows.findIndex((x) => x.startsWith('ltms-reader  Record bidibidi:L1'));
+    assert.ok(at >= 0, 'the record drawn');
+    // LTR_LINES[2] laid out: 'C++ ', the transcript's LRM, its two Hebrew words in visual order, the rest
+    const want = `C${LRM}${LRO}++ ${LRM}הפש איה (with LRM before the Hebrew)${PDF}`;
+    assert.ok(rows.slice(at).includes(want), `the record's line as the terminal received it: ${legible(rows.slice(at, at + 8))}`);
+    // every row of every frame in its shape, the reader's LRM by its place
+    for (const x of rows) withoutOverride(x);
   } finally { r.dispose(); }
 });

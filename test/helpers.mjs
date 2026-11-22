@@ -181,20 +181,30 @@ export const takesNoColumn = (c) => [...c].every((ch) => ch !== '\u00ad' && /^[\
  *  A transcript's own marks are written as they are, so the reader's is found by its place, never by its character. */
 export const LRM = String.fromCharCode(0x200e);
 
+/** A text for a failure's message: its JSON, with what a terminal does not show written as <U+XXXX>: DEL and the C1
+ *  controls, the format characters (LRM, RLM, ALM, LRO, PDF, ZWSP and WJ among them), the line and paragraph separators
+ *  (the claims run on 0.1.1, RV-4: JSON.stringify leaves them as they are, so that a message about a row with an RLM
+ *  where its LRM goes read the same as one about the row as it should be). */
+export const legible = (s) => (JSON.stringify(s) ?? String(s)).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, (c) => `<U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}>`);
+
 /**
- * A row as the screen writes it (its escape sequences taken out), without the reader's own controls, after checking it
- * (Y1, round 6; Z3, round 7; 0.1.1): in "reader" mode, a row that holds right-to-left text (a character of class R, AL or
- * AN, by the tests' own reference of UAX #9) and a cluster that takes a column has LRM and LRO right after the first such
- * cluster (never in the row's first column: Z3) and PDF as its last character, and no other LRO or PDF; a row that holds
- * right-to-left text but no cluster that takes a column, any other row, and every row in "terminal" mode, have none of
- * the three. Throws an AssertionError otherwise.
+ * A row as the screen writes it (its escape sequences taken out), without the reader's own controls, after checking
+ * where they are (Y1, round 6; Z3, round 7; 0.1.1): in "reader" mode, a row that holds right-to-left text (a character
+ * of class R, AL or AN, by the tests' own reference of UAX #9) and a cluster that takes a column has LRM and LRO right
+ * after the first such cluster (never in the row's first column: Z3) and PDF as its last character, and no other LRO or
+ * PDF; a row that holds right-to-left text but no cluster that takes a column, any other row, and every row in
+ * "terminal" mode, have no LRO and no PDF. Any other LRM is a transcript's own, written as it is, and is kept in its
+ * place in what this returns: the reader's LRM is found by its place, never by its character. So on a row without the
+ * override this cannot tell a stray LRM of the reader's from a transcript's (the claims run on 0.1.1, RV-3: this said
+ * such a row has "none of the three"); a test that compares the row's text with displayOrder's tells them apart. Throws
+ * an AssertionError otherwise, the row in its message as legible() writes it.
  */
 export function withoutOverride(row, mode = 'reader') {
   const bare = row.replace(/[\u202c\u202d]/g, '');
   const rtl = mode === 'reader' && [...bare].some((c) => [REFERENCE.R, REFERENCE.AL, REFERENCE.AN].includes(REFERENCE.classOf(c.codePointAt(0))));
   const cs = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(bare)].map((x) => x.segment), k = cs.findIndex((c) => !takesNoColumn(c));
-  if (!rtl || k < 0) { assert.equal(row, bare, `${mode}: a row without the override: ${JSON.stringify(row)}`); return row; }
+  if (!rtl || k < 0) { assert.equal(row, bare, `${mode}: a row without the override: ${legible(row)}`); return row; }
   const first = cs.slice(0, k + 1).join(''), rest = bare.slice(first.length + LRM.length);
-  assert.equal(row, `${first}${LRM}${LRO}${rest}${PDF}`, `a row that holds right-to-left text, LRM and LRO after its first cluster that takes a column and PDF last: ${JSON.stringify(row)}`);
+  assert.equal(row, `${first}${LRM}${LRO}${rest}${PDF}`, `a row that holds right-to-left text, LRM and LRO after its first cluster that takes a column and PDF last: ${legible(row)}`);
   return `${first}${rest}`;
 }

@@ -14,7 +14,7 @@ import { main } from '../src/main.mjs';
 import { ENTER, LEAVE } from '../src/screen.mjs';
 import { width } from '../src/text.mjs';
 import { top } from '../src/views.mjs';
-import { KEY, LRM, LRO, OWN, PDF, terminal, withoutOverride } from './helpers.mjs';
+import { KEY, LRM, LRO, OWN, PDF, legible, terminal, withoutOverride } from './helpers.mjs';
 
 const FILE = path.join(OWN, 'escapes.jsonl');
 /** The reader's own sequences: the alternate screen, the cursor, wrapping, bracketed paste, a position, a line erased,
@@ -27,8 +27,12 @@ const reordersOrHides = (c) => (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c
 
 /** Every place in `bytes` where something other than the reader's own sequences would act on a terminal, or would
  *  reorder or hide what the reader writes. The reader's own override around a row that holds right-to-left text (Y1,
- *  round 6: LRO right after the row's first grapheme cluster, PDF last) is its own where it is so (withoutOverride, over
- *  the row's text, from its position and erase to the next row's), and a stranger anywhere else. */
+ *  round 6; 0.1.1: LRM and LRO right after the row's first grapheme cluster that takes a column, PDF last) is its own
+ *  where it is so (withoutOverride, over the row's text, from its position and erase to the next row's), and an LRO or
+ *  a PDF anywhere else is a stranger. An LRM never is: a transcript's own are written as they are (the light marks), so
+ *  the reader's is checked by its place, by withoutOverride, never by its character here (the claims run on 0.1.1, RV-3
+ *  and RV-6: this said "LRO right after the row's first grapheme cluster", 0.1.0's shape, in which a row now has two
+ *  strangers). */
 export function strangers(bytes) {
   const bad = [], own = new Set(), rows = [...bytes.matchAll(/\x1b\[\d{1,3};1H\x1b\[2K/g)];
   rows.forEach((m, k) => {
@@ -267,13 +271,16 @@ test('the writer itself: a control character in a line, from anywhere, goes out 
   assert.ok(out.includes('a␛]52;c;eA==\\x07b'));
   assert.ok(out.includes('\\x9b2J\\nnext\\tcol\\x0d'), 'a new line and a tab inside a line are shown too');
   // a row that holds right-to-left text is written inside the reader's own override (Y1, round 6), and an override a
-  // transcript holds in it is shown as an escape all the same
-  const rtl = frameBytes([[{ text: '\u05e9\u05dc\u05d5\u05dd \u202d x \u202c', style: null }]], { cols: 80, rows: 1, colour: false });
+  // transcript holds in it is shown as an escape all the same; a transcript's own LRM in it is written as it is, and the
+  // row's reading here keeps it (the claims run on 0.1.1: its M7c, `bare` taking every LRM out by its character, could
+  // not fail while this row held none)
+  const rtl = frameBytes([[{ text: '\u05e9\u05dc\u05d5\u05dd \u200e\u202d x \u202c', style: null }]], { cols: 80, rows: 1, colour: false });
   assert.deepEqual(strangers(rtl), []);
   const bare = rtl.replace(/\u200e(?=\u202d)|[\u202c\u202d]/g, '');
   assert.ok(bare.includes('\\u202d') && bare.includes('\\u202c'), `the transcript's own, shown (in visual order, the row being right to left): ${JSON.stringify(rtl)}`);
   assert.equal([...rtl].filter((c) => c === LRO).length + [...rtl].filter((c) => c === PDF).length, 2, 'one LRO and one PDF, the reader\'s');
-  assert.equal([...rtl].filter((c) => c === LRM).length, 1, 'and one LRM, the reader\'s (the transcript holds none)');
+  assert.equal([...rtl].filter((c) => c === LRM).length, 2, `two LRMs, the reader's and the transcript's: ${legible(rtl)}`);
+  assert.equal([...bare].filter((c) => c === LRM).length, 1, `the transcript's, kept where it is: ${legible(bare)}`);
   // an override out of its place is a stranger: on a row without right-to-left text, before the row's first cluster
   assert.equal(strangers(`\x1b[1;1H\x1b[2Kab${LRO}c${PDF}`).length, 2);
   assert.equal(strangers(`\x1b[1;1H\x1b[2K${LRO}\u05e9\u05dc\u05d5\u05dd${PDF}`).length, 2);
