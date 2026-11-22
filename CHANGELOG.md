@@ -137,10 +137,12 @@
   module under test (Z4 passed with an RLM where the LRM goes); Y1 pins where the LRM and LRO go when the first cluster
   that takes a column ends a styled segment (inside its style) and when it is past U+FFFF (an emoji, and one with a
   skin-tone modifier: after the whole cluster), and withoutOverride checks that they sit where a grapheme cluster of the
-  row's text ends; R1 pins what a path in Markdown's backticks or bold gives (a Known limit below). Each of these was
-  found by changing the reader or the tests on purpose and running every test: with the LRM and LRO written after the
-  escape sequences, every test passed; inside the first cluster, only Y1's own rows failed; between an emoji's two
-  UTF-16 units, every test passed; and the walk passed with its right-to-left line taken out.
+  row's text ends; R1 pins what a path in Markdown's backticks or bold gives (a Known limit below). Each of these but R1
+  was found by changing the reader or the tests on purpose and running every test: with the LRM and LRO written after
+  the escape sequences, every test passed; inside the first cluster, only Y1's own rows failed; between an emoji's two
+  UTF-16 units, every test passed; and the walk passed with its right-to-left line taken out. R1's case was found by
+  running the path rule on such paths; then two changes of that rule, a closing backtick or asterisk trimmed off a path
+  and a backtick or asterisk before a path taken as its start, each of which every test had passed, failed R1.
 
 ### Known limits
 
