@@ -70,8 +70,8 @@ terminal's bracketed paste): pasted into a line, its new lines become spaces and
 pasted acts as a key. A Ctrl-C character that reaches the reader in a paste is the one exception: it quits, in a line
 too (but not right after an ESC, which is read with it as one key); and an ESC [201~ in a paste ends the paste there,
 what follows it acting as keys. What reaches the reader is the terminal's to say: by their sources (read, not run),
-Alacritty 0.17.0 takes ESC and Ctrl-C out of a paste, Konsole 26.08.3 takes ESC out and asks before it pastes a Ctrl-C,
-and the xterm.js of VS Code 1.147.0 writes ESC as `␛` and passes Ctrl-C.
+Alacritty 0.17.0 takes ESC and Ctrl-C out of a paste, Konsole 26.08.3 takes ESC out and asks before it pastes a
+control character, Ctrl-C among them, and the xterm.js of VS Code 1.147.0 writes ESC as `␛` and passes Ctrl-C.
 
 ## Your transcripts, and who sees them
 
@@ -79,9 +79,9 @@ and the xterm.js of VS Code 1.147.0 writes ESC as `␛` and passes Ctrl-C.
   terminal that is its stdout: it starts only when stdin and stdout are terminals, and draws every frame on stdout. It
   writes their text to no file, pipe or log; a program that records that terminal (`script`, tmux's `pipe-pane`, a
   terminal's own log) records what it draws. When it quits, it leaves the alternate screen, and nothing of it stays
-  (measured on VS Code's xterm.js). (ltms itself prints no text of a transcript but a call's tool name and a word taken
-  from its input, `grep` or `README` say, which reach the reader through the pipes of the ltms commands it runs; this
-  reader is for the person whose transcripts they are.)
+  (measured with a run's bytes replayed into the xterm.js of VS Code 1.147.0). (ltms itself prints no text of a
+  transcript but a call's tool name and a word taken from its input, `grep` or `README` say, which reach the reader
+  through the pipes of the ltms commands it runs; this reader is for the person whose transcripts they are.)
 - **It writes no file and uses no network.** It reads the transcripts under the folder it is given, and runs ltms's
   commands (`index`, `search`, `skeleton`) as local processes, which read the same files and write only to the reader.
   Run through `npx`, npm writes files of its own: a log of each run under `~/.npm/_logs`, which names the folder or file
@@ -139,14 +139,16 @@ and the xterm.js of VS Code 1.147.0 writes ESC as `␛` and passes Ctrl-C.
     first column an LRO is not applied by Konsole, dropped by tmux and given a column of its own by xterm.js (hence
     after the first cluster), and xterm.js with its own Unicode 6 widths gives an isolate (LRI, RLI, PDI) a column
     anywhere (with Unicode 11's, none after a character, one at the first column and after an escape sequence).
-    Alacritty, and xterm.js's WebGL renderer (VS Code's default), draw the text in the order it is written; xterm.js's
-    DOM renderer puts a run of cells of one style and one width into one span, which the browser lays out itself
-    (measured on 2026-11-22 in headless Chromium with 6.1.0-beta.304 and beta.337: with Liberation Mono or Courier New,
-    0.1.0's first letter at the row's other end and 0.1.1's row in order; with Hebrew from a second monospace font, a
-    span for each word, and 0.1.1's words after the first reversed in place). tmux keeps a mark in the cell of the
-    character before it, and redraws that cell to the terminal outside it (with VS Code's xterm.js outside, the cells
-    came out as without tmux; with Konsole 26.08.3 outside, measured on 2026-11-22 with tmux's status line off, the
-    screen came out pixel for pixel as without tmux). No other terminal was measured (kitty, VTE's, as in GNOME
+    Alacritty, and xterm.js's WebGL renderer (the one VS Code 1.147.0 loads at its default settings), draw the text in
+    the order it is written; xterm.js's DOM renderer (VS Code's where WebGL fails to load, or with GPU acceleration off)
+    puts a run of cells of one style whose glyphs need the same spacing into one span, which the browser lays out itself
+    (measured on 2026-11-22 in headless Chromium with 6.1.0-beta.304 and beta.337: with the Hebrew from a proportional
+    font, a span for each letter, both versions in order; with Liberation Mono or Courier New, one span for the row,
+    0.1.0's first letter at the row's other end and 0.1.1's row in order; with the Hebrew from a second monospace font,
+    a span for each word, and 0.1.1's words after the first reversed in place: a known limit). tmux keeps a mark in the
+    cell of the character before it, and redraws that cell to the terminal outside it (with VS Code's xterm.js outside,
+    the cells came out as without tmux; with Konsole 26.08.3 outside, measured on 2026-11-22 with tmux's status line
+    off, the screen came out pixel for pixel as without tmux). No other terminal was measured (kitty, VTE's, as in GNOME
     Terminal, mlterm, WezTerm, foot, iTerm2, Windows Terminal, GNU screen and the rest are not): one that gives LRM or
     LRO a column shifts such a line, from its second cluster on, by that column; one that gives PDF a column shifts
     nothing, the column falling after the line's end, and on a line as wide as the screen (wrapping is off) taking the
@@ -241,13 +243,13 @@ and the xterm.js of VS Code 1.147.0 writes ESC as `␛` and passes Ctrl-C.
 - Some clusters are drawn wider by some terminals than by the cluster rule (an Indic conjunct, an emoji sequence a
   terminal does not join): the rest of the row is drawn that much further right, and a row that then reaches past the
   screen's edge stops there, each character past it written over the last column (measured on VS Code 1.147.0's
-  xterm.js).
+  xterm.js, its headless build).
 - On a narrow screen some rows are wider than it (round 6's check measured them at 25 and 30 columns): the line that
   says what is being read (`reading the sessions with ltms index`, a transcript's name, `searching with ltms search`),
   which is not cut to the screen's width, and the search line where its prompt, which names what is searched, fills the
   screen (the text typed and the cursor go past it). The reader turns wrapping at the last column off, so a terminal
   stops such a row at its edge, the edge's cell holding the last character written to the row (measured on VS Code
-  1.147.0's xterm.js; on the other terminals reasoned, not measured). A known limit, left as it is.
+  1.147.0's xterm.js, its headless build; on the other terminals reasoned, not measured). A known limit, left as it is.
 - A paragraph's levels are resolved once, when a line of it is first drawn, and kept for the last two drawn of 4,096
   UTF-16 code units or more (a character past U+FFFF counts two). For R's record (one paragraph of 4,000,000 Hebrew
   characters), measured on 2026-11-16 on one machine, its first frame took 150 to 239 ms on Node 26.13.1 (11 runs),
