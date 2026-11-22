@@ -138,12 +138,13 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   `r` reads Projects or a project's Sessions again (the selection kept on its row), `j` shows a record's JSON, `?` the
   keys, `q` or Ctrl-C quits.
 - The screen, with no library: raw mode, keypress events, the alternate screen, the cursor hidden, wrapping at the last
-  column off, bracketed paste on (a paste is text, never keys, but for a Ctrl-C character in it, which quits, and what
-  follows an ESC [201~ in it, which ends the paste there); each frame drawn whole, each row erased first, again on a
-  resize; from 20 x 5, the status line (the selected row's address, then `? keys` and `q quits` as far as they fit) or a
-  message in its place always the last line drawn; under it, the size it needs, wrapped over the lines there are. The
-  terminal is restored on every way out: `q` (exit 0), Ctrl-C and SIGINT (130), SIGHUP (129), SIGTERM (143), an uncaught
-  error (1, printed after the restore by its kind and its place, not its message). `NO_COLOR` honoured.
+  column off, bracketed paste on (a paste is text, never keys, but for a Ctrl-C character in it, which quits, though not
+  right after an ESC, which is read with it as one key, and what follows an ESC [201~ in it, which ends the paste
+  there); each frame drawn whole, each row erased first, again on a resize; from 20 x 5, the status line (the selected
+  row's address, then `? keys` and `q quits` as far as they fit) or a message in its place always the last line drawn;
+  under it, the size it needs, wrapped over the lines there are. The terminal is restored on every way out: `q` (exit
+  0), Ctrl-C and SIGINT (130), SIGHUP (129), SIGTERM (143), an uncaught error (1, printed after the restore by its kind
+  and its place, not its message). `NO_COLOR` honoured.
 - Text: every C0 and C1 control character and DEL shown as a visible escape (ESC as `␛`, the rest as `\xNN`), so a
   transcript's escape sequences (OSC 52 among them) never reach the terminal as such; and what reorders or hides text
   (bidirectional embeddings, overrides and isolates, the byte order mark, the line and paragraph separators, tag
@@ -166,7 +167,6 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   so that a terminal that lays text out itself with a left-to-right base keeps that order (but a first cluster that is
   right to left, outside the override: the first Known limit); `LTMS_READER_BIDI=terminal` writes the text as stored
   instead, with an RLM at the end of each line of a right-to-left paragraph.
-
 - A transcript is read in the reader's own process; one over a tenth of Node's memory limit (its heap's, or the old
   space's where `--max-old-space-size` or `--max-old-space-size-percentage` sets one) is refused with its size and the
   `NODE_OPTIONS` that would let it be read, in the command `npx ltms-reader` with the path given (so too when it was
