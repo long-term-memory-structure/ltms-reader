@@ -65,20 +65,20 @@ screen too small for all of it, its first lines), and `q` still quits.
 | `?` | the keys |
 | `q` or Ctrl-C | quit |
 
-While a line is typed: Backspace, Ctrl-U to clear it, Enter, Esc to leave it. A paste is text (the reader turns on the
-terminal's bracketed paste): pasted into a line, its new lines become spaces and do not run it; elsewhere, nothing
-pasted acts as a key. A Ctrl-C character that reaches the reader in a paste is the one exception: it quits, in a line
-too (but not right after an ESC, which is read with it as one key); and an ESC [201~ in a paste ends the paste there,
-what follows it acting as keys. What reaches the reader is the terminal's to say: by their sources (read, not run),
-Alacritty 0.17.0 takes ESC and Ctrl-C out of a paste, Konsole 26.08.3 takes ESC out and asks before it pastes a
-control character, Ctrl-C among them, and the xterm.js of VS Code 1.147.0 writes ESC as `␛` and passes Ctrl-C.
+While a line is typed: Backspace, Ctrl-U to clear it, Enter, Esc to leave it. A paste is text, never keys (the reader
+turns on the terminal's bracketed paste), but for two things in it: a Ctrl-C character quits, in a line too, though not
+right after an ESC, which is read with it as one key; and an ESC [201~ ends the paste there, what follows it acting as
+keys. Pasted into a line, its new lines become spaces and do not run it. What reaches the reader is the terminal's to
+say: by their sources (read, not run), Alacritty 0.17.0 takes ESC and Ctrl-C out of a paste, Konsole 26.08.3 takes ESC
+out and asks before it pastes a control character, Ctrl-C among them, and the xterm.js of VS Code 1.147.0 writes ESC as
+`␛` and passes Ctrl-C.
 
 ## Your transcripts, and who sees them
 
 - **It shows their text**, prompts, replies, tool inputs and outputs included, to you, on the alternate screen of the
   terminal that is its stdout: it starts only when stdin and stdout are terminals, and draws every frame on stdout. It
-  writes their text to no file, pipe or log; a program that records that terminal (`script`, tmux's `pipe-pane`, a
-  terminal's own log) records what it draws. When it quits, it leaves the alternate screen, and nothing of it stays
+  writes their text to no file, pipe or log; a program that records that terminal records what it draws (measured with
+  util-linux `script` and tmux's `pipe-pane`). When it quits, it leaves the alternate screen, and nothing of it stays
   (measured with a run's bytes replayed into the xterm.js of VS Code 1.147.0). (ltms itself prints no text of a
   transcript but a call's tool name and a word taken from its input, `grep` or `README` say, which reach the reader
   through the pipes of the ltms commands it runs; this reader is for the person whose transcripts they are.)
@@ -183,9 +183,11 @@ control character, Ctrl-C among them, and the xterm.js of VS Code 1.147.0 writes
   (`/home/...`, `~/...`, `src/...`, `https://...`) that begins the line or follows a space, an opening bracket or quote,
   `=` or a hyphen is laid out as one left-to-right unit, up to the next space, its parts in order and a Hebrew name in
   it reading right (UAX #9's higher-level protocol HL4), in pieces where a line breaks inside it, as an isolate is; one
-  in Markdown's backticks or bold, or right after a colon or a comma, is not (in a right-to-left line,
-  `/home/user/x.txt` in backticks reads `home/user/x.txt/`), and a path with a space in it is laid out as two, in a
-  right-to-left line in the other order. Each cluster is kept whole, its marks after its letter, as a terminal draws
+  right after Markdown's opening backtick or `**`, or right after a colon or a comma, is not (in a right-to-left line,
+  `/home/user/x.txt` in backticks reads `home/user/x.txt/`), and one that follows a space inside backticks or bold is
+  one, the closing backtick or `**` with it, which a right-to-left line lays out on the path's right (a known limit); a
+  path with a space in it is laid out as two, in a right-to-left line in the other order. Each cluster is kept whole,
+  its marks after its letter, as a terminal draws
   them, and so is a mark after characters UAX #9 removes (a soft hyphen, ZWSP, WJ: clusters of their own), with the
   letter before them; the text is aligned left, so the columns stay. Checked against Unicode's conformance test
   (BidiCharacterTest.txt: every case without an explicit formatting character, which the reader shows as an escape and
