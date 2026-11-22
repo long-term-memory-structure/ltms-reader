@@ -10,7 +10,7 @@
   prompt `שלום עולם ומלואו` showed its vav at the row's right end (in windows of 379 x 78, by 0.1.0's own frames, where
   their launch had asked for 80 x 24), and with the same bytes on a page, read from its pixels (a capture the size of
   the 210 x 59 windows the fix was run in that night): the vav at column 15 of 16, and a final nun at column 13 of 14 in
-  a twin row. With the mark, the same page kept both at column 0. In `test/bidi.test.mjs`, GNU FriBidi 1.0.18 with a
+  a twin row. With the mark, the same page kept both at column 0. In the tests, GNU FriBidi 1.0.18 with a
   left-to-right base (`fribidi --ltr`), standing for such a terminal, keeps the reader's order on such rows, a pointed
   first cluster and an Arabic one among them; on 0.1.0's rows it moves a first cluster that is right to left to the
   row's other end. Measured again on 2026-11-21 with the reader itself, 0.1.1 against 0.1.0, on two transcripts, one of
@@ -35,11 +35,11 @@
   - A path: "a path or a URL laid out as one left-to-right unit"; one that begins a line or follows a space, an opening
     bracket or quote, `=` or a hyphen, up to the next space; not right after Markdown's opening backtick or `**`, nor
     right after a colon or a comma (one that follows a space inside backticks or bold is one: a Known limit below); a
-    path with a space is two (read in `pathUnits`, and run on it, 2026-11-22).
+    path with a space is two (read in `pathUnits`, `src/text.mjs`, and run on it, 2026-11-22).
   - A paste: "text, never keys, but for a Ctrl-C character in it, which quits"; not right after an ESC, read with it as
     one key, and what follows an ESC [201~ in it acts as keys (2026-11-22, below).
   - Mode `terminal`: "an RLM at the end of each right-to-left paragraph"; at the end of each line of a right-to-left
-    paragraph, before the whitespace that ends it (read in `displayOrder`, and its bytes, 2026-11-22).
+    paragraph, before the whitespace that ends it (read in `displayOrder`, `src/text.mjs`, and its bytes, 2026-11-22).
   - The docker skips: "as their images have no GNU FriBidi and no Electron"; and no python3, which the five tests of
     FriBidi's library run (the three images' contents, read on 2026-11-22).
   - The first Known limit: "Konsole itself was not run (the README's Right to left says so too)"; that README is
@@ -57,10 +57,10 @@
     (2026-11-22: xterm.js 6.1.0-beta.304, VS Code 1.146.0's, and beta.337, 1.147.0's, in headless Chromium 158, with
     xterm.js's own Unicode 6 widths and with Unicode 11's; `@xterm/headless` 6.1.0-beta.335, 1.147.0's, in Node). The
     reader writes its LRM and LRO right after a character, inside the style of a first cluster that ends a styled
-    segment (Y1 pins it now); its PDF follows the ESC [0m of a row whose last segment is styled, and takes a cell after
-    the row's text, so that no text moves, or, on the selected row, as wide as the screen, is written past the last
-    column. tmux 3.6 (in docker) gave none of the three a column after an escape sequence; Konsole and Alacritty were
-    not run so.
+    segment (a test pins it now); its PDF follows the ESC [0m of a row whose last segment is styled, and takes a cell
+    after the row's text, so that no text moves, or, on the selected row, as wide as the screen, is written past the
+    last column. tmux 3.6 (in docker) gave none of the three a column after an escape sequence; Konsole and Alacritty
+    were not run so.
   - An isolate (LRI, RLI, FSI, PDI), which the reader does not write, takes no column after a character with Unicode
     11's widths, VS Code's default (`terminal.integrated.unicodeVersion`, read in 1.147.0's code), and one at a row's
     first column or after an escape sequence; with xterm.js's own Unicode 6 widths, one anywhere, as on 2026-11-16
@@ -125,24 +125,27 @@
   the other five tests before it, after all five), in 10 of 40 with that test right before it and in 2 of 10 in the
   file's order; what of that test's run it needs was not measured. With the rule reading the process's own limit, the
   record is refused under `=100`, and under `=114`, the least at which the rule shows it, it opened in 10 of 10 runs
-  after the same test. The new ones: the FriBidi test above; a transcript's own LRM in rows the reader
-  lays out, in a frame's bytes and end to end in a pseudo-terminal, and the tests' own readers of a row
-  (withoutOverride, said(), legible()) on known answers (a check of 0.1.1's claims found no test holding such a row, so
+  after the same test. The new ones: the FriBidi test above; a transcript's own LRM in rows the reader lays out, in a
+  frame's bytes and end to end in a pseudo-terminal, and the tests' own readers of a row (the one that takes the
+  reader's LRM, LRO and PDF out of a row, the one that reads a pseudo-terminal's screen, and the one that writes what a
+  terminal does not show as `<U+XXXX>`) on known answers (a check of 0.1.1's claims found no test holding such a row, so
   that the tests could find the reader's LRM by its character, and the reader could drop a transcript's, and every test
-  passed); Y1's walk of the Hebrew fixture's views, and of a transcript whose lines begin with a letter and its mark, a
-  test of its own, each row's text against displayOrder's, which requires rows that begin with a Latin letter and its
-  mark and rows that begin with a Hebrew one; `--help`'s widths; the keys screen's sentence on where the text goes; a
-  step of the pseudo-terminal's tests whose text comes only in a wrong form fails once the terminal has gone quiet, no
-  longer after its wait. Y1, Z3 and Z4 take the LRM, LRO and PDF they expect from the tests' own constants, not from the
-  module under test (Z4 passed with an RLM where the LRM goes); Y1 pins where the LRM and LRO go when the first cluster
-  that takes a column ends a styled segment (inside its style) and when it is past U+FFFF (an emoji, and one with a
-  skin-tone modifier: after the whole cluster), and withoutOverride checks that they sit where a grapheme cluster of the
-  row's text ends; R1 pins what a path in Markdown's backticks or bold gives (a Known limit below). Each of these but R1
-  was found by changing the reader or the tests on purpose and running every test: with the LRM and LRO written after
-  the escape sequences, every test passed; inside the first cluster, only Y1's own rows failed; between an emoji's two
-  UTF-16 units, every test passed; and the walk passed with its right-to-left line taken out. R1's case was found by
-  running the path rule on such paths; then two changes of that rule, a closing backtick or asterisk trimmed off a path
-  and a backtick or asterisk before a path taken as its start, each of which every test had passed, failed R1.
+  passed); a walk of every row of the Hebrew fixture's views, and of a transcript whose lines begin with a letter and
+  its mark, a test of its own, each row's text against that of `displayOrder` (`src/text.mjs`), which requires rows that
+  begin with a Latin letter and its mark and rows that begin with a Hebrew one; `--help`'s widths; the keys screen's
+  sentence on where the text goes; a step of the pseudo-terminal's tests whose text comes only in a wrong form fails
+  once the terminal has gone quiet, no longer after its wait. The tests of where the reader writes its LRM, LRO and PDF
+  take the three from the tests' own constants, not from the module under test (one of them passed with an RLM where the
+  LRM goes); one of them pins where the LRM and LRO go when the first cluster that takes a column ends a styled segment
+  (inside its style) and when it is past U+FFFF (an emoji, and one with a skin-tone modifier: after the whole cluster),
+  and the tests' reader that takes them out of a row checks that they sit where a grapheme cluster of the row's text
+  ends; a test of the path rule pins what a path in Markdown's backticks or bold gives (a Known limit below). Each of
+  these but that test was found by changing the reader or the tests on purpose and running every test: with the LRM and
+  LRO written after the escape sequences, every test passed; inside the first cluster, only the rows of the test of
+  their place failed; between an emoji's two UTF-16 units, every test passed; and the walk passed with its right-to-left
+  line taken out. The path test's case was found by running the path rule on such paths; then two changes of that rule,
+  a closing backtick or asterisk trimmed off a path and a backtick or asterisk before a path taken as its start, each of
+  which every test had passed, failed it.
 
 ### Known limits
 
@@ -163,8 +166,8 @@
   from the left: `שם`, then `/home/x**`, then `קובץ`, then `**`, then `ראה`; so with `*`, `_` and `__`). Right after an
   opening backtick, `**` or `*` the path is laid out as UAX #9 has it, its first slash at its right end: in a
   right-to-left line, `/home/user/x.txt` in backticks reads `home/user/x.txt/`, and so in `**` or `*`. Read in
-  `pathUnits`, and run on it and on the reader's layout at this release's code (Node 24.18.0, 2026-11-22: backticks and
-  bold, then italics too).
+  `pathUnits` (`src/text.mjs`), and run on it and on the reader's layout at this release's code (Node 24.18.0,
+  2026-11-22: backticks and bold, then italics too).
 - A transcript is read into memory whole, in the reader's own process: one over a tenth of Node's memory limit is
   refused with its size (rounded up) and that limit (rounded down), so that the two differ, and the
   `NODE_OPTIONS=--max-old-space-size=...` that would let it be read, and one over 480 MB at all, by JavaScript's limit

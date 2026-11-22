@@ -227,8 +227,8 @@ out and asks before it pastes a control character, Ctrl-C among them, and the xt
   killed, racing the screen's process. The screen's process then writes the leave sequence and leaves the terminal's
   modes to the shell (it puts back the modes it started with only where they are still the screen's raw ones, as
   under a shell that sets none).
-  Measured on 2026-11-16 with round 3's check's probe, `shellkill.py`, and its stand-in for a job-control shell that
-  sets no modes, `standin.py`: a pseudo-terminal of 80 x 24, the shell at its prompt, the reader started from it,
+  Measured on 2026-11-16, beside the shells a stand-in for a job-control shell that sets no modes: a pseudo-terminal
+  of 80 x 24, the shell at its prompt, the reader started from it,
   SIGKILL to the command's process once its frame is up; 10 runs for each of bash 5.3.20, zsh 5.9.2 (`-f`, and `-f`
   with `ttyctl -f` typed first), fish 4.9.3 and the stand-in. The modes 1.5 s after were the shell's own, as at its
   prompt, 10 of 10 for bash, zsh with `ttyctl -f`, fish and the stand-in; a line typed then came back once, 10 of 10,
