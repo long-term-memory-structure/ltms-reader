@@ -110,9 +110,9 @@
     (2026-11-22).
 - What `--help`, the keys screen and the refusal said more than holds, as a check of each of 0.1.1's claims against its
   code and its measurements found it (2026-11-21 and 22), is narrowed, and so is the README: `--help` says the first
-  grapheme cluster, the left-to-right base, the xterm.js of VS Code's terminal, the RLM of mode `terminal`, and that a
-  line whose first letter is right to left was run only with Hebrew letters without points, in no line wider than
-  0.1.0's; the keys screen and the refusal say where a transcript's text goes.
+  grapheme cluster, the left-to-right base, the xterm.js of VS Code's terminal, the RLM of mode `terminal`, and that,
+  for a line that begins with a right-to-left letter, this was measured only with Hebrew letters without points, in no
+  line wider than 0.1.0's; the keys screen and the refusal say where a transcript's text goes.
 - Tests: 435 → 444 (Node 26.13.1: 444 passing; Node 24.18.0, on a second machine: 444 passing; Node 24.22.3, 22.23.3 and
   20.20.2 in docker: 436 passing, 0 failing, 8 skipped, as their images have no GNU FriBidi, no python3, which the five
   tests of FriBidi's library run, and no Electron; each line the same under `NODE_OPTIONS=--max-old-space-size=100` and
