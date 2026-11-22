@@ -13,10 +13,11 @@
   a twin row. With the mark, the same page kept both at column 0. In `test/bidi.test.mjs`, GNU FriBidi 1.0.18 with a
   left-to-right base (`fribidi --ltr`), standing for such a terminal, keeps the reader's order on such rows, a pointed
   first cluster and an Arabic one among them; on 0.1.0's rows it moves a first cluster that is right to left to the
-  row's other end. Measured again on 2026-11-21 with the reader itself, 0.1.1 against 0.1.0 on the same two transcripts
-  and keys: the two outputs differ only by the marks, each right before an LRO. Konsole 26.08.3 (its default bidi
-  settings) drew the first letter at column 0, where 0.1.0's was at the row's right end, and so it did on 2026-11-22
-  with tmux 3.6 inside it (tmux's status line off: the same pixels as without tmux); Alacritty 0.17.0 drew the same
+  row's other end. Measured again on 2026-11-21 with the reader itself, 0.1.1 against 0.1.0, on two transcripts, one of
+  the prompt above and one of its twin, `שלום עולם ואבן`, each run with the same keys (Enter, Enter, q): the two
+  versions' outputs differ only by the marks, each right before an LRO. Konsole 26.08.3 (its default bidi settings) drew
+  the first letter at column 0, where 0.1.0's was at the row's right end, and so it did on 2026-11-22 with tmux 3.6
+  inside it (tmux's status line off: the same pixels as without tmux); Alacritty 0.17.0 drew the same
   pixels for both; tmux 3.6, and the xterm.js of VS Code 1.146.0 and 1.147.0 (run in a headless browser, not in VS Code;
   with xterm.js's own Unicode 6 widths and with Unicode 11's), hold the mark in the first letter's cell; in all four the
   mark took no column. The first letters measured were two Hebrew letters without points, a vav and a final nun: a
@@ -108,8 +109,9 @@
     (2026-11-22).
 - What `--help`, the keys screen and the refusal said more than holds, as a check of each of 0.1.1's claims against its
   code and its measurements found it (2026-11-21 and 22), is narrowed, and so is the README: `--help` says the first
-  grapheme cluster, the left-to-right base, the xterm.js of VS Code's terminal and the RLM of mode `terminal`, in no
-  line wider than 0.1.0's; the keys screen and the refusal say where a transcript's text goes.
+  grapheme cluster, the left-to-right base, the xterm.js of VS Code's terminal, the RLM of mode `terminal`, and that a
+  line whose first letter is right to left was run only with Hebrew letters without points, in no line wider than
+  0.1.0's; the keys screen and the refusal say where a transcript's text goes.
 - Tests: 435 → 444 (Node 26.13.1: 444 passing; Node 24.18.0, on a second machine: 444 passing; Node 24.22.3, 22.23.3 and
   20.20.2 in docker: 436 passing, 0 failing, 8 skipped, as their images have no GNU FriBidi, no python3, which the five
   tests of FriBidi's library run, and no Electron; each line the same under `NODE_OPTIONS=--max-old-space-size=100` and
@@ -137,9 +139,20 @@
   letters elsewhere, and its twin 8 of 12 (0.1.0's rows: 14 of 14 and 12 of 12). With one monospace font for both
   scripts, or the Hebrew from a proportional font, and in the WebGL renderer, 0.1.1's rows were drawn in order. Not run
   in VS Code's own window.
+- A path or a URL in Markdown's backticks or bold is no unit only where it comes right after the opening backtick or
+  `**` (the corrections to 0.1.0's notes, above, say "not in backticks or bold"): one that follows a space inside them
+  is one, up to the next space, the closing marker with it, so that in a right-to-left line that marker is laid out with
+  the path, on its right (`ראה **קובץ /home/x** שם` is laid out, from the left: `שם`, then `/home/x**`, then `קובץ`,
+  then `**`, then `ראה`). Right after the opening marker the path is laid out as UAX #9 has it, its first slash at its
+  right end: in a right-to-left line, `/home/user/x.txt` in backticks reads `home/user/x.txt/`. Read in `pathUnits`, and
+  run on it and on the reader's layout at this release's code (Node 24.18.0, 2026-11-22).
 
-0.1.0's other Known limits (below) still hold; in the one of a letter followed by WJ and a mark, 0.1.1 writes U+05DD,
-U+200E, U+202D, U+2060, U+05B7, the rest, U+202C.
+Of 0.1.0's Known limits (below), the first, a first cluster that is right to left moved to the line's other end by a
+terminal that lays each line out with a left-to-right base, no longer holds at Konsole's default bidi settings, where it
+was measured with two Hebrew letters without points, nor under GNU FriBidi `--ltr`; with Konsole's "force LTR line
+direction" unchecked, where a line takes its base from its first strong character, such a cluster is predicted to be
+drawn at the line's other end still (the first bullet above). The others still hold; in the one of a letter followed by
+WJ and a mark, 0.1.1 writes U+05DD, U+200E, U+202D, U+2060, U+05B7, the rest, U+202C.
 
 ## 0.1.0 (2026-11-18)
 
