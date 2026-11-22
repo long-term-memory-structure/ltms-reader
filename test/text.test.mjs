@@ -715,6 +715,11 @@ test('Y1: in "reader" mode a row that holds right-to-left text is written with L
   // letter or a letter and its point: the LRM, LRO and PDF after it (the claims run on 0.1.1, RV-8: no row of the tests
   // held either)
   assert.deepEqual(rowsOf([[{ text: '\u4e2d\u6587 \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`\u4e2d${LRM}${LRO}\u6587 \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  // a first cluster past U+FFFF, each of its code points two UTF-16 units: an emoji, and an emoji with a skin-tone
+  // modifier: the LRM and LRO after the whole cluster, never between its units (a re-check of 0.1.1, its P1a: written
+  // after the cluster's first unit, between the emoji's two surrogates, they passed every test)
+  assert.deepEqual(rowsOf([[{ text: '\u{1f600} \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`\u{1f600}${LRM}${LRO} \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  assert.deepEqual(rowsOf([[{ text: '\u{1f44d}\u{1f3fd} \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`\u{1f44d}\u{1f3fd}${LRM}${LRO} \u05dd\u05d5\u05dc\u05e9${PDF}`]);
   assert.deepEqual(rowsOf([[{ text: '\u05dd', style: null, dir: 1 }]], 'reader'), [`\u05dd${LRM}${LRO}${PDF}`]);
   assert.deepEqual(rowsOf([[{ text: '\u05d0\u05b8', style: null, dir: 1 }]], 'reader'), [`\u05d0\u05b8${LRM}${LRO}${PDF}`]);
 });
