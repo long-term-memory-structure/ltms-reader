@@ -185,14 +185,15 @@ out and asks before it pastes a control character, Ctrl-C among them, and the xt
   it reading right (UAX #9's higher-level protocol HL4), in pieces where a line breaks inside it, as an isolate is; one
   right after Markdown's opening backtick, `**` or `*`, or right after a colon or a comma, is not (in a right-to-left
   line, `/home/user/x.txt` in backticks reads `home/user/x.txt/`); one right after an opening `_` or `__` is one, the
-  markers in it; and one that follows a space inside any of these markers is one, the closing marker with it when it
-  follows the path directly, which a right-to-left line lays out on the path's right (a known limit); a path with a
-  space in it is laid out as two, in a right-to-left line in the other order. Each cluster is kept whole, its marks
-  after its letter, as a terminal draws them, and so is a mark after characters UAX #9 removes (a soft hyphen, ZWSP, WJ:
-  clusters of their own), with the letter before them; the text is aligned left, so the columns stay. Checked against
-  Unicode's conformance test
-  (BidiCharacterTest.txt: every case without an explicit formatting character, which the reader shows as an escape and
-  never applies) and against GNU FriBidi: its command for a line, its library for a paragraph wrapped into lines.
+  markers in it, where that marker begins the line or follows a space, an opening bracket or quote, `=` or a hyphen
+  (inside bold, `**_/home/x_**`, it is not); and one that follows a space inside any of these markers is one, the
+  closing marker with it when it follows the path directly, which a right-to-left line lays out on the path's right (a
+  known limit); a path with a space in it is laid out as two, in a right-to-left line in the other order. Each cluster
+  is kept whole, its marks after its letter, as a terminal draws them, and so is a mark after characters UAX #9 removes
+  (a soft hyphen, ZWSP, WJ: clusters of their own), with the letter before them; the text is aligned left, so the
+  columns stay. Checked against Unicode's conformance test (BidiCharacterTest.txt: every case without an explicit
+  formatting character, which the reader shows as an escape and never applies) and against GNU FriBidi: its command for
+  a line, its library for a paragraph wrapped into lines.
 - Colour follows [NO_COLOR](https://no-color.org): set, there is none; the selected row is still drawn in reverse.
 
 ## Limits
@@ -204,9 +205,10 @@ out and asks before it pastes a control character, Ctrl-C among them, and the xt
   commands without its own `NODE_OPTIONS` or flags); one over 480 MB cannot be read at all.
   Node's memory limit is its heap's, or, where `--max-old-space-size` or `--max-old-space-size-percentage` sets the old
   space (in `NODE_OPTIONS` or on node's command line), the old space's: a transcript's parse is kept there, and the
-  heap's limit holds beside it a reserve for new objects that is sized from the machine's memory, not from the old space
-  (with `--max-old-space-size=16`, measured: a heap limit of 64 MB on Node 20 and 22, 208 MB on Node 24, 112 MB on Node
-  26). By the heap's limit, under an old space of 16 MB, Node 24 took in a transcript of 12 MB and ran out of memory.
+  heap's limit holds beside it a reserve for new objects that the old space does not size (with
+  `--max-old-space-size=16`, measured in containers or a scope of 3 GB: a heap limit of 64 MB on Node 20 and 22, 208 MB
+  on Node 24, 112 MB on Node 26; the same for Node 20 and 24 under 6 GB, and for Node 24 on machines of 16 and 25 GB).
+  By the heap's limit, under an old space of 16 MB, Node 24 took in a transcript of 12 MB and ran out of memory.
 - A record is shown when its view (up to 16 times the record's size) fits beside the transcript's (up to 8 times the
   file's) in nine tenths of Node's memory limit, and so does what writing the JSON the view writes of it takes, with
   12 MB beside it, the reader's own: JSON is indented once more at each level a value is nested in, so that a record
@@ -222,7 +224,7 @@ out and asks before it pastes a control character, Ctrl-C among them, and the xt
   screen by its own way out (SIGTERM; if it has not ended within 2 s, SIGKILL, and the command restores the terminal),
   then is printed after the restore, and the command exits with 1. If the command's own process is killed (SIGKILL),
   the screen's process learns of it (an IPC channel between the two closes), restores the terminal and ends; if both
-  are killed at once (a whole cgroup, as systemd-oomd does), nothing is left to restore it.
+  are killed at once (a whole cgroup, as systemd-oomd does), nothing is left to restore it (reasoned, not run).
 - Under an interactive shell with job control, that shell takes the terminal back as soon as the command's process is
   killed, racing the screen's process. The screen's process then writes the leave sequence and leaves the terminal's
   modes to the shell (it puts back the modes it started with only where they are still the screen's raw ones, as
@@ -264,10 +266,10 @@ out and asks before it pastes a control character, Ctrl-C among them, and the xt
   1.5 to 2.3 ms at 80 x 24 and 4.6 to 7.6 at 200 x 60.
 - On Node 20, a long line of text that is not ASCII is laid out about three times slower than on Node 26: Node 20's
   grapheme segmenter is slower, and walked over one long string it costs more at each cluster the longer the string is
-  (on Node 20.20.2, 4.3 to 4.9 us a cluster at 10,000 units, 118 to 121 at 80,000), so the reader walks a long line
-  256 units at a time. Measured on the record of 4,000,000 characters above, at 80 columns: its lines counted in 3.6 to
-  3.9 s on Node 20.20.2, against 1.15 to 1.23 s on Node 26.13.1 (a record of the same size in ASCII: 15 to 16 and 16 to
-  20 ms).
+  (on Node 20.20.2, 4.7 to 4.9 us a cluster at 10,000 units and 118 to 121 at 80,000 for Hebrew, mixed or CJK text; 4.3
+  and 28 for ASCII), so the reader walks a long line 256 units at a time. Measured on the record of 4,000,000 characters
+  above, at 80 columns: its lines counted in 3.6 to 3.9 s on Node 20.20.2, against 1.15 to 1.23 s on Node 26.13.1 (a
+  record of the same size in ASCII: 15 to 16 and 16 to 20 ms).
 
 Exit status: 0 after `q`; 130 after Ctrl-C or SIGINT; 129 after SIGHUP; 143 after SIGTERM; 1 after an internal error;
 2 when it is refused before the screen opens (not a terminal, a usage error, a path that is not a folder or a `.jsonl`);

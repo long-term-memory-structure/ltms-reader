@@ -159,16 +159,17 @@
   letters elsewhere, and its twin 8 of 12 (0.1.0's rows: 14 of 14 and 12 of 12). With one monospace font for both
   scripts, or the Hebrew from a proportional font, and in the WebGL renderer, 0.1.1's rows were drawn in order. Not run
   in VS Code's own window.
-- A path or a URL in Markdown's markers (backticks, bold, italics) is no unit only where it comes right after an opening
-  backtick, `**` or `*`: one right after an opening `_` or `__` is one, the markers in it (`_/home/x_`), laid out in a
-  right-to-left line as written; and one that follows a space inside any of them is one, up to the next space, the
-  closing marker with it when the marker follows the path directly (with a word between them, the path alone), so that
-  in a right-to-left line that marker is laid out with the path, on its right (`ראה **קובץ /home/x** שם` is laid out,
-  from the left: `שם`, then `/home/x**`, then `קובץ`, then `**`, then `ראה`; so with `*`, `_` and `__`). Right after an
-  opening backtick, `**` or `*` the path is laid out as UAX #9 has it, its first slash at its right end: in a
-  right-to-left line, `/home/user/x.txt` in backticks reads `home/user/x.txt/`, and so in `**` or `*`. Read in
-  `pathUnits` (`src/text.mjs`), and run on it and on the reader's layout at this release's code (Node 24.18.0,
-  2026-11-22: backticks and bold, then italics too).
+- A path or a URL in Markdown's markers (backticks, bold, italics) is no unit where it comes right after an opening
+  backtick, `**` or `*`. One right after an opening `_` or `__` is one, the markers in it (`_/home/x_`), laid out in a
+  right-to-left line as written, where that marker begins the line or follows a space, an opening bracket or quote, `=`
+  or a hyphen; inside bold (`**_/home/x_**`, `**__/home/x__**`) it is no unit. One that follows a space inside any of
+  them is one, up to the next space, the closing marker with it when the marker follows the path directly (with a word
+  between them, the path alone), so that in a right-to-left line that marker is laid out with the path, on its right
+  (`ראה **קובץ /home/x** שם` is laid out, from the left: `שם`, then `/home/x**`, then `קובץ`, then `**`, then `ראה`; so
+  with `*`, `_` and `__`). Right after an opening backtick, `**` or `*` the path is laid out as UAX #9 has it, its first
+  slash at its right end: in a right-to-left line, `/home/user/x.txt` in backticks reads `home/user/x.txt/`, and so in
+  `**`, in `*` and in italics inside bold. Read in `pathUnits` (`src/text.mjs`), and run on it and on the reader's
+  layout at this release's code (Node 24.18.0, 2026-11-22: backticks and bold, then italics, then italics inside bold).
 - A transcript is read into memory whole, in the reader's own process: one over a tenth of Node's memory limit is
   refused with its size (rounded up) and that limit (rounded down), so that the two differ, and the
   `NODE_OPTIONS=--max-old-space-size=...` that would let it be read, and one over 480 MB at all, by JavaScript's limit
@@ -176,11 +177,12 @@
   them without its own `NODE_OPTIONS` or flags, so that the lists and the reader agree on which files can be read while
   Node's memory limit is the same for both. Node's memory limit is the old space's where `--max-old-space-size` or
   `--max-old-space-size-percentage` sets it (in `NODE_OPTIONS` or on node's command line), else the heap's: a
-  transcript's parse is kept in the old space, and the heap's limit holds beside it a reserve for new objects sized from
-  the machine's memory, not from the old space: under `--max-old-space-size=16`, a heap limit of 64 MB on Node 20.20.2
-  and 22.23.3, 208 MB on 24.22.3 and 112 MB on 26.13.1 (measured on 2026-11-17, and again on 2026-11-22: Node 20, 22 and
-  24 in docker with 3 GB, Node 26 in a scope of 3 GB). By the heap's limit, under that old space, Node 24.22.3 took in a
-  transcript of 12 MB and ran out of memory (2026-11-17, with the rule set to read the heap's limit).
+  transcript's parse is kept in the old space, and the heap's limit holds beside it a reserve for new objects that the
+  old space does not size (for Node 20 and 24 the same under docker's limits of 3 and 6 GB, and for Node 24 on machines
+  of 16 and 25 GB): under `--max-old-space-size=16`, a heap limit of 64 MB on Node 20.20.2 and 22.23.3, 208 MB on
+  24.22.3 and 112 MB on 26.13.1 (measured on 2026-11-17, and again on 2026-11-22: Node 20, 22 and 24 in docker with 3
+  GB, Node 26 in a scope of 3 GB). By the heap's limit, under that old space, Node 24.22.3 took in a transcript of 12 MB
+  and ran out of memory (2026-11-17, with the rule set to read the heap's limit).
 - A record is shown when its view (up to 16 times the record's size) fits beside the transcript's parse (up to 8 times
   the file's) in nine tenths of Node's memory limit, and so does what writing the JSON its view writes takes, 1.5 times
   that JSON, with 12 MB beside it, the reader's own (read in `src/reading.mjs`). That JSON is measured by walking the
@@ -189,9 +191,10 @@
   399,389,570 bytes (381 MB; a test asserts it, run on every Node line on 2026-11-22). The 1.5 and the 12 MB were
   measured against the old space on 2026-11-17, with the size rules set aside, on Node 20.20.2, 22.23.3, 24.22.3 and
   26.13.1 (130 records): the reader alone needed 7 to 9 MB, and writing a list nested deep up to 1.04 times its JSON on
-  Node 22, 24 and 26 and up to 1.41 times on Node 20; the record view's code has not changed since, but for a refusal's
-  wording. A record that does not fit is refused before it is drawn, with its size and the `NODE_OPTIONS` that would
-  show it; its lines are laid out a page at a time.
+  Node 22, 24 and 26 and up to 1.41 times on Node 20; the code that sizes and writes the record view (`src/view.mjs`,
+  `src/app.mjs`, `src/views.mjs`, `src/reading.mjs`) has not changed since, but for a refusal's wording. A record that
+  does not fit is refused before it is drawn, with its size and the `NODE_OPTIONS` that would show it; its lines are
+  laid out a page at a time.
 - The screen runs in a process of its own, which the command waits for. When that process ends without restoring the
   terminal (Node's memory running out aborts it), the command restores it, then prints what Node said and what happened.
   An error in the command's own process (a module loaded through `NODE_OPTIONS` or `--import` that throws, say) ends the
@@ -244,12 +247,12 @@
   middle and its end 1.5 to 2.3 ms at 80 x 24 and 4.6 to 7.6 at 200 x 60.
 - On Node 20, a long line of text that is not ASCII is laid out about three times slower than on Node 26: Node 20's
   grapheme segmenter is slower, and walked over one long string it costs more at each cluster the longer the string is
-  (on 2026-11-22, Node 20.20.2: 4.3 to 4.9 us a cluster at 10,000 units, 118 to 121 at 80,000 for Hebrew, mixed or CJK
-  text, 28 for ASCII; Node 26.13.1: 0.08 to 0.3 us at every length; one run each), so the reader walks a long line 256
-  units at a time. Measured at this release's code on the record of 4,000,000 characters above, at 80 columns: its lines
-  counted in 3.6 to 3.9 s on Node 20.20.2 (2 runs, in docker), against 1.15 to 1.23 s on Node 26.13.1 (3 runs); a record
-  of the same size in ASCII (`abc ` 1,000,000 times) in 15 to 16 ms on Node 20.20.2 and 16 to 20 on Node 26.13.1 (2 runs
-  each).
+  (on 2026-11-22, Node 20.20.2: 4.7 to 4.9 us a cluster at 10,000 units and 118 to 121 at 80,000 for Hebrew, mixed or
+  CJK text, 4.3 and 28 for ASCII; Node 26.13.1: 0.08 to 0.3 us at every length; one run each), so the reader walks a
+  long line 256 units at a time. Measured at this release's code on the record of 4,000,000 characters above, at 80
+  columns: its lines counted in 3.6 to 3.9 s on Node 20.20.2 (2 runs, in docker), against 1.15 to 1.23 s on Node 26.13.1
+  (3 runs); a record of the same size in ASCII (`abc ` 1,000,000 times) in 15 to 16 ms on Node 20.20.2 and 16 to 20 on
+  Node 26.13.1 (2 runs each).
 
 Of 0.1.0's Known limits (below), the first, a first cluster that is right to left moved to the line's other end by a
 terminal that lays each line out with a left-to-right base, no longer holds at Konsole's default bidi settings, where it
