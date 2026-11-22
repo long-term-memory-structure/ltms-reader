@@ -1,8 +1,9 @@
 // src/bidi.mjs — the Unicode Bidirectional Algorithm (UAX #9), version 17.0.0, as the reader lays out a line of text for
-// a terminal that draws text in the order it is written (R1, S377: Alacritty and VS Code's terminal do), and, since
-// round 6 (Y1), for every terminal: one that lays bidirectional text out itself, as Konsole does, gets the line inside a
-// left-to-right override (src/screen.mjs). Pure functions over code points; the data is
-// src/bidi-table.mjs, generated from the Unicode Character Database (scripts/bidi-table.mjs).
+// a terminal that draws text in the order it is written (R1: as measured, Alacritty does, and so does the xterm.js of VS
+// Code 1.146.0's and 1.147.0's terminal, run in a headless browser, with its WebGL renderer), and, since round 6 (Y1),
+// for every terminal: one that lays bidirectional text out itself, as Konsole does, gets the line inside a left-to-right
+// override (src/screen.mjs). Pure functions over code points; the data is src/bidi-table.mjs, generated from the
+// Unicode Character Database (scripts/bidi-table.mjs).
 //
 // What is implemented: the paragraph's level by P2 and P3 (its first strong character, skipping an isolate; none: left
 // to right), or given (HL1); X9, which removes BN (and the embeddings and overrides); the implicit algorithm, W1 to W7,

@@ -24,7 +24,8 @@
   direction"; unchecked, a line takes its base from its first strong character), and with it unchecked the ICU that
   Konsole lays lines out with, and GNU FriBidi, lay 0.1.1's row out as they do 0.1.0's, a first cluster that is right to
   left at the line's other end (predicted, not run on Konsole).
-- What the docs said more than holds, as the claims run on 0.1.1 found it (2026-11-21 and 22), is narrowed: in `--help`
+- What the docs said more than holds, as a check of each of 0.1.1's claims against its code and its measurements found
+  it (2026-11-21 and 22), is narrowed: in `--help`
   (the first grapheme cluster, the left-to-right base, the xterm.js of VS Code's terminal, the RLM of mode `terminal`,
   no line wider than 0.1.0's), the keys screen and the refusal (where a transcript's text goes), the README, and 0.1.0's
   entry below (the terminals measured, the left-to-right base, a path as one unit, a paste, mode `terminal`'s RLM, the
@@ -33,7 +34,7 @@
   20.20.2 in docker: 435 passing, 0 failing, 8 skipped, as their images have no GNU FriBidi, no python3, which the five
   tests of FriBidi's library run, and no Electron). The new ones: the FriBidi test above; a transcript's own LRM in rows
   the reader lays out, in a frame's bytes and end to end in a pseudo-terminal, and the tests' own readers of a row
-  (withoutOverride, said(), legible()) on known answers (the claims run on 0.1.1 found that no test held such a row, so
+  (withoutOverride, said(), legible()) on known answers (a check of 0.1.1's claims found no test holding such a row, so
   that the tests could find the reader's LRM by its character, and the reader could drop a transcript's, and every test
   passed); Y1's walk of the Hebrew fixture's views, a test of its own, each row's text against displayOrder's;
   `--help`'s widths; the keys screen's sentence on where the text goes. Y1, Z3 and Z4 take the LRM, LRO and PDF they

@@ -13,15 +13,15 @@
 // left-to-right override, LRO after its first grapheme cluster that takes a column and PDF at its end (Y1, round 6; Z3,
 // round 7: after a first cluster that takes none, it was at the row's first column), so that a terminal that lays text
 // out itself with a left-to-right base for each line (Konsole, at its default settings) keeps the reader's order:
-// measured on four terminals (S378, CONTROLS.md), the two take no column after a character in Alacritty 0.17.0, Konsole
+// measured on four terminals on 2026-11-16, the two take no column after a character in Alacritty 0.17.0, Konsole
 // 26.08.3, tmux 3.6 and VS Code 1.146.0's xterm.js (run in a headless browser; xterm.js gives a zero-width character a
 // column after an escape sequence, as it does the PDF after a row's last styled segment, which moves nothing), and
 // Konsole applies an override from a row's second column on; at its first column an LRO is not applied by Konsole,
 // dropped by tmux and given a column by xterm.js, which with its own Unicode 6 widths gives an isolate (LRI, RLI, PDI) a
 // column anywhere. Between that first cluster and the LRO, a left-to-right mark (LRM, 0.1.1): a terminal that lays a row
 // out with a left-to-right base (Konsole) moved a first cluster that is right to left, standing outside the override, to
-// the row's other end (0.1.0's first Known limit, measured on Konsole 26.08.3 in S381), and with the mark it keeps it
-// first (measured there too); S378 measured an LRM past the first column as no column in all four. Nothing else is
+// the row's other end (0.1.0's first Known limit, measured on Konsole 26.08.3 on 2026-11-20), and with the mark it keeps
+// it first (measured there too); an LRM past the first column took no column in all four on 2026-11-16. Nothing else is
 // written in "reader"; in "terminal" the text goes as stored, an RLM at the end of each line of a right-to-left
 // paragraph (text.mjs displayOrder).
 import readline from 'node:readline';

@@ -672,12 +672,13 @@ test('W2 (a): "terminal" writes an RLM after a right-to-left paragraph\'s text a
 // 'line-own-dir' (a line takes its own direction) was caught by the reader's layout only; once that layout took the
 // paragraph's direction on a path of its own (V7), the mutant changed "terminal" alone, and every test passed.
 // Y1 (round 6): in "reader" mode, a row that holds right-to-left text is written inside a left-to-right override, so that
-// a terminal that lays text out itself keeps the reader's order: LRO (U+202D) right after the row's first grapheme
-// cluster that takes a column (Konsole applies an override from a row's second column on, not at its first, where tmux
-// drops it and VS Code's xterm.js gives it a column), an LRM (U+200E) between that cluster and the LRO (0.1.1: Konsole,
+// a terminal that lays text out itself keeps the reader's order: an LRM (U+200E) and LRO (U+202D), in that order, right
+// after the row's first grapheme cluster that takes a column (the LRO: Konsole applies an override from a row's second
+// column on, not at its first, where tmux drops it and VS Code's xterm.js gives it a column; the LRM, 0.1.1: Konsole,
 // laying a row out with a left-to-right base, drew a right-to-left first cluster, outside the override, at the row's
-// other end), PDF (U+202C) last; nothing else (xterm.js gives an isolate a column). Measured on Alacritty 0.17.0,
-// Konsole 26.08.3, tmux 3.6 and the xterm.js of VS Code 1.146.0's terminal (S378, CONTROLS.md). The rows expected here
+// other end), PDF (U+202C) last; nothing else (xterm.js, with its own Unicode 6 widths, gives an isolate a column).
+// Measured on Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 and the xterm.js of VS Code 1.146.0's terminal, run in a
+// headless browser (S378, CONTROLS.md). The rows expected here
 // take the three from helpers.mjs, built from their code points, not from the module under test (the claims run on
 // 0.1.1, RV-2: taken from src/screen.mjs, they changed with what it held, and Z4 passed with an RLM where the LRM goes).
 test('Y1: in "reader" mode a row that holds right-to-left text is written with LRM and LRO right after its first grapheme cluster that takes a column and PDF last; a row without it, and every row in "terminal", with none of the three', async () => {
