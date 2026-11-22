@@ -3,7 +3,7 @@
 //
 // The state is a stack of views: the bottom one is Projects (a folder of projects) or the session (one transcript);
 // Enter pushes the row's view, Esc pops it. A search or an address pushes what it opens on top of where it was, so Esc
-// goes back there; r reads the list on screen again, Projects or a project's Sessions (Y2, round 6). Lists come from the
+// goes back there; r reads the list on screen again, Projects or a project's Sessions. Lists come from the
 // source (src/sources.mjs): the projects at once, a project's sessions by ltms index and a search by ltms search, each
 // while the screen says what is being read; a session is read in this process, after a frame that says which file is
 // being read.
@@ -55,7 +55,7 @@ export function sessionRows(view) {
 export const sessionsRows = (d) => d.sessions.map((s) => ({ kind: 'session', p: s.p, first: s.first, last: s.last, turns: s.turns, calls: s.calls, failures: s.failures, compactions: Array.isArray(s.compactions) ? s.compactions.length : 0, agents: s.agents, file: s.file, firstPrompt: s.firstPrompt, lastReply: s.lastReply, copies: s.copies?.length ?? 0 }));
 
 /** Where the selection goes in a list read again: the row `same` finds, when there is one; else the place it was at,
- *  within the list (Y2, round 6). */
+ *  within the list. */
 const keptAt = (rows, same, at) => { const i = rows.findIndex(same); return i >= 0 ? i : Math.max(0, Math.min(at, rows.length - 1)); };
 
 /** The rows of a turn view: its prompt, then its items in the order they were written; a call's result right after it. */
@@ -155,8 +155,8 @@ export class App {
   }
 
   /**
-   * r (Y2, round 6, his F2: a list was read once, and a project whose files changed showed the list as it was read until
-   * the reader started again): the list on screen read again, Projects by the projects folder's walk, a project's
+   * r (before it, a list was read once, and a project whose files changed showed the list as it was read until the
+   * reader started again): the list on screen read again, Projects by the projects folder's walk, a project's
    * Sessions by `ltms index` run afresh (a list kept from an earlier reading too), its view saying what is being read
    * meanwhile, as when it was opened; the selection on the same row when it is still there (a project by its name, a
    * session by its file), else at the place it was. On another view, or while a Sessions list is being read, a note.

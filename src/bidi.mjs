@@ -1,8 +1,8 @@
 // src/bidi.mjs — the Unicode Bidirectional Algorithm (UAX #9), version 17.0.0, as the reader lays out a line of text for
 // a terminal that draws text in the order it is written (R1: as measured, Alacritty does, and so does the xterm.js of VS
-// Code 1.146.0's terminal, 6.1.0-beta.304, run in a headless browser, with its WebGL renderer), and, since round 6
-// (Y1), for every terminal: one that lays bidirectional text out itself, as Konsole does, gets the line inside a
-// left-to-right override (src/screen.mjs). Pure functions over code points; the data is src/bidi-table.mjs, generated
+// Code 1.146.0's terminal, 6.1.0-beta.304, run in a headless browser, with its WebGL renderer), and for every terminal:
+// one that lays bidirectional text out itself, as Konsole does, gets the line inside a left-to-right override
+// (src/screen.mjs). Pure functions over code points; the data is src/bidi-table.mjs, generated
 // from the Unicode Character Database (scripts/bidi-table.mjs).
 //
 // What is implemented: the paragraph's level by P2 and P3 (its first strong character, skipping an isolate; none: left
@@ -42,7 +42,7 @@ export function classOf(cp) {
   return L;
 }
 
-/** Each character's class, by code unit (W1, round 4: a paragraph's characters, classed at once): at the first unit of a
+/** Each character's class, by code unit (a paragraph's characters, classed at once): at the first unit of a
  *  surrogate pair its code point's, at the second BN, which X9 passes over as it passes BN over; a lone surrogate's own. */
 export function classesOf(s) {
   const n = s.length, out = new Uint8Array(n);
@@ -69,7 +69,7 @@ export const mirrorOf = (cp) => MIRROR.get(cp) ?? cp;
 
 const isStrong = (c) => c === L || c === R || c === AL;
 /** The classes X9 removes, and the neutral and isolate types N1 and N2 resolve (NI), as tables by class: a paragraph's
- *  levels are resolved over all its characters at once (W1, round 4: R's record is a paragraph of 4,000,000), each looked up. */
+ *  levels are resolved over all its characters at once (R's record is a paragraph of 4,000,000), each looked up. */
 const REMOVED = new Uint8Array(24), NI = new Uint8Array(24);
 for (const c of [BN, LRE, LRO, RLE, RLO, PDF]) REMOVED[c] = 1;
 
@@ -214,8 +214,8 @@ export function resolveLevels(cps, classes, level) {
  * characters before it, and those at the line's end, take the paragraph's level (characters X9 removed are passed
  * over, and keep -1). A stretch laid out on its own (ISO) is not one of them: it stands for an isolate's initiator, its
  * content and its PDI, and only the PDI, which is never drawn, would take the paragraph's level; where the content is
- * drawn follows the initiator's level, which L1 leaves as it was (GNU FriBidi's library, the content between LRI and PDI
- * at a line's end: S378). Changes `levels` in place.
+ * drawn follows the initiator's level, which L1 leaves as it was (as GNU FriBidi's library lays out the content between
+ * LRI and PDI at a line's end). Changes `levels` in place.
  */
 export function lineLevels(classes, levels, level, from = 0, to = classes.length) {
   const ws = (c) => c === WS || c === LRI || c === RLI || c === FSI || c === PDI;

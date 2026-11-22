@@ -6,7 +6,7 @@
 // transcript's text is a segment of its own, apart from the reader's words before it (a cell given as parts: R1); or,
 // where a paragraph is wrapped into lines (a record's text line, a message, an error, the reader's own words), a line of
 // one: `par` its paragraph, `at` where the line begins in it, `dir` its direction, so that each line is laid out from
-// the paragraph's levels (W1, round 4). plain() gives their text, in logical order.
+// the paragraph's levels. plain() gives their text, in logical order.
 //
 // Every list row begins with its address as ltms prints it (a session's prefix, a turn's id, a record's <prefix>:L<line>),
 // so the address of what is on screen can be given to an agent as it is; the selected row's is also on the last line.
@@ -339,7 +339,7 @@ const STEP = 256;
  * a window passed through, ran Node's heap out). The record is a list of pieces: a line of its own (a blank line
  * between parts, a "more characters" line, the empty record's note), or a text laid out by its new lines, each line's
  * tabs as spaces, then by columns between clusters, a space at a break hanging at the end of the line before
- * (src/text.mjs lineSpans, as wrap cuts: V7, round 5). One pass counts the lines and keeps where every STEP-th begins
+ * (src/text.mjs lineSpans, as wrap cuts). One pass counts the lines and keeps where every STEP-th begins
  * (its piece, the start of its text line, the offset in that line once its tabs are spaces); slice(a, b) lays out lines
  * a to b from the nearest. What it keeps is the pieces (the record's own strings) and those marks, whatever the lines
  * are.
@@ -485,7 +485,7 @@ export const KEYS = [
 ];
 export function help(state, cols, rows) {
   // the key column: 16 wide, and one column narrower at MIN_COLS (20), where 16 left a key's words no column within the
-  // screen (V2, round 5: its lines took 21); its longest key ('Enter or Right') takes 14
+  // screen (its lines took 21 columns); its longest key ('Enter or Right') takes 14
   const kw = Math.min(16, cols - 5);
   const body = [
     ...KEYS.flatMap(([k, what]) => paragraph(what, Math.max(1, cols - kw - 4)).map((l, i) => [seg(`  ${cell(i ? '' : k, kw)}`, i ? null : 'addr'), seg('  '), l])),

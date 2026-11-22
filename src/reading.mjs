@@ -45,13 +45,13 @@ function memoryOfNode() {
 }
 
 /**
- * The memory limit the size rules read (Z1, round 7): Node's heap limit (V8's heap_size_limit, ltms's measure), but no
+ * The memory limit the size rules read: Node's heap limit (V8's heap_size_limit, ltms's measure), but no
  * more than the old space's where Node's flags set it. A heap limit is the old space and the young generation's reserve,
  * and the reserve is sized from the machine's memory, not from the old space set: with --max-old-space-size=16, measured,
  * the heap limit is 64 MB on Node 20.20.2 and 22.23.3, 208 MB on 24.22.3 and 112 MB on 26.13.1 (with
  * --max-semi-space-size=1 too, 19 MB). A transcript's text and what its parse makes of it live in the old space: by a
  * tenth of the heap limit, under an old space of 16 MB, Node 24 read a transcript of 8 to 20 MB and its parse ran the old
- * space out (R.F14 on Box B's Node 24.18.0), and Node 26 one of 10 or 11 MB (round 7's probe, admit.mjs). The flags, as
+ * space out (R.F14 on Box B's Node 24.18.0), and Node 26 one of 10 or 11 MB (measured on 2026-11-17). The flags, as
  * Node and V8 take them (measured on Node 22.23.3 and 24.22.3): --max-old-space-size=N (or --max_old_space_size), in
  * NODE_OPTIONS or on node's command line, the command line's over NODE_OPTIONS', the last given, 0 setting none; and
  * --max-old-space-size-percentage=P (Node 22 and later), the old space at P per cent of the memory Node reads (in MB,
@@ -76,8 +76,8 @@ export function memoryLimit({ heap = getHeapStatistics().heap_size_limit, execAr
 export const sizeLimit = (heapLimit) => Math.min(STRING_MAX, Math.floor(heapLimit / 10));
 
 /** n bytes as a refusal says them: in KB under a megabyte, else in MB, rounded by `round`: a size up (Math.ceil), so that
- *  it is never said smaller than it is, and a limit down (Math.floor), never said larger. R8d, round 8: a transcript's
- *  refusal rounded both up, and said "it is 2 MB, and this process reads a transcript of up to 2 MB". */
+ *  it is never said smaller than it is, and a limit down (Math.floor), never said larger. Rounding both up, a
+ *  transcript's refusal said "it is 2 MB, and this process reads a transcript of up to 2 MB". */
 const sized = (n, round) => (n < MB ? `${round(n / 1024).toLocaleString('en-US')} KB` : `${round(n / MB).toLocaleString('en-US')} MB`);
 
 /** Why a file of `size` bytes is not read here (with the NODE_OPTIONS that would let it be, before `again`, the command
@@ -100,21 +100,21 @@ export const PARSE_PER_BYTE = 8;
 export const RECORD_VIEW_PER_BYTE = 16;
 
 /** What writing a record's JSON takes in the old space, for each byte of that JSON (`built`, view.mjs recordViewBytes),
- *  the JSON itself included (R8a, round 8). Measured (round 8's probe oldneed.mjs: the least --max-old-space-size at
+ *  the JSON itself included. Measured on 2026-11-17 (the least --max-old-space-size at
  *  which the reader, run as the tests run it, opened a record and laid out its JSON, with the size rules set aside), less
  *  what the reader needs for a record of no size (BUILT_MARGIN's measure), over the JSON: for lists nested 200 to 990 deep
  *  of 10,000 to 1,000,000 numbers, Latin or Hebrew strings, in files of up to 2.4 MB, up to 1.04 times on Node 22.23.3,
  *  24.22.3 and 26.13.1 (13 records each), and up to 1.41 on Node 20.20.2 (19 records; a list nested 600 deep of 60,000
  *  Hebrew strings, 212 MB of JSON, opened from an old space of 306 MB there, from 222 to 224 on the others). */
 export const BUILT_PER_BYTE = 1.5;
-/** What a record's view needs beside what writing its JSON takes and the transcript's parse, in the old space (R8a,
- *  round 8): the reader's own, measured as the least old space at which it opened the smallest record (R.F1's shape, a
+/** What a record's view needs beside what writing its JSON takes and the transcript's parse, in the old space: the
+ *  reader's own, measured as the least old space at which it opened the smallest record (R.F1's shape, a
  *  line of 11 KB) and laid out its JSON: 7 MB on Node 20.20.2 and 22.23.3, 8 on 26.13.1, 9 on 24.22.3. With these, the
  *  rule refuses at every old space at which a measured record's view ran out (130 records over the four lines: text of
  *  11 KB to 16 MB, lists nested deep, a list of a million numbers, objects of 100,000 and 200,000 keys), and shows the
- *  smallest from an old space of 14 MB. N3 (S377) had 96 MB here, measured against Node's heap limit, which holds the
- *  young generation's reserve beside the old space; since Z1 (round 7) the rule reads the old space set, and with 96 MB
- *  it refused every record under an old space below about 107 MB (round 7's check: records of 11 KB and 513 KB at 32 and
+ *  smallest from an old space of 14 MB. An earlier rule had 96 MB here, measured against Node's heap limit, which holds
+ *  the young generation's reserve beside the old space; once the rule read the old space set, with 96 MB it refused
+ *  every record under an old space below about 107 MB (found on 2026-11-17: records of 11 KB and 513 KB at 32 and
  *  64 MB, on Node 20, 24 and 26). */
 export const BUILT_MARGIN = 12 * MB;
 

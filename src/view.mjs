@@ -153,7 +153,7 @@ export function sessionView(input, { name, caps = true }) {
     out.push({ ta, a: at(p), line: lineOf(p), ch: inputChannel(pr) || 'none', time: str(pr?.timestamp) ?? null, n: text.length, prompt: clip(text, LIMITS.prompt), command: commandOf(text), records: 1 + turn.records.length,
       calls: calls.length, failed: calls.filter((x) => x.ok === false).length, from: least(lines), to: most(lines), items });
   }
-  // A compaction made by /compact (S365, A.F5): Claude Code writes the boundary and its summary first, then the
+  // A compaction made by /compact: Claude Code writes the boundary and its summary first, then the
   // command's own records with the command's earlier time, so the /compact opens the turn after the one that holds its
   // compaction (measured: the demo's dc532898, L128 at 00:57:02, its /compact at L131, 00:56:23). Where ltms's turns put
   // the compaction inside the /compact's own turn (its fixtures library-detached*.jsonl), no note is made. Nothing is

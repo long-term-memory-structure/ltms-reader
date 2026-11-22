@@ -17,15 +17,16 @@
 // loaded through NODE_OPTIONS or --import that throws, say) ends the screen by its own way out, SIGTERM, on which the
 // screen's process restores the terminal and exits; this process waits for that (STOP_WAIT at most; then SIGKILL, and
 // the leave sequence is written here), writes what the screen's process wrote to stderr, then its own report, after the
-// restore, by the error's kind and place, not its message (src/main.mjs errorReport), and ends with 1. N1 (S377): Node's
-// own report of such an error, its message with it, was written on the alternate screen while the frame was up, and the
-// screen's own report went to a pipe no one read. Everything this process writes to stderr is made visible.
+// restore, by the error's kind and place, not its message (src/main.mjs errorReport), and ends with 1. Without this,
+// Node's own report of such an error, its message with it, was written on the alternate screen while the frame was up,
+// and the screen's own report went to a pipe no one read. Everything this process writes to stderr is made visible.
 //
 // Nothing runs in this process when SIGKILL ends it: the screen's process learns of it by an IPC channel this process
 // opens to it, which the kernel closes when this process is gone, and then restores the terminal and ends
-// (src/main.mjs). N5 (S377): it lived on, raw, until the terminal hung up. Measured: the channel's disconnect, and the
-// end of a socketpair on fd 3, each reached a child 3 to 4 ms after its parent's SIGKILL, on Node 26.13.1 and 20.20.2,
-// and neither kept an idle child running once unref'd; the channel needs no flag to say it is there (process.channel).
+// (src/main.mjs). Without the channel, it lived on, raw, until the terminal hung up. Measured: the channel's
+// disconnect, and the end of a socketpair on fd 3, each reached a child 3 to 4 ms after its parent's SIGKILL, on Node
+// 26.13.1 and 20.20.2, and neither kept an idle child running once unref'd; the channel needs no flag to say it is
+// there (process.channel).
 import { spawn } from 'node:child_process';
 import { writeSync } from 'node:fs';
 import { constants } from 'node:os';

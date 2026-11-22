@@ -4,8 +4,8 @@
 // the clipboard). None reaches the terminal as such: every C0 and C1 control character and DEL, but the new line and the
 // tab, is shown as a visible escape (ESC as ␛, the rest as \xNN), so a transcript cannot move the cursor, set the title,
 // write the clipboard or leave the terminal in another mode. The new line ends a line and the tab becomes spaces (by
-// the callers below); neither is written to the terminal as itself. What reorders or hides text is shown the same way
-// (R.F5, decided S376), as \uXXXX or \u{XXXXX}: the bidirectional embeddings, overrides and isolates (U+202A to U+202E,
+// the callers below); neither is written to the terminal as itself. What reorders or hides text is shown the same way,
+// as \uXXXX or \u{XXXXX}: the bidirectional embeddings, overrides and isolates (U+202A to U+202E,
 // U+2066 to U+2069), which on a terminal that lays bidirectional text out itself reorder the rest of their row, the
 // reader's own words after them too; the byte order mark (U+FEFF); the line and paragraph separators (U+2028, U+2029);
 // and the tag characters (U+E0000 to U+E007F). The light marks Hebrew and Arabic text use, LRM (U+200E), RLM (U+200F)
@@ -15,10 +15,10 @@
 // (East_Asian_Width W or F: src/width-table.mjs, generated from Unicode's EastAsianWidth.txt), when it is an emoji
 // presentation sequence (an emoji and U+FE0F) or a flag (regional indicators); none when every character in it takes
 // none (combining marks, niqqud and cantillation among them, and format characters); one otherwise. A line is cut by
-// columns, between clusters, never inside one; a space where it is cut stays at the end of the line before (lineSpans:
-// V7, round 5, as UAX #14 has it).
+// columns, between clusters, never inside one; a space where it is cut stays at the end of the line before (lineSpans,
+// as UAX #14 has it).
 //
-// Right to left (R1, decided by the measurement of S377 on three terminals; Y1, round 6, by that of S378 on four): there
+// Right to left (one layout for every terminal, chosen on four terminals measured on 2026-11-16: rtlModeOf): there
 // are two modes (displayOrder, below): "reader", the default in every terminal, in which the reader lays the text out
 // itself, by the Unicode Bidirectional Algorithm (src/bidi.mjs), and writes it in visual order (src/screen.mjs writes a
 // row of it that holds right-to-left text inside a left-to-right override, so that a terminal that lays text out itself
@@ -29,8 +29,8 @@
 // rtlModeOf reads the choice; no terminal is detected. A paragraph here is a
 // segment of a row (a list's cell, the reader's own words before it, a line cut to the row's width), or a text a view
 // wraps into lines (a record's text line, a message, an error, the reader's own words), each line of which names it: its
-// levels are resolved once, and each line is reordered from them, whole (W1, round 4; V7, round 5; UAX #9 section 3.4:
-// paragraphLine). A path or a URL in a paragraph is laid out as one left-to-right unit (UAX #9 HL4).
+// levels are resolved once, and each line is reordered from them, whole (UAX #9 section 3.4: paragraphLine). A path or
+// a URL in a paragraph is laid out as one left-to-right unit (UAX #9 HL4).
 import { AL, AN, BN, ISO, L as LTR_CLASS, NSM, R, classOf, classesOf, lineLevels, mirrorOf, paragraphLevel, resolveLevels, visualOrder } from './bidi.mjs';
 import { WIDE } from './width-table.mjs';
 
@@ -162,17 +162,17 @@ export function pad(s, cols) {
   return r.text + ' '.repeat(Math.max(0, cols - r.width));
 }
 
-/** Whitespace that hangs at the end of a line (V7, round 5): a cluster made only of the spaces of UAX #9's class WS that
+/** Whitespace that hangs at the end of a line: a cluster made only of the spaces of UAX #9's class WS that
  *  take a column (U+0020, U+1680, U+2000 to U+200A, U+205F, U+3000: DerivedBidiClass.txt 17.0.0; the form feed and
- *  U+2028, of the class too, are shown as escapes), but U+2007 FIGURE SPACE, a no-break space (isGlue: Z2, round 7).
+ *  U+2028, of the class too, are shown as escapes), but U+2007 FIGURE SPACE, a no-break space (isGlue).
  *  UAX #14 keeps a space on the line it follows (LB7, LB18) and does not break before the others but after a space
  *  (LB12a, LB21); L1 gives those that end a line the paragraph's level. */
 const HANGS = /^[\u0020\u1680\u2000-\u2006\u2008-\u200a\u205f\u3000]+$/;
 
 /** Whether the code unit g begins a cluster that UAX #14 gives no break before but after a space, a character of class
  *  BA or a hyphen (LB12a, class GL: LineBreak.txt; ICU 78.3, Unicode 17.0, measured): a no-break space (U+00A0, U+2007
- *  FIGURE SPACE, U+202F) or the non-breaking hyphen (U+2011). Z2, round 7: U+2007, UAX #9 whitespace, hung at a break
- *  as a space does, so that a line began with the GL character after it, or with U+2007 itself. */
+ *  FIGURE SPACE, U+202F) or the non-breaking hyphen (U+2011). U+2007, UAX #9 whitespace, once hung at a break as a
+ *  space does, so that a line began with the GL character after it, or with U+2007 itself. */
 const isGlue = (g) => g === 0xa0 || g === 0x2007 || g === 0x202f || g === 0x2011;
 /** Whether UAX #14 breaks before a GL character after the code unit g (LB12a): a space (SP), a hyphen-minus (HY), a
  *  space of class BA (U+1680, U+2000 to U+2006, U+2008 to U+200A, U+205F, U+3000); a hyphen-minus but after a Hebrew
@@ -186,7 +186,7 @@ export const isHebrewLetter = (cp) => (cp >= 0x5d0 && cp <= 0x5ea) || (cp >= 0x5
 const MARK = /^\p{M}$/u;
 /** The marks (General_Category M) that are not of UAX #14's class CM, which LB9 does not fold into the character before
  *  them: 21 of class GL (combining double marks), U+0F7F of class BA, 2 of VF and 7 of VI (viramas). LineBreak.txt 17.0.0;
- *  ICU 78.3 gives the same (round 8's probe cmsets.py). */
+ *  ICU 78.3 gives the same (measured on 2026-11-17). */
 const MARK_NOT_CM = new Set([0x35c, 0x35d, 0x35e, 0x35f, 0x360, 0x361, 0x362, 0xf7f, 0x1aeb, 0x1b44, 0x1bf2, 0x1bf3, 0x1dcd, 0x1dfc, 0xa9c0, 0xfe20, 0xfe22, 0xfe24, 0xfe26, 0xfe27, 0xfe29, 0xfe2b, 0xfe2d, 0xfe2e, 0x11046, 0x1107f, 0x1134d, 0x113d0, 0x1193e, 0x11f42, 0x16fe4]);
 /** The code points of class CM that are not marks, ZWJ aside (the same sources): the C0 and C1 controls, ALM, ZWNJ, LRM,
  *  RLM, the bidirectional embeddings, overrides and isolates, U+206A to U+206F, U+3035, U+FFF9 to U+FFFB, U+1BCA0 to
@@ -212,10 +212,10 @@ function baseBefore(s, j) {
  *  LB9 folds into a character (a mark, ZWJ, and the characters of class CM that are not marks: ALM, ZWNJ, LRM, RLM...)
  *  takes its class: between the letter and the hyphen, and after the hyphen or the space; but no break after ZWJ
  *  (LB8a), and none after such a run where it follows a space (SP) or nothing, as LB9 folds nothing into a space and LB10
- *  then takes the run as a letter (AL). Z2, round 7: the reader broke after a Hebrew letter's hyphen as after a Latin
- *  letter's (ICU 78.3 breaks before U+00A0 after 'abcd-', and gives no break in a Hebrew word, '-', U+00A0 and a Hebrew
- *  word); R8e, round 8: and did where ALM, ZWNJ, LRM or RLM stood between the letter and the hyphen (round 7's check). What
- *  is before i is read from s, so that a line laid out from its start is the same as from the text's. */
+ *  then takes the run as a letter (AL). The reader once broke after a Hebrew letter's hyphen as after a Latin letter's
+ *  (ICU 78.3 breaks before U+00A0 after 'abcd-', and gives no break in a Hebrew word, '-', U+00A0 and a Hebrew word),
+ *  and then still did where ALM, ZWNJ, LRM or RLM stood between the letter and the hyphen. What is before i is read
+ *  from s, so that a line laid out from its start is the same as from the text's. */
 function breaksBeforeGlueAt(s, i) {
   let [g, at] = codePointBefore(s, i + 1);
   if (g === 0x200d) return false;
@@ -234,7 +234,7 @@ function foldsWhole(c) {
   return c !== '';
 }
 
-/** Where to end a line that a cluster of class GL (isGlue) does not fit at the end of (Y3 (e), round 6): the index, in
+/** Where to end a line that a cluster of class GL (isGlue) does not fit at the end of: the index, in
  *  the line's clusters (`starts`: where each begins in s; `widths`: its columns), of the first cluster of the next line,
  *  which takes the rest of them and the GL cluster (of `cw` columns), at most `n` columns: after the clusters of class GL
  *  the line ends in and the character before them, where that is a space, BA or a hyphen (LB12a; a hyphen-minus not
@@ -247,7 +247,7 @@ function glueBreak(s, starts, widths, at, cw, n) {
   while (k > 0 && isGlue(s.charCodeAt(starts[k - 1]))) k--;
   const run = k < starts.length ? starts[k] : at;
   let cut = run > 0 && breaksBeforeGlueAt(s, run - 1) ? k : k - 1;
-  // LB9 (R8e, round 8): a cluster made only of what it folds goes with the cluster it follows, but a space (SP)
+  // LB9: a cluster made only of what it folds goes with the cluster it follows, but a space (SP)
   if (cut < k) while (cut > 0 && foldsWhole(s.slice(starts[cut], cut + 1 < starts.length ? starts[cut + 1] : at)) && s.charCodeAt(starts[cut - 1]) !== 0x20) cut--;
   if (cut < 1 || cut === starts.length) return -1;
   let w = cw;
@@ -259,11 +259,11 @@ function glueBreak(s, starts, widths, at, cw, n) {
  *  at most `cols` columns between clusters, a cluster wider than the columns on a line of its own; from offset `from`,
  *  where a line begins. Whitespace (HANGS) that does not fit at the end of a line stays at the end of that line, with
  *  the whitespace after it, as UAX #14 has a space: it hangs there, past the line's columns, and is in no line (nothing
- *  past the screen is drawn); the next line begins after it, so that no line but the first begins with whitespace (V7,
- *  round 5: the space that did not fit began the next line). Whitespace that fits ends its line. A no-break space or
+ *  past the screen is drawn); the next line begins after it, so that no line but the first begins with whitespace (the
+ *  space that did not fit once began the next line). Whitespace that fits ends its line. A no-break space or
  *  a non-breaking hyphen (class GL) that does not fit begins the next line with the character before it (glueBreak:
- *  UAX #14 gives no break before it but after a space, BA or a hyphen, a hyphen-minus not after a Hebrew letter; Y3 (e),
- *  round 6: it began the line by itself; Z2, round 7: after a Hebrew letter's hyphen, and U+2007, it still did).
+ *  UAX #14 gives no break before it but after a space, BA or a hyphen, a hyphen-minus not after a Hebrew letter; it
+ *  once began the line by itself, and then still did after a Hebrew letter's hyphen, and so did U+2007).
  *  One pair at a time, so that a long text can be laid out without its lines being made; from a line's start, the lines
  *  are those from the text's start (what a line holds depends only on the text from its start). An empty s is one empty
  *  line. */
@@ -319,9 +319,9 @@ export function wrap(s, cols) {
 /** Where the lines of wrapWords(s, cols) begin and end in s, [start, end) each: a paragraph in lines of at most `cols`
  *  columns, broken at spaces where a line can be, else by columns (lineSpans). A space a line is broken at is in no line
  *  (it hangs at the end of the line before, as UAX #14 has the whitespace at a break, and is not drawn, though the line
- *  has room for it: Y3 (c), round 6), and so is the whitespace (HANGS) after it, at the start of the word that begins
+ *  has room for it), and so is the whitespace (HANGS) after it, at the start of the word that begins
  *  the next line, and whitespace that hangs inside a word cut by columns, which ends its line: no line but the first
- *  begins with whitespace (V7, round 5). Each line is s.slice(start, end), so that its place in its paragraph is known
+ *  begins with whitespace. Each line is s.slice(start, end), so that its place in its paragraph is known
  *  (W1: a line is laid out from its paragraph's levels). */
 export function wordSpans(s, cols) {
   const out = [];
@@ -341,7 +341,7 @@ export function wordSpans(s, cols) {
     line = word.slice(x, y); from = at + x; open = y === word.length;
   }
   // a paragraph that ends in whitespace at a break ends with its last word: what is left after the break hangs, and
-  // makes no empty line (Y3 (d), round 6: it made one, drawn as a blank row); an empty s, or one of spaces only, is one
+  // makes no empty line (it once made one, drawn as a blank row); an empty s, or one of spaces only, is one
   // empty line
   if (line !== '' || !out.length) out.push([from, from + line.length]);
   return out;
@@ -388,10 +388,10 @@ export const RTL_MODES = Object.freeze(['reader', 'terminal']);
 
 /**
  * The right-to-left mode: LTMS_READER_BIDI when it is set ("terminal" or "reader"); else "reader", in every terminal
- * (Y1, round 6: one layout for every terminal, chosen on a measurement on 2026-11-16 of Alacritty 0.17.0, Konsole
- * 26.08.3, tmux 3.6 and the xterm.js of VS Code 1.146.0's terminal, run in a headless browser, which 1.147.0's has
- * matched since; round 3 gave Konsole, detected by KONSOLE_VERSION, "terminal", which a reader run over ssh from
- * Konsole did not see).
+ * (one layout for every terminal, chosen on a measurement on 2026-11-16 of Alacritty 0.17.0, Konsole 26.08.3, tmux
+ * 3.6 and the xterm.js of VS Code 1.146.0's terminal, run in a headless browser, which 1.147.0's has matched since;
+ * before it, Konsole, detected by KONSOLE_VERSION, was given "terminal", which a reader run over ssh from Konsole did
+ * not see).
  * Returns { mode, by } or { refused: why }.
  */
 export function rtlModeOf(env) {
@@ -444,7 +444,7 @@ const drawn = (c, level) => {
 const marksAlone = (c) => { for (const ch of c) if (classOf(ch.codePointAt(0)) !== NSM) return false; return true; };
 
 /**
- * The items of a stretch of text s, in order, each laid out whole (Z5, round 7), added to the end of the caller's
+ * The items of a stretch of text s, in order, each laid out whole, added to the end of the caller's
  * `items`, and each one's level to `at`: the level of its first character X9 kept (`levelOf(c)`, asked of each cluster
  * c of s in order, -1 where X9 removed them all). Each item is a grapheme cluster, but where a cluster of nonspacing
  * marks alone follows clusters X9 removed whole (a soft hyphen, ZWSP, WJ: the segmenter breaks after each, a control,
@@ -452,7 +452,7 @@ const marksAlone = (c) => { for (const ch of c) if (classOf(ch.codePointAt(0)) !
  * cluster, and so do the removed characters between, in their order. UAX #9 gives the mark the class of the character
  * before it, the removed ones passed over (W1), and the reader keeps a letter's marks after it, as a terminal draws
  * them; as an item of its own, at an odd level, the mark was reversed with its run, before its letter, on the cell
- * before it (round 6's check: final nun, WJ, WJ, patah was written patah, WJ, WJ, nun). Only after a cluster with a
+ * before it (found on 2026-11-17: final nun, WJ, WJ, patah was written patah, WJ, WJ, nun). Only after a cluster with a
  * character X9 keeps: a mark after removed characters that begin the stretch, or follow only removed ones, has no
  * letter there, and is an item of its own, at its own level. A cluster X9 removed whole is at the level of the item
  * before it, or at `fallback` when it is the first.
@@ -496,7 +496,7 @@ function unitLevels(s) {
 }
 
 /**
- * A paragraph's levels, resolved once (W1, round 4; UAX #9 section 3.4: X9, W1 to W7, N0 to N2, I1 and I2 over the whole
+ * A paragraph's levels, resolved once (UAX #9 section 3.4: X9, W1 to W7, N0 to N2, I1 and I2 over the whole
  * paragraph; then each line it is wrapped into is reordered from them, by lineOf, never resolved by itself). `level` is
  * the paragraph's (0 or 1; null: by P2 and P3). With `units`, each path or URL in it stands as one isolate (ISO, HL4),
  * and its content is resolved once too, on its own. Returns { text, level, levels, units }: `levels` per code unit
@@ -525,8 +525,8 @@ function layOut(text, level, units) {
 function lineOf(P, a, b) {
   const { text, level: p, levels, units } = P;
   // the first unit that ends after a, by a binary search (the units are in order and apart, so their ends are in order
-  // too): a line late in a paragraph of many paths is laid out without passing over the units before it (V1, round 5:
-  // passed over one by one, a page at the end of 200,000 paths cost seven to fifteen times a page at the start)
+  // too): a line late in a paragraph of many paths is laid out without passing over the units before it (passed over
+  // one by one, a page at the end of 200,000 paths cost seven to fifteen times a page at the start)
   let u = 0;
   for (let hi = units.length; u < hi;) { const mid = (u + hi) >> 1; if (units[mid].b <= a) u = mid + 1; else hi = mid; }
   const piece = (U, s, e) => (U.inner ? ordered(text.slice(s, e), U.inner, s - U.a, 0) : text.slice(s, e));
@@ -644,8 +644,8 @@ function boundaryAt(s, i) {
 
 /**
  * The whitespace at either end of a segment's text, ECMAScript's as trimStart and trimEnd take it, in whole grapheme
- * clusters made of whitespace only: [a, b), the core between them (V3, round 5: by trimStart, a space carrying a mark at
- * a segment's start was cut from its mark, which was laid out with the rest, on the letter beside it). A character that
+ * clusters made of whitespace only: [a, b), the core between them (taken by trimStart, a space carrying a mark at a
+ * segment's start was cut from its mark, which was laid out with the rest, on the letter beside it). A character that
  * joins the cluster of a space before it is at U+0300 or above (a mark, ZWJ, a spacing mark); one that joins a space
  * after it, at U+0600 or above (a Prepend character): below those the boundary is not looked up (test/text.test.mjs
  * checks both, by Intl.Segmenter).
@@ -664,8 +664,8 @@ function blankEdges(text) {
  * segment's text is the slice at `at`: a line of a record, of a message, of the reader's own words wrapped into lines,
  * W1). Its direction is `dir` when given (0 or 1: a line's, its paragraph's), else its own (P2, P3).
  * "reader": a line of a paragraph laid out whole from the paragraph's levels (paragraphLine), its whitespace at either
- * end with the rest, as UAX #9's L1 and L2 lay out a line (V7, round 5: they stayed where they were, and the line's
- * text differed from UAX #9's); a paragraph of its own (a cell, a line cut to its columns: R1 (c)) laid out by
+ * end with the rest, as UAX #9's L1 and L2 lay out a line (left where they were, they made the line's text differ
+ * from UAX #9's); a paragraph of its own (a cell, a line cut to its columns: R1 (c)) laid out by
  * visualLine but its spaces at either end, in whole clusters (blankEdges), which stay where they are: a cell's are the
  * cell's padding. Either way the columns stay, and the text is aligned left. "terminal": as stored, with an RLM after a
  * right-to-left paragraph's text (before the spaces at its end), so that a terminal that lays the line out with a

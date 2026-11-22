@@ -10,8 +10,8 @@
 // row early, and nothing of the frame before may stay after it (R.F6). Each row's segments are put in the order the
 // right-to-left mode writes them (text.mjs displayOrder, R1): laid out by the reader, or as stored for a terminal that
 // lays bidirectional text out itself. A row laid out by the reader that holds right-to-left text is written inside a
-// left-to-right override, LRO after its first grapheme cluster that takes a column and PDF at its end (Y1, round 6; Z3,
-// round 7: after a first cluster that takes none, it was at the row's first column), so that a terminal that lays text
+// left-to-right override, LRO after its first grapheme cluster that takes a column and PDF at its end (after a first
+// cluster that takes none, the LRO was once at the row's first column), so that a terminal that lays text
 // out itself with a left-to-right base for each line (Konsole, at its default settings) keeps the reader's order:
 // measured on four terminals on 2026-11-16, the two take no column after a character in Alacritty 0.17.0, Konsole
 // 26.08.3, tmux 3.6 and VS Code 1.146.0's xterm.js (run in a headless browser; xterm.js gives a zero-width character a
@@ -63,8 +63,8 @@ export function holdsRtl(text) {
   return false;
 }
 
-/** Where the first grapheme cluster of `text` that takes a column ends (Z3, round 7: after a first cluster that takes
- *  none, ZWSP or a lone mark, the LRO was in the row's first column), or -1 when none takes a column. */
+/** Where the first grapheme cluster of `text` that takes a column ends (after a first cluster that takes none, ZWSP
+ *  or a lone mark, the LRO was once in the row's first column), or -1 when none takes a column. */
 function firstColumnEnd(text) {
   let at = 0;
   for (const c of clusters(text)) { at += c.length; if (clusterWidth(c) > 0) return at; }
@@ -86,7 +86,7 @@ export function frameBytes(lines, { cols, rows, colour = true, rtl = 'reader' })
     const texts = merged.map((s) => safe(s.text));
     // laid out by the reader and holding right-to-left text: LRM and LRO right after the row's first grapheme cluster that
     // takes a column (where it ends, in whichever segment that is, a mark on its character kept with it; never in the row's
-    // first column, where the terminals measured drop it, give it a column or do not apply it: Z3, round 7; the LRM keeps a
+    // first column, where the terminals measured drop it, give it a column or do not apply it; the LRM keeps a
     // right-to-left first cluster first on a terminal with a left-to-right base: 0.1.1), PDF last; a row with no cluster
     // that takes a column has nothing a terminal could reorder, and none of the three
     let end = '';
