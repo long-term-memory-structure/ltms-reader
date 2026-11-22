@@ -4,24 +4,37 @@
 
 - **Right to left on Konsole.** A line laid out by the reader that holds right-to-left text is now written with a
   left-to-right mark (U+200E, LRM) between its first grapheme cluster that takes a column and the LRO: that cluster,
-  LRM, LRO, the rest, PDF. Konsole lays each line out with a left-to-right base, and drew a first cluster that is right
-  to left, which stands outside the override, at the line's other end: 0.1.0's first Known limit, measured on
-  2026-11-20 in Konsole 26.08.3 (Liberation Mono 11, 80 x 24) with 0.1.0 itself, whose record row of the prompt
-  `שלום עולם ומלואו` showed its vav at the row's right end, and with the same bytes on a page, read from its pixels: the
-  vav at column 15 of 16, and a final nun at column 13 of 14 in a twin row. With the mark, the same page kept both at
-  column 0. In `test/bidi.test.mjs`, GNU FriBidi 1.0.18 with a left-to-right base (`fribidi --ltr`), standing for such a
-  terminal, keeps the reader's order on such rows; on 0.1.0's rows it moves the first cluster. Measured again on
-  2026-11-21 with the reader itself, 0.1.1 against 0.1.0 on the same two transcripts and keys: the two outputs differ
-  only by the marks, each right before an LRO. Konsole 26.08.3 (its default bidi settings) drew the first letter at
-  column 0, where 0.1.0's was at the row's right end; Alacritty 0.17.0 drew the same pixels for both; tmux 3.6 and the
-  xterm.js of VS Code 1.146.0 and 1.147.0 hold the mark in the first letter's cell; in all four the mark took no column.
-  Those first letters carry no point: a first cluster with points or an Arabic one, Konsole's other bidi settings, and
-  tmux inside Konsole were not measured.
+  LRM, LRO, the rest, PDF. Konsole, at its default bidi settings, lays each line out with a left-to-right base, and drew
+  a first cluster that is right to left, which stands outside the override, at the line's other end: 0.1.0's first Known
+  limit, measured on 2026-11-20 in Konsole 26.08.3 (Liberation Mono 11) with 0.1.0 itself, whose record row of the
+  prompt `שלום עולם ומלואו` showed its vav at the row's right end (in windows of 379 x 78, by 0.1.0's own frames, where
+  their launch had asked for 80 x 24), and with the same bytes on a page, read from its pixels (a capture the size of
+  the 210 x 59 windows the fix was run in that night): the vav at column 15 of 16, and a final nun at column 13 of 14 in
+  a twin row. With the mark, the same page kept both at column 0. In `test/bidi.test.mjs`, GNU FriBidi 1.0.18 with a
+  left-to-right base (`fribidi --ltr`), standing for such a terminal, keeps the reader's order on such rows, a pointed
+  first cluster and an Arabic one among them; on 0.1.0's rows it moves a first cluster that is right to left to the
+  row's other end. Measured again on 2026-11-21 with the reader itself, 0.1.1 against 0.1.0 on the same two transcripts
+  and keys: the two outputs differ only by the marks, each right before an LRO. Konsole 26.08.3 (its default bidi
+  settings) drew the first letter at column 0, where 0.1.0's was at the row's right end, and so it did on 2026-11-22
+  with tmux 3.6 inside it (tmux's status line off: the same pixels as without tmux); Alacritty 0.17.0 drew the same
+  pixels for both; tmux 3.6, and the xterm.js of VS Code 1.146.0 and 1.147.0 (run in a headless browser, not in VS
+  Code), hold the mark in the first letter's cell; in all four the mark took no column. The first letters measured were
+  two Hebrew letters without points, a vav and a final nun: a pointed first cluster or an Arabic one, and Konsole's
+  other bidi settings, were not measured on a terminal. Konsole's own library names the setting ("force LTR line
+  direction"; unchecked, a line takes its base from its first strong character), and with it unchecked the ICU that
+  Konsole lays lines out with, and GNU FriBidi, lay 0.1.1's row out as they do 0.1.0's, a first cluster that is right to
+  left at the line's other end (predicted, not run on Konsole).
+- What the docs said more than holds, as the claims run on 0.1.1 found it (2026-11-21 and 22), is narrowed: in `--help`
+  (the first grapheme cluster, the left-to-right base, the xterm.js of VS Code's terminal, the RLM of mode `terminal`,
+  no line wider than 0.1.0's), the keys screen and the refusal (where a transcript's text goes), the README, and 0.1.0's
+  entry below (the terminals measured, the left-to-right base, a path as one unit, a paste, mode `terminal`'s RLM, the
+  docker skips, the README its first Known limit names).
 - Tests: 435 → 436 (Node 26.13.1: 436 passing; Node 24.18.0, on a second machine: 436 passing; Node 24.22.3, 22.23.3
   and 20.20.2 in docker: 428 passing, 0 failing, 8 skipped, as their images have no GNU FriBidi and no Electron). The
   new one is the FriBidi test above.
 
-0.1.0's other Known limits (below) still hold.
+0.1.0's other Known limits (below) still hold; in the one of a letter followed by WJ and a mark, 0.1.1 writes U+05DD,
+U+200E, U+202D, U+2060, U+05B7, the rest, U+202C.
 
 ## 0.1.0 (2026-11-18)
 
@@ -41,12 +54,12 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   `r` reads Projects or a project's Sessions again (the selection kept on its row), `j` shows a record's JSON, `?` the
   keys, `q` or Ctrl-C quits.
 - The screen, with no library: raw mode, keypress events, the alternate screen, the cursor hidden, wrapping at the last
-  column off, bracketed paste on (a paste is text, never keys, but for a Ctrl-C character in it, which quits); each
-  frame drawn whole, each row erased first, again on a resize; from 20 x 5, the status line (the selected row's address,
-  then `? keys` and `q quits` as far as they fit) or a message in its place always the last line drawn; under it, the
-  size it needs, wrapped over the lines there are. The terminal is restored on every way out: `q` (exit 0), Ctrl-C and
-  SIGINT (130), SIGHUP (129), SIGTERM (143), an uncaught error (1, printed after the restore by its kind and its place,
-  not its message). `NO_COLOR` honoured.
+  column off, bracketed paste on (a paste is text, never keys, but for a Ctrl-C character in it, which quits, and what
+  follows an ESC [201~ in it, which ends the paste there); each frame drawn whole, each row erased first, again on a
+  resize; from 20 x 5, the status line (the selected row's address, then `? keys` and `q quits` as far as they fit) or a
+  message in its place always the last line drawn; under it, the size it needs, wrapped over the lines there are. The
+  terminal is restored on every way out: `q` (exit 0), Ctrl-C and SIGINT (130), SIGHUP (129), SIGTERM (143), an uncaught
+  error (1, printed after the restore by its kind and its place, not its message). `NO_COLOR` honoured.
 - Text: every C0 and C1 control character and DEL shown as a visible escape (ESC as `␛`, the rest as `\xNN`), so a
   transcript's escape sequences (OSC 52 among them) never reach the terminal as such; and what reorders or hides text
   (bidirectional embeddings, overrides and isolates, the byte order mark, the line and paragraph separators, tag
@@ -58,15 +71,18 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   them, and after a Hebrew letter's hyphen-minus, what UAX #14's LB9 folds into the letter or the hyphen passed over,
   LRM, RLM, ALM and ZWNJ among it: LB21a), but where moving the character before it would leave a line empty or the next
   too wide, as in a run of them longer than the line; a message's space at a break hangs, and a message ends with its
-  last word. Right to left, one layout for every terminal (measured on Alacritty, Konsole, tmux and VS Code's terminal):
-  the reader lays out each line itself, by the Unicode Bidirectional Algorithm (UAX #9, written here from Unicode
-  17.0.0's data, generated and pinned as the width table is; a letter's marks kept after it, a mark after a soft hyphen,
-  ZWSP or WJ too; a path or a URL laid out as one left-to-right unit; a paragraph wrapped into lines, a record's text
-  line or a message, resolved once and each line reordered from its levels, whole, its spaces at either end too), and
-  writes a line that holds right-to-left text inside a left-to-right override (LRO after its first grapheme cluster that
-  takes a column, never at the line's first column; PDF at its end), so that a terminal that lays text out itself keeps
-  that order; `LTMS_READER_BIDI=terminal` writes the text as stored instead, with an RLM at the end of each
-  right-to-left paragraph.
+  last word. Right to left, one layout for every terminal (measured on Alacritty, Konsole, tmux and the xterm.js of VS
+  Code's terminal, run in a headless browser): the reader lays out each line itself, by the Unicode Bidirectional
+  Algorithm (UAX #9, written here from Unicode 17.0.0's data, generated and pinned as the width table is; a letter's
+  marks kept after it, a mark after a soft hyphen, ZWSP or WJ too; a path or a URL that begins a line or follows a
+  space, an opening bracket or quote, `=` or a hyphen laid out as one left-to-right unit, up to the next space; a
+  paragraph wrapped into lines, a record's text line or a message, resolved once and each line reordered from its
+  levels, whole, its spaces at either end too), and writes a line that holds right-to-left text inside a left-to-right
+  override (LRO after its first grapheme cluster that takes a column, never at the line's first column; PDF at its end),
+  so that a terminal that lays text out itself with a left-to-right base keeps that order (but a first cluster that is
+  right to left, outside the override: the first Known limit); `LTMS_READER_BIDI=terminal` writes the text as stored
+  instead, with an RLM at the end of each line of a right-to-left paragraph.
+
 - A transcript is read in the reader's own process; one over a tenth of Node's memory limit (its heap's, or the old
   space's where `--max-old-space-size` or `--max-old-space-size-percentage` sets one) is refused with its size and the
   `NODE_OPTIONS` that would let it be read, in the command `npx ltms-reader` with the path given (so too when it was
@@ -84,8 +100,8 @@ The first version: a full-screen terminal reader of Claude Code transcripts, on 
   than a call takes arguments (about 31,000 tool calls in one turn, on Node 26) no longer stops its session's view with
   a RangeError; and a text the view layer clips (a prompt, an input, a result, a reply) is cut where a grapheme cluster
   begins, never between a letter and its marks, and its row ends with … when the clip cut its first line.
-- Tests: 435 (Node 26.13.1: 435 passing; Node 24.22.3, 22.23.3 and 20.20.2 in docker: 428 passing, 0 failing,
-  7 skipped, as their images have no GNU FriBidi and no Electron).
+- Tests: 435 (Node 26.13.1: 435 passing; Node 24.22.3, 22.23.3 and 20.20.2 in docker: 428 passing, 0 failing, 7 skipped,
+  as their images have no GNU FriBidi, no python3, which the five tests of FriBidi's library run, and no Electron).
 
 ### Known limits
 
@@ -98,8 +114,8 @@ not.
   override, and a terminal that lays each line out with a left-to-right base would move that cluster to the line's
   other end: the record row of the prompt `שלום עולם ומלואו` is written ו, LRO, the rest, PDF (read back from a
   pseudo-terminal, Node 26.13.1, 80 x 24), and GNU FriBidi 1.0.18 with a left-to-right base (`fribidi --ltr`),
-  standing for such a terminal, puts the ו at the right end. Konsole itself was not run (the README's Right to left
-  says so too).
+  standing for such a terminal, puts the ו at the right end. Konsole itself was not run (0.1.0's README said so
+  too).
 - A no-break space that does not fit after a hyphen of UAX #14's class HH (U+2010, U+2013, U+058A, U+05BE) or a
   character of class BA that is not a space (U+0F0B, U+1361, U+2027) takes that character with it to the next line,
   where UAX #14 (LB12a) breaks before the no-break space: 'ab', U+2013, U+00A0, 'x' at 3 columns is cut into 'ab' and
