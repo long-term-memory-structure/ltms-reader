@@ -692,6 +692,11 @@ test('Y1: in "reader" mode a row that holds right-to-left text is written with L
   // a mark on the first character stays with it: the LRM and LRO after the mark; and where the mark begins the next segment
   assert.deepEqual(rowsOf([[{ text: 'e\u0301 \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`e\u0301${LRM}${LRO} \u05dd\u05d5\u05dc\u05e9${PDF}`]);
   assert.deepEqual(rowsOf([[{ text: 'e', style: 'dim' }, { text: '\u0301 abc \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`\x1b[2me\x1b[0m\u0301${LRM}${LRO} abc \u05dd\u05d5\u05dc\u05e9${PDF}`]);
+  // the first cluster that takes a column ends a styled segment that is not the row's last: the LRM and LRO inside that
+  // segment's style, right after the character, before its ESC[0m (the repairs' re-check, its G2: written at the next
+  // segment's start, after the escape sequences, they passed every test, and xterm.js gives a mark that follows an escape
+  // sequence a column of its own)
+  assert.deepEqual(rowsOf([[{ text: 'x', style: 'dim' }, { text: ' \u05e9\u05dc\u05d5\u05dd', style: null, dir: 0 }]], 'reader'), [`\x1b[2mx${LRM}${LRO}\x1b[0m \u05dd\u05d5\u05dc\u05e9${PDF}`]);
   const pointed = '\u05e9\u05b8\u05c1\u05dc\u05d5\u05b9\u05dd', [p] = rowsOf([[{ text: pointed, style: null, dir: 1 }]], 'reader');
   assert.equal(withoutOverride(p), displayOrder([{ text: pointed, style: null, dir: 1 }], 'reader')[0].text);
   // an Arabic number among neutrals (class AN) is reordered by the reader, and so would be by the terminal: the override
