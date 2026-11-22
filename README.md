@@ -206,7 +206,7 @@ out and asks before it pastes a control character, Ctrl-C among them, and the xt
   space (in `NODE_OPTIONS` or on node's command line), the old space's: a transcript's parse is kept there, and the
   heap's limit holds beside it a reserve for new objects that is sized from the machine's memory, not from the old space
   (with `--max-old-space-size=16`, measured: a heap limit of 64 MB on Node 20 and 22, 208 MB on Node 24, 112 MB on Node
-  26). By the heap's limit, under an old space of 16 MB, Node 24 read a transcript of 12 MB and ran out of memory.
+  26). By the heap's limit, under an old space of 16 MB, Node 24 took in a transcript of 12 MB and ran out of memory.
 - A record is shown when its view (up to 16 times the record's size) fits beside the transcript's (up to 8 times the
   file's) in nine tenths of Node's memory limit, and so does what writing the JSON the view writes of it takes, with
   12 MB beside it, the reader's own: JSON is indented once more at each level a value is nested in, so that a record
@@ -239,34 +239,35 @@ out and asks before it pastes a control character, Ctrl-C among them, and the xt
   (10 of 10: its iflag and lflag not those at its prompt), so that the commands it ran next had the keyboard's signals
   (Ctrl-C) and flow control off, `-isig -ixon`, 10 of 10; with `ttyctl -f` (in `.zshrc`) they had them on, 10 of 10.
 - A list of sessions waits for `ltms index` to read every transcript of the project (on one machine, 39 s for a project
-  of 385 sessions), and a search for `ltms search`; the screen says what is being read and for how long. A list that
-  took 3 s or more is kept: opened again after its files changed, it is shown as it was read, and says when that was
-  and how many files changed since; `r` reads it again (as it reads Projects again), and so does `ltms-reader` started
-  again.
+  of 385 sessions, by ltms's own README), and a search for `ltms search`; the screen says what is being read and for
+  how long. A list that took 3 s or more is kept: opened again after its files changed, it is shown as it was read, and
+  says when that was and how many files changed since; `r` reads it again (as it reads Projects again), and so does
+  `ltms-reader` started again.
 - Some clusters are drawn wider by some terminals than by the cluster rule (an Indic conjunct, an emoji sequence a
   terminal does not join): the rest of the row is drawn that much further right, and a row that then reaches past the
   screen's edge stops there, each character past it written over the last column (measured on VS Code 1.147.0's
   xterm.js, its headless build).
-- On a narrow screen some rows are wider than it (round 6's check measured them at 25 and 30 columns): the line that
-  says what is being read (`reading the sessions with ltms index`, a transcript's name, `searching with ltms search`),
-  which is not cut to the screen's width, and the search line where its prompt, which names what is searched, fills the
-  screen (the text typed and the cursor go past it). The reader turns wrapping at the last column off, so a terminal
+- On a narrow screen some rows are wider than it: the line that says what is being read
+  (`reading the sessions with ltms index`, a transcript's name, `searching with ltms search`), which is not cut to the
+  screen's width, and the search line where its prompt, which names what is searched, fills the screen (the text typed
+  and the cursor go past it); measured at 25 columns, the first 38 columns wide, or 30 with a transcript's name, and the
+  search line 26, and at 30 columns, 38 and 31. The reader turns wrapping at the last column off, so a terminal
   stops such a row at its edge, the edge's cell holding the last character written to the row (measured on VS Code
   1.147.0's xterm.js, its headless build; on the other terminals reasoned, not measured). A known limit, left as it is.
 - A paragraph's levels are resolved once, when a line of it is first drawn, and kept for the last two drawn of 4,096
-  UTF-16 code units or more (a character past U+FFFF counts two). For R's record (one paragraph of 4,000,000 Hebrew
-  characters), measured on 2026-11-16 on one machine, its first frame took 150 to 239 ms on Node 26.13.1 (11 runs),
-  where it took 12 to 23 ms before (11 runs); the levels alone 137 to 147 ms (6 runs), and 143 to 145 on Node 20.20.2 (2
-  runs); the frames after it as before (a page at 200 x 60: 9.4 to 14.4 ms in 7 runs, 10.4 to 14.2 before). A line finds
+  UTF-16 code units or more (a character past U+FFFF counts two). For a record of one paragraph of 4,000,000
+  characters (`אבג ` 1,000,000 times), measured on 2026-11-22 on one machine, the first frame of a page in its middle
+  took 157 to 190 ms on Node 26.13.1 (6 runs), and the 20 frames after it a median of 11.6 to 12.0 ms at 200 x 60 and
+  6.9 to 7.0 at 80 x 24; the levels alone 141 to 149 ms (3 runs), and 144 to 148 on Node 20.20.2 (2 runs). A line finds
   the paths in it by a binary search of its paragraph's: in a right-to-left paragraph of 200,000 paths (3,200,004
-  characters), measured on 2026-11-17 (2 runs each), the first frame took 163 to 171 ms (21 to 22 when each line was
-  laid out by itself), and a page at its start, its middle and its end 5.8 to 6.4 ms at 200 x 60 (13.6 to 16.5 before),
-  1.1 to 1.7 at 80 x 24 (2.1 to 2.8 before).
+  characters), the first frame took 160 to 173 ms at 80 x 24 (3 runs), and a page at its start, its middle and its end
+  1.5 to 2.3 ms at 80 x 24 and 4.6 to 7.6 at 200 x 60.
 - On Node 20, a long line of text that is not ASCII is laid out about three times slower than on Node 26: Node 20's
   grapheme segmenter is slower, and walked over one long string it costs more at each cluster the longer the string is
-  (3.4 us a cluster at 10,000 units, 115 at 80,000), so the reader walks a long line 256 units at a time. Measured on
-  R's record of 4,000,000 Hebrew characters at 80 columns: its lines counted in 6.7 s on Node 20.20.2, against 2.0 s on
-  Node 26.13.1 (an ASCII record of the same size: 57 and 61 ms).
+  (on Node 20.20.2, 4.3 to 4.9 us a cluster at 10,000 units, 118 to 121 at 80,000), so the reader walks a long line
+  256 units at a time. Measured on the record of 4,000,000 characters above, at 80 columns: its lines counted in 3.6 to
+  3.9 s on Node 20.20.2, against 1.15 to 1.23 s on Node 26.13.1 (a record of the same size in ASCII: 15 to 16 and 16 to
+  20 ms).
 
 Exit status: 0 after `q`; 130 after Ctrl-C or SIGINT; 129 after SIGHUP; 143 after SIGTERM; 1 after an internal error;
 2 when it is refused before the screen opens (not a terminal, a usage error, a path that is not a folder or a `.jsonl`);

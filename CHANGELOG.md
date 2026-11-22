@@ -160,13 +160,96 @@
   Right after the opening marker the path is laid out as UAX #9 has it, its first slash at its right end: in a
   right-to-left line, `/home/user/x.txt` in backticks reads `home/user/x.txt/`. Read in `pathUnits`, and run on it and
   on the reader's layout at this release's code (Node 24.18.0, 2026-11-22).
+- A transcript is read into memory whole, in the reader's own process: one over a tenth of Node's memory limit is
+  refused with its size (rounded up) and that limit (rounded down), so that the two differ, and the
+  `NODE_OPTIONS=--max-old-space-size=...` that would let it be read, and one over 480 MB at all, by JavaScript's limit
+  on a string's length (read in `src/reading.mjs`). That tenth is the rule ltms's commands follow, and the reader runs
+  them without its own `NODE_OPTIONS` or flags, so that the lists and the reader agree on which files can be read while
+  Node's memory limit is the same for both. Node's memory limit is the old space's where `--max-old-space-size` or
+  `--max-old-space-size-percentage` sets it (in `NODE_OPTIONS` or on node's command line), else the heap's: a
+  transcript's parse is kept in the old space, and the heap's limit holds beside it a reserve for new objects sized from
+  the machine's memory, not from the old space: under `--max-old-space-size=16`, a heap limit of 64 MB on Node 20.20.2
+  and 22.23.3, 208 MB on 24.22.3 and 112 MB on 26.13.1 (measured on 2026-11-17, and again on 2026-11-22: Node 20, 22 and
+  24 in docker with 3 GB, Node 26 in a scope of 3 GB). By the heap's limit, under that old space, Node 24.22.3 took in a
+  transcript of 12 MB and ran out of memory (2026-11-17, with the rule set to read the heap's limit).
+- A record is shown when its view (up to 16 times the record's size) fits beside the transcript's parse (up to 8 times
+  the file's) in nine tenths of Node's memory limit, and so does what writing the JSON its view writes takes, 1.5 times
+  that JSON, with 12 MB beside it, the reader's own (read in `src/reading.mjs`). That JSON is measured by walking the
+  record, before any of it is written; it is indented once more at each level a value is nested in, so that a record
+  nested deep writes JSON hundreds of times its size: a list nested 990 deep of 400,000 ones, on a line of 0.8 MB,
+  399,389,570 bytes (381 MB; a test asserts it, run on every Node line on 2026-11-22). The 1.5 and the 12 MB were
+  measured against the old space on 2026-11-17, with the size rules set aside, on Node 20.20.2, 22.23.3, 24.22.3 and
+  26.13.1 (130 records): the reader alone needed 7 to 9 MB, and writing a list nested deep up to 1.04 times its JSON on
+  Node 22, 24 and 26 and up to 1.41 times on Node 20; the record view's code has not changed since, but for a refusal's
+  wording. A record that does not fit is refused before it is drawn, with its size and the `NODE_OPTIONS` that would
+  show it; its lines are laid out a page at a time.
+- The screen runs in a process of its own, which the command waits for. When that process ends without restoring the
+  terminal (Node's memory running out aborts it), the command restores it, then prints what Node said and what happened.
+  An error in the command's own process (a module loaded through `NODE_OPTIONS` or `--import` that throws, say) ends the
+  screen by its own way out (SIGTERM; if it has not ended within 2 s, SIGKILL, and the command restores the terminal),
+  is printed after the restore, and the command exits with 1. When the command's own process is killed (SIGKILL), the
+  screen's process learns of it by an IPC channel between the two, which closes, restores the terminal and ends (read in
+  `src/guard.mjs`; run in a pseudo-terminal: the next entry). When both are killed at once (a whole cgroup, as
+  systemd-oomd does), nothing is left to restore the terminal (reasoned, not run).
+- Under an interactive shell with job control, that shell takes the terminal back as soon as the command's process is
+  killed, racing the screen's process, which then writes the leave sequence and leaves the terminal's modes to the shell
+  (it puts back the modes it started with only where they are still the screen's raw ones, as under a shell that sets
+  none). Measured on 2026-11-16 in a pseudo-terminal of 80 x 24, the shell at its prompt, the reader started from it,
+  SIGKILL to the command's process once its frame was up, 10 runs each of bash 5.3.20, zsh 5.9.2 (`-f`, and `-f` with
+  `ttyctl -f` typed first), fish 4.9.3 and a stand-in for a job-control shell that sets no modes: the modes 1.5 s after
+  were the shell's own, as at its prompt, 10 of 10 for bash, zsh with `ttyctl -f`, fish and the stand-in; a line typed
+  then came back once, 10 of 10, for bash, both zsh and the stand-in. Bash, both zsh and the stand-in wrote their prompt
+  before the leave sequence, 10 of 10 each (fish 0 of 10), on the alternate screen, where it is not seen (bash 4.0 to
+  4.9 ms after the kill, zsh 4.1 to 9.2, zsh with `ttyctl -f` 3.9 to 5.1, the stand-in 3.7 to 5.1): the shell waits at
+  it, and the next line given to it brings a prompt back. Zsh without `ttyctl -f` took the modes the killed command left
+  as its own (10 of 10: its iflag and lflag not those at its prompt), so that the commands it ran next had the
+  keyboard's signals (Ctrl-C) and flow control off, `-isig -ixon`, 10 of 10; with `ttyctl -f` (in `.zshrc`) they had
+  them on, 10 of 10. The code that leaves the screen and restores the terminal has not changed since.
+- A list of sessions waits for `ltms index` to read every transcript of the project, and a search for `ltms search`; the
+  screen says what is being read and for how long (`ltms index` took 39 s for a project folder of 385 sessions on one
+  machine, by the README of ltms 0.3.1, the dependency). A list that took 3 s or more is kept: opened again after its
+  files changed, it is shown as it was read, and says when that was and how many files changed since; `r` reads it
+  again, as it reads Projects again, and so does `ltms-reader` started again (read in `src/engine.mjs` and
+  `src/app.mjs`).
+- Some clusters are drawn wider by some terminals than the reader counts them (an Indic conjunct, an emoji sequence a
+  terminal does not join): the rest of the row is drawn that much further right, and a row that then reaches past the
+  screen's edge stops there, each character past it written over the last column (measured on 2026-11-22 with the
+  xterm.js of VS Code 1.147.0, its headless build: at the screen's edge, above; on the other terminals reasoned, not
+  measured).
+- On a narrow screen some rows are wider than it: the line that says what is being read
+  (`reading the sessions with ltms index`, a transcript's name, `searching with ltms search`), which is not cut to the
+  screen's width, and the search line where its prompt, which names what is searched, fills the screen (the text typed
+  and the cursor go past it). Measured on 2026-11-22 at this release's code, in a pseudo-terminal, Node 26.13.1: at 25
+  columns, the line that says what is being read 38 columns wide (the sessions) and 30 (a transcript's name), and the
+  search line 26; at 30 columns, 38 and 31. The reader turns wrapping at the last column off, so a terminal stops such a
+  row at its edge, the edge's cell holding the last character written to the row (measured with the xterm.js of VS Code
+  1.147.0, its headless build, above; on the other terminals reasoned, not measured).
+- A paragraph's levels are resolved once, when a line of it is first drawn, and kept for the last two drawn of 4,096
+  UTF-16 code units or more (a character past U+FFFF counts two), so that the first frame drawn of a long paragraph
+  costs more than the frames after it. Measured on 2026-11-22 at this release's code, one process a run, on Node
+  26.13.1: for a record of one paragraph of 4,000,000 characters (`אבג ` 1,000,000 times), the first frame of a page in
+  its middle took 157 to 190 ms (6 runs, at 200 x 60 and 80 x 24), and the 20 frames after it a median of 11.6 to 12.0
+  ms at 200 x 60 and 6.9 to 7.0 at 80 x 24; its levels alone 141 to 149 ms (3 runs), and 144 to 148 on Node 20.20.2 (2
+  runs). A line finds the paths in it by a binary search of its paragraph's: in a right-to-left paragraph of 200,000
+  paths (3,200,004 characters), the first frame took 160 to 173 ms at 80 x 24 (3 runs), and a page at its start, its
+  middle and its end 1.5 to 2.3 ms at 80 x 24 and 4.6 to 7.6 at 200 x 60.
+- On Node 20, a long line of text that is not ASCII is laid out about three times slower than on Node 26: Node 20's
+  grapheme segmenter is slower, and walked over one long string it costs more at each cluster the longer the string is
+  (on 2026-11-22, Node 20.20.2: 4.3 to 4.9 us a cluster at 10,000 units, 118 to 121 at 80,000 for Hebrew, mixed or CJK
+  text, 28 for ASCII; Node 26.13.1: 0.08 to 0.3 us at every length; one run each), so the reader walks a long line 256
+  units at a time. Measured at this release's code on the record of 4,000,000 characters above, at 80 columns: its lines
+  counted in 3.6 to 3.9 s on Node 20.20.2 (2 runs, in docker), against 1.15 to 1.23 s on Node 26.13.1 (3 runs); a record
+  of the same size in ASCII (`abc ` 1,000,000 times) in 15 to 16 ms on Node 20.20.2 and 16 to 20 on Node 26.13.1 (2 runs
+  each).
 
 Of 0.1.0's Known limits (below), the first, a first cluster that is right to left moved to the line's other end by a
 terminal that lays each line out with a left-to-right base, no longer holds at Konsole's default bidi settings, where it
 was measured with two Hebrew letters without points, nor under GNU FriBidi `--ltr`; with Konsole's "force LTR line
 direction" unchecked, where a line takes its base from its first strong character, such a cluster is predicted to be
 drawn at the line's other end still (the first bullet above). The others still hold; in the one of a letter followed by
-WJ and a mark, 0.1.1 writes U+05DD, U+200E, U+202D, U+2060, U+05B7, the rest, U+202C.
+WJ and a mark, 0.1.1 writes U+05DD, U+200E, U+202D, U+2060, U+05B7, the rest, U+202C. The last of them, which leaves
+the rest to the README's Limits, is now carried by this release's Known limits above, each measured again at this
+release's code or traced to the run that measured it.
 
 ## 0.1.0 (2026-11-18)
 
