@@ -36,6 +36,11 @@ const ENTER = '\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[?2004h', LEAVE = '\x1b[?2004l\x1
  *  LRO, taken out by its place; a transcript's own LRM, written as it is, is kept (the claims run on 0.1.1: its M7b,
  *  every LRM taken out by its character, passed every test). The tests that read a row check the override where it is. */
 const said = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\u200e(?=\u202d)|[\u202c\u202d]/g, '');
+/** A text with every bidirectional control taken out by its character (Unicode's Bidi_Control: ALM, LRM, RLM, the
+ *  embeddings, overrides and isolates): what a step's text is looked for in once said()'s reading has not found it. */
+const unmarked = (s) => s.replace(/\p{Bidi_Control}/gu, '');
+/** How long the terminal must have received nothing more before a step whose text the screen holds only unmarked fails. */
+const SETTLE = 500;
 
 // said(), what every step of the tests below reads the screen by, and legible(), what their failures are written with:
 // known answers (the claims run on 0.1.1: its M7b passed every test; RV-4, a failure that turned on an RLM or an LRO
@@ -45,13 +50,18 @@ test('0.1.1: said() takes out the reader\'s escape sequences, its LRM right befo
   assert.equal(said(`a${LRM}b`), `a${LRM}b`, 'a row without the override: its LRM is a transcript\'s');
   assert.equal(said(`\u05dd${LRM}${LRO}\u05d5${LRM}${PDF}`), `\u05dd\u05d5${LRM}`, 'a transcript\'s LRM right before the PDF');
   assert.equal(legible(`a${LRM}${LRO}b${PDF}\u200f`), '"a<U+200E><U+202D>b<U+202C><U+200F>"');
+  // unmarked(): all twelve of Bidi_Control out, and nothing else (ZWSP, ZWNJ, ZWJ, WJ, a mark and a letter stay)
+  assert.equal(unmarked('a\u061cb\u200e\u200fc\u202a\u202b\u202c\u202d\u202ed\u2066\u2067\u2068\u2069e'), 'abcde');
+  assert.equal(unmarked('\u200b\u200c\u200d\u2060\u05b7\u05e9'), '\u200b\u200c\u200d\u2060\u05b7\u05e9');
 });
 
 /**
  * Run the reader in a pseudo-terminal of 80 x 24: each step waits for its text (a string, or a regular expression) in
  * what the terminal received since the step before, then sends its bytes or acts ({ pid, tty }: the command's process,
  * and the terminal's device, whose size stty -F changes). A step whose text has not come when the reader has ended
- * fails at once. Returns { out, exit, pid, before, after }.
+ * fails at once; so does one whose text the screen holds only unmarked, once the terminal has received nothing more for
+ * SETTLE ms (a mark of the reader's out of its place: the claims run on 0.1.1, RV-4, its waiting half: every such step
+ * waited out its `wait`, 20 s, and a run under such a defect went past its cap). Returns { out, exit, pid, before, after }.
  */
 function ptyRun(r, { args, steps, nodeArgs = '', env = {}, wait = 20_000 }) {
   const run = path.join(r.base, 'run.sh');
@@ -69,9 +79,16 @@ function ptyRun(r, { args, steps, nodeArgs = '', env = {}, wait = 20_000 }) {
   child.stderr.on('data', (d) => { err += d; });
   const until = (want, since) => new Promise((resolve, reject) => {
     const t0 = Date.now();
+    const holds = (s) => (typeof want === 'string' ? s.includes(want) : want.test(s));
+    let seen = -1, still = t0;
     const look = () => {
       const s = said(out.slice(since));
-      if (typeof want === 'string' ? s.includes(want) : want.test(s)) return resolve();
+      if (holds(s)) return resolve();
+      if (out.length !== seen) { seen = out.length; still = Date.now(); }
+      else if (Date.now() - still >= SETTLE && holds(unmarked(s))) {
+        const row = out.slice(since).split(/\x1b\[\d+;1H\x1b\[2K/).map((x) => x.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')).find((x) => holds(unmarked(x)));
+        return reject(new Error(`${want} came in a wrong form: the screen holds it only with its bidirectional controls taken out by their character, not as said() reads it, and the terminal received nothing more for ${SETTLE} ms${row === undefined ? '' : `; the row, as received: ${legible(row)}`}; the terminal received, last: ${legible(out.slice(-600))}`));
+      }
       const ended = /<<exit=\d+>>/.exec(out);
       if (ended || Date.now() - t0 > wait) return reject(new Error(`no ${want} ${ended ? `before the reader ended (${ended[0]})` : `within ${wait} ms`}; the terminal received, last: ${legible(out.slice(-600))}${err ? `; script said ${err}` : ''}`));
       setTimeout(look, 20);
@@ -163,6 +180,22 @@ test('an uncaught error: the terminal restored first, then the error, by its kin
     assert.match(rest, /throw-on-key\.mjs:\d+:\d+/, 'where it happened');
     assert.match(rest, /Its message is not printed: it could quote a transcript\.\n$/);
     assert.ok(!res.out.includes('a secret'), 'the message is nowhere');
+  } finally { r.dispose(); }
+});
+
+// RV-4 (the claims run on 0.1.1), its waiting half: a mark of the reader's out of its place (an RLM where its LRM goes,
+// the claims run's K12) left the text a step waits for never as said() reads it, and each such step waited out its
+// 20 s: K12, K12o, K12h, X4 and M5 each ran a whole suite into its 300 s cap. Planted here in the bytes the screen
+// writes (test/fixtures/mark-misplaced.mjs, loaded into both processes): the step fails once the terminal has received
+// nothing more for SETTLE ms, before its wait, and says why.
+test('RV-4: a step whose text the screen holds only in a wrong form (an RLM where the reader\'s LRM goes, planted) fails once the screen has settled, before its wait runs out, and its message names the row, legibly', { skip, timeout: 60_000 }, async () => {
+  const r = makeRoot('ltms-reader-pty-');
+  try {
+    const wait = 20_000, t0 = Date.now();
+    await assert.rejects(ptyRun(r, { args: [path.join(OWN, 'hebrew-english.jsonl')], nodeArgs: `--import ${path.join(OWN, 'mark-misplaced.mjs')}`, wait, steps: [{ until: '> hebrew-e:T001', send: 'q' }] }),
+      (e) => e.message.startsWith('> hebrew-e:T001 came in a wrong form') && e.message.includes('the row, as received: "><U+200F><U+202D> hebrew-e:T001'));
+    const ms = Date.now() - t0;
+    assert.ok(ms < wait, `failed after ${ms} ms, its wait ${wait} ms`);
   } finally { r.dispose(); }
 });
 
