@@ -277,14 +277,16 @@ npm test
 
 `npm test` runs `node --test test/*.test.mjs`, the pattern expanded by the shell, which runs the test files on Node 20,
 22, 24 and 26 alike. Given the folder `test/` instead, Node 20 runs every module under it as a test, the fixtures too,
-and Node 22 and 24 run none: they take the folder for a module, and fail. The whole suite was run on four Node lines on
-2026-11-21, at this release's code, with no failure on any: Node 26.13.1, 436 tests, 436 passed (GNU FriBidi 1.0.18
-there, its command and its library); Node 24.22.3, 22.23.3 and 20.20.2 in docker (the images node:24-slim, node:22-slim
-and node:20-slim, as a user who is not root), 436 tests each, 428 passed and 8 skipped, as there is no GNU FriBidi and
-no Electron in them. Each with the pinned Unicode files named (`LTMS_READER_UCD`, `LTMS_READER_EAW`). So it was under
-`NODE_OPTIONS=--max-old-space-size=100` and `=500` too, once on each line: no test reads the environment's
-`NODE_OPTIONS` where it means none, and the test of a turn of 33,000 calls reads it in a process of its own. On Node 20
-under `=100`, `test/record-view.test.mjs` run alone ended by SIGABRT in 2 of 10 runs (Node's heap ran out in its test of
+and Node 22 and 24 run none: they take the folder for a module, and fail. The whole suite was run on five Node lines on
+2026-11-22, at this release's code, with no failure on any: Node 26.13.1, 443 tests, 443 passed (GNU FriBidi 1.0.18
+there, its command and its library); Node 24.18.0 on a second machine, 443 tests, 443 passed (GNU FriBidi 1.0.18 there
+too); Node 24.22.3, 22.23.3 and 20.20.2 in docker (the images node:24-slim, node:22-slim and node:20-slim, as a user who
+is not root), 443 tests each, 435 passed and 8 skipped, as there is no GNU FriBidi, no python3 (which the five tests of
+FriBidi's library run) and no Electron in them. Each with the pinned Unicode files named (`LTMS_READER_UCD`,
+`LTMS_READER_EAW`). So it was under `NODE_OPTIONS=--max-old-space-size=100` and `=500` too, once on each line: no test
+reads the environment's `NODE_OPTIONS` where it means none, and the test of a turn of 33,000 calls reads it in a process
+of its own. On Node 20 under `=100`, `test/record-view.test.mjs` run alone ended by SIGABRT in 3 of 17 runs on
+2026-11-21 (2 of a batch of 10, then the 7th of a second batch, which stopped there; Node's heap ran out in its test of
 a record nested 990 deep, in the test's own process): the irregularity on Node 20 that the CHANGELOG's Known limits
 name. The tests run the session, turn and record views (as text and as JSON) at 80 x 24 and 200 x 60 over ltms's own
 synthetic transcripts (`test/fixtures/ltms`) and the reader's (`test/fixtures/hebrew-english.jsonl`, `escapes.jsonl` and
@@ -298,11 +300,13 @@ Unicode's conformance test of the algorithm (`test/bidi.test.mjs`, which reports
 FriBidi's layout of the right-to-left page and fixtures is compared with the reader's where `fribidi` is on the PATH (or
 `LTMS_READER_FRIBIDI` names it); and each line of paragraphs wrapped into lines (the fixtures', and random ones) with
 its library's, where `python3` can load `libfribidi` (`test/fribidi-lines.py`; `LTMS_READER_LIBFRIBIDI` names the
-library, `LTMS_READER_PYTHON` the Python). GNU FriBidi 1.0.18 lays some paragraphs out otherwise than UAX #9 (brackets
-next to a nonspacing mark): a line on which the reader and FriBidi's library differ is laid out by the tests' own
-reference of UAX #9 too (`test/uba-reference.mjs`, checked on `BidiCharacterTest.txt`, every case, and on `BidiTest.txt`
-when the folder holds it), and counts as FriBidi's difference, said and not failed, where FriBidi differs from the
-reference and the reader does not:
+library, `LTMS_READER_PYTHON` the Python); and its command with a left-to-right base (`fribidi --ltr`, standing for a
+terminal that lays each line out with one, as Konsole does at its default settings) over the reader's own rows whose
+first cluster is right to left, a pointed and an Arabic one among them. GNU FriBidi 1.0.18 lays some paragraphs out
+otherwise than UAX #9 (brackets next to a nonspacing mark): a line on which the reader and FriBidi's library differ is
+laid out by the tests' own reference of UAX #9 too (`test/uba-reference.mjs`, checked on `BidiCharacterTest.txt`, every
+case, and on `BidiTest.txt` when the folder holds it), and counts as FriBidi's difference, said and not failed, where
+FriBidi differs from the reference and the reader does not:
 
 ```sh
 curl -sS --fail -o EastAsianWidth.txt https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt

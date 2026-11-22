@@ -29,9 +29,15 @@
   no line wider than 0.1.0's), the keys screen and the refusal (where a transcript's text goes), the README, and 0.1.0's
   entry below (the terminals measured, the left-to-right base, a path as one unit, a paste, mode `terminal`'s RLM, the
   docker skips, the README its first Known limit names).
-- Tests: 435 → 436 (Node 26.13.1: 436 passing; Node 24.18.0, on a second machine: 436 passing; Node 24.22.3, 22.23.3
-  and 20.20.2 in docker: 428 passing, 0 failing, 8 skipped, as their images have no GNU FriBidi and no Electron). The
-  new one is the FriBidi test above.
+- Tests: 435 → 443 (Node 26.13.1: 443 passing; Node 24.18.0, on a second machine: 443 passing; Node 24.22.3, 22.23.3 and
+  20.20.2 in docker: 435 passing, 0 failing, 8 skipped, as their images have no GNU FriBidi, no python3, which the five
+  tests of FriBidi's library run, and no Electron). The new ones: the FriBidi test above; a transcript's own LRM in rows
+  the reader lays out, in a frame's bytes and end to end in a pseudo-terminal, and the tests' own readers of a row
+  (withoutOverride, said(), legible()) on known answers (the claims run on 0.1.1 found that no test held such a row, so
+  that the tests could find the reader's LRM by its character, and the reader could drop a transcript's, and every test
+  passed); Y1's walk of the Hebrew fixture's views, a test of its own, each row's text against displayOrder's;
+  `--help`'s widths; the keys screen's sentence on where the text goes. Y1, Z3 and Z4 take the LRM, LRO and PDF they
+  expect from the tests' own constants, not from the module under test (Z4 passed with an RLM where the LRM goes).
 
 0.1.0's other Known limits (below) still hold; in the one of a letter followed by WJ and a mark, 0.1.1 writes U+05DD,
 U+200E, U+202D, U+2060, U+05B7, the rest, U+202C.
