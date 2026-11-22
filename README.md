@@ -65,16 +65,23 @@ screen too small for all of it, its first lines), and `q` still quits.
 | `?` | the keys |
 | `q` or Ctrl-C | quit |
 
-While a line is typed: Backspace, Ctrl-U to clear it, Enter, Esc to leave it. A paste is text (the reader turns on
-the terminal's bracketed paste): pasted into a line, its new lines become spaces and do not run it; elsewhere, nothing
-pasted acts as a key. A Ctrl-C character in a paste is the one exception: it quits, in a line too.
+While a line is typed: Backspace, Ctrl-U to clear it, Enter, Esc to leave it. A paste is text (the reader turns on the
+terminal's bracketed paste): pasted into a line, its new lines become spaces and do not run it; elsewhere, nothing
+pasted acts as a key. A Ctrl-C character that reaches the reader in a paste is the one exception: it quits, in a line
+too (but not right after an ESC, which is read with it as one key); and an ESC [201~ in a paste ends the paste there,
+what follows it acting as keys. What reaches the reader is the terminal's to say: by their sources (read, not run),
+Alacritty 0.17.0 takes ESC and Ctrl-C out of a paste, Konsole 26.08.3 takes ESC out and asks before it pastes a Ctrl-C,
+and the xterm.js of VS Code 1.147.0 writes ESC as `␛` and passes Ctrl-C.
 
 ## Your transcripts, and who sees them
 
-- **It shows their text**, prompts, replies, tool inputs and outputs included, to you, on this terminal's alternate
-  screen. Nothing it shows is written to stdout, a pipe or a log, and nothing stays on the screen when it quits. (ltms
-  itself prints no text of a transcript but a call's tool name and a word taken from its input, `grep` or `README`
-  say; this reader is for the person whose transcripts they are.)
+- **It shows their text**, prompts, replies, tool inputs and outputs included, to you, on the alternate screen of the
+  terminal that is its stdout: it starts only when stdin and stdout are terminals, and draws every frame on stdout. It
+  writes their text to no file, pipe or log; a program that records that terminal (`script`, tmux's `pipe-pane`, a
+  terminal's own log) records what it draws. When it quits, it leaves the alternate screen, and nothing of it stays
+  (measured on VS Code's xterm.js). (ltms itself prints no text of a transcript but a call's tool name and a word taken
+  from its input, `grep` or `README` say, which reach the reader through the pipes of the ltms commands it runs; this
+  reader is for the person whose transcripts they are.)
 - **It writes no file and uses no network.** It reads the transcripts under the folder it is given, and runs ltms's
   commands (`index`, `search`, `skeleton`) as local processes, which read the same files and write only to the reader.
   Run through `npx`, npm writes files of its own: a log of each run under `~/.npm/_logs`, which names the folder or file
@@ -113,50 +120,72 @@ pasted acts as a key. A Ctrl-C character in a paste is the one exception: it qui
   `reader`, the default), by the Unicode Bidirectional Algorithm (UAX #9, Unicode 17.0.0, written in this package: the
   implicit algorithm with paired brackets, its lines reordered and mirrored, a paragraph's direction from its first
   strong character), and writes it in visual order. A line that holds right-to-left text (a character of UAX #9's class
-  R, AL or AN) is written inside a left-to-right override, U+202D (LRO) right after its first grapheme cluster that
-  takes a column (never at the line's first column: after ZWSP, a lone mark or an RLM that begins it, the next), a
-  left-to-right mark (U+200E, LRM) between that cluster and the LRO, and U+202C (PDF) at its end, so that a terminal that
-  lays bidirectional text out itself keeps the reader's order instead of reordering it a second time; nothing else is
-  written (no isolate), and a line without right-to-left text, or with no cluster that takes a column, is written as it
-  is. No terminal is detected.
-  - Measured on four terminals (S378; again with 0.1.1's own output on 2026-11-21): Alacritty 0.17.0, Konsole 26.08.3,
-    tmux 3.6 and VS Code 1.146.0's terminal (xterm.js 6.1.0-beta.304; 1.147.0's, 6.1.0-beta.337, gave the same). There,
-    after a line's first column, LRM, LRO and PDF take no column. Konsole lays text out itself, with a left-to-right
-    base for each line, and applies the override from a line's second column on; at the first column an LRO is not
-    applied by Konsole, dropped by tmux and given a column of its own by xterm.js (hence after the first cluster), and
-    xterm.js gives an isolate (LRI, RLI, PDI) a column anywhere. Alacritty and xterm.js draw the text in the order it is
-    written; tmux keeps a mark in the cell of the character before it, and redraws that cell to the terminal outside it
-    (with VS Code's xterm.js outside, the cells came out as without tmux; with Konsole outside, not measured). No other
-    terminal was measured (kitty, VTE's, as in GNOME Terminal, mlterm, WezTerm, foot, iTerm2, Windows Terminal, GNU
-    screen and the rest are not): one that gives LRM, LRO or PDF a column shifts such a line by it. Not measured either:
-    how Konsole joins Arabic letters that come to it in visual order under the override. A line whose first cluster that
-    takes a column is itself right to left keeps that cluster outside the override; the LRM after it keeps it first on
-    Konsole (measured with the reader in Konsole 26.08.3, its default bidi settings, on first letters without points:
-    0.1.0 drew it at the line's other end, 0.1.1 at column 0).
+  R, AL or AN) is written inside a left-to-right override: a left-to-right mark (U+200E, LRM) and U+202D (LRO), in that
+  order, right after its first grapheme cluster that takes a column (never at the line's first column: after any ZWSP,
+  lone mark or RLM that begins the line, after the first cluster that takes one), and U+202C (PDF) at its end, so that a
+  terminal that lays bidirectional text out itself with a left-to-right base for each line (Konsole at its default bidi
+  settings) keeps the reader's order instead of reordering it a second time; one that takes a line's base from its first
+  strong character (Konsole with "force LTR line direction" unchecked; not measured) would still draw a first cluster
+  that is right to left at the line's other end. Nothing else is written (no isolate), and a line without right-to-left
+  text, or with no cluster that takes a column, is written as it is. No terminal is detected.
+  - Measured on four terminals (on 2026-11-16, and again with 0.1.1's own output on 2026-11-21 and 22): Alacritty
+    0.17.0, Konsole 26.08.3, tmux 3.6 and the xterm.js of VS Code's terminal (1.146.0's, 6.1.0-beta.304, run in a
+    headless browser, not in VS Code's window: on 2026-11-16 with xterm.js's own Unicode 6 widths, on 2026-11-21 with
+    those and with Unicode 11's, VS Code's default; 1.147.0's, 6.1.0-beta.337, gave the same). There, after a line's
+    first column, LRM, LRO and PDF take no column where they follow a character, as the reader writes its LRM and LRO;
+    xterm.js gives one that follows an escape sequence a column of its own, as it does the reader's PDF after a styled
+    segment, the last thing on its row, so that no text moves. Konsole, at its default bidi settings, lays text out
+    itself with a left-to-right base for each line, and applies the override from a line's second column on; at the
+    first column an LRO is not applied by Konsole, dropped by tmux and given a column of its own by xterm.js (hence
+    after the first cluster), and xterm.js with its own Unicode 6 widths gives an isolate (LRI, RLI, PDI) a column
+    anywhere (with Unicode 11's, none after a character, one at the first column and after an escape sequence).
+    Alacritty, and xterm.js's WebGL renderer (VS Code's default), draw the text in the order it is written; xterm.js's
+    DOM renderer puts a run of cells of one style and one width into one span, which the browser lays out itself
+    (measured on 2026-11-22 in headless Chromium with 6.1.0-beta.304 and beta.337: with Liberation Mono or Courier New,
+    0.1.0's first letter at the row's other end and 0.1.1's row in order; with Hebrew from a second monospace font, a
+    span for each word, and 0.1.1's words after the first reversed in place). tmux keeps a mark in the cell of the
+    character before it, and redraws that cell to the terminal outside it (with VS Code's xterm.js outside, the cells
+    came out as without tmux; with Konsole 26.08.3 outside, measured on 2026-11-22 with tmux's status line off, the
+    screen came out pixel for pixel as without tmux). No other terminal was measured (kitty, VTE's, as in GNOME
+    Terminal, mlterm, WezTerm, foot, iTerm2, Windows Terminal, GNU screen and the rest are not): one that gives LRM or
+    LRO a column shifts such a line, from its second cluster on, by that column; one that gives PDF a column shifts
+    nothing, the column falling after the line's end, and on a line as wide as the screen (wrapping is off) taking the
+    place of its last character (both modelled on xterm.js with that width changed, not run on such a terminal). Not
+    measured either: how Konsole joins Arabic letters that come to it in visual order, under the override and across the
+    LRM after the first one. A line whose first cluster that takes a column is itself right to left keeps that cluster
+    outside the override; the LRM after it keeps it first on Konsole (measured with the reader in Konsole 26.08.3, its
+    default bidi settings, on two Hebrew first letters without points, a vav and a final nun: 0.1.0 drew it at the
+    line's other end, 0.1.1 at column 0; a pointed or an Arabic first letter was not run).
   - `LTMS_READER_BIDI=terminal` writes the text as stored instead (mode `terminal`), with a right-to-left mark (RLM) at
-    the end of each right-to-left paragraph, for a terminal that lays bidirectional text out itself (on Konsole the RLM
-    puts the paragraph's end punctuation where it belongs, though its brackets are not mirrored); `LTMS_READER_BIDI=reader`
-    is the default; a value it does not take is refused. Konsole is not detected: it gets the reader's layout, as
-    every terminal does, over ssh too, where `KONSOLE_VERSION` does not reach the reader.
+    the end of each line of a right-to-left paragraph (before the whitespace that ends the line; none after the lines of
+    a left-to-right paragraph, though they hold Hebrew), for a terminal that lays bidirectional text out itself (on
+    Konsole, measured after a Hebrew letter, the RLM puts the paragraph's end punctuation where it belongs, though its
+    brackets are not mirrored; after a left-to-right word or a path it would not, by a model of Konsole's layout
+    calibrated on its measured rows); `LTMS_READER_BIDI=reader` is the default; a value it does not take is refused.
+    Konsole is not detected: it gets the reader's layout, as every terminal does, over ssh too, where `KONSOLE_VERSION`
+    does not reach the reader.
 
   A paragraph is a cell of a list, the reader's own words before a transcript's text being a paragraph of their own, or
   a text wrapped into lines: a line of a record's text (its lines share its direction), a message, an error. A wrapped
   paragraph's levels are resolved once, and each of its lines is reordered from them, as UAX #9 lays out a paragraph
   broken into lines (its section 3.4): a line reads as its words do in the whole paragraph, the comma that ends a line
-  where the sentence has it. Each such line is laid out whole, its spaces at either end with the rest: a space that
-  ends a line takes the paragraph's direction (L1), so that in a right-to-left paragraph it is drawn at the line's
-  left. A record's text is cut into lines by columns: the whitespace where a line breaks stays at the end of the line
-  before, as UAX #14 has it, drawn there where the line has room for it, and past the screen's edge, not drawn, where
-  it does not. A message is broken at its spaces, and the space where a line breaks hangs, as UAX #14 has the
-  whitespace at a break: it is in no line, and is not drawn, though the line has room for it; whitespace that ends a
-  message after a break hangs too, and makes no line of its own. Either way no line but a paragraph's first begins with
-  whitespace that hangs (the figure space, a no-break space, does not hang). A long line of a list is cut in logical
-  order, its beginning kept, then laid out by itself, the spaces at its ends (a cell's padding) where they are.
-  A path or a URL in a line (`/home/...`, `~/...`, `src/...`, `https://...`) is laid out as one left-to-right unit, its
-  parts in order and a Hebrew name in it reading right (UAX #9's higher-level protocol HL4), in pieces where a line
-  breaks inside it, as an isolate is. Each cluster is kept whole, its marks after its letter, as a terminal draws them,
-  and so is a mark after characters UAX #9 removes (a soft hyphen, ZWSP, WJ: clusters of their own), with the letter
-  before them; the text is aligned left, so the columns stay. Checked against Unicode's conformance test
+  where the sentence has it. Each such line is laid out whole, its spaces at either end with the rest: a space that ends
+  a line takes the paragraph's direction (L1), so that in a right-to-left paragraph it is drawn at the line's left. A
+  record's text is cut into lines by columns: the whitespace where a line breaks stays at the end of the line before, as
+  UAX #14 has it, drawn there where the line has room for it, and past the screen's edge, not drawn, where it does not.
+  A message is broken at its spaces, and the space where a line breaks hangs, as UAX #14 has the whitespace at a break:
+  it is in no line, and is not drawn, though the line has room for it; whitespace that ends a message after a break
+  hangs too, and makes no line of its own. Either way no line but a paragraph's first begins with whitespace that hangs
+  (the figure space, a no-break space, does not hang). A long line of a list is cut in logical order, its beginning
+  kept, then laid out by itself, the spaces at its ends (a cell's padding) where they are. A path or a URL in a line
+  (`/home/...`, `~/...`, `src/...`, `https://...`) that begins the line or follows a space, an opening bracket or quote,
+  `=` or a hyphen is laid out as one left-to-right unit, up to the next space, its parts in order and a Hebrew name in
+  it reading right (UAX #9's higher-level protocol HL4), in pieces where a line breaks inside it, as an isolate is; one
+  in Markdown's backticks or bold, or right after a colon or a comma, is not (in a right-to-left line,
+  `/home/user/x.txt` in backticks reads `home/user/x.txt/`), and a path with a space in it is laid out as two, in a
+  right-to-left line in the other order. Each cluster is kept whole, its marks after its letter, as a terminal draws
+  them, and so is a mark after characters UAX #9 removes (a soft hyphen, ZWSP, WJ: clusters of their own), with the
+  letter before them; the text is aligned left, so the columns stay. Checked against Unicode's conformance test
   (BidiCharacterTest.txt: every case without an explicit formatting character, which the reader shows as an escape and
   never applies) and against GNU FriBidi: its command for a line, its library for a paragraph wrapped into lines.
 - Colour follows [NO_COLOR](https://no-color.org): set, there is none; the selected row is still drawn in reverse.
@@ -210,20 +239,24 @@ pasted acts as a key. A Ctrl-C character in a paste is the one exception: it qui
   and how many files changed since; `r` reads it again (as it reads Projects again), and so does `ltms-reader` started
   again.
 - Some clusters are drawn wider by some terminals than by the cluster rule (an Indic conjunct, an emoji sequence a
-  terminal does not join); a row then ends early, at the screen's edge.
+  terminal does not join): the rest of the row is drawn that much further right, and a row that then reaches past the
+  screen's edge stops there, each character past it written over the last column (measured on VS Code 1.147.0's
+  xterm.js).
 - On a narrow screen some rows are wider than it (round 6's check measured them at 25 and 30 columns): the line that
   says what is being read (`reading the sessions with ltms index`, a transcript's name, `searching with ltms search`),
-  which is not cut to the screen's width, and the search line where its prompt, which names what is searched, fills
-  the screen (the text typed and the cursor go past it). The reader turns wrapping at the last column off, so a
-  terminal stops such a row at its edge (reasoned, not measured). A known limit, left as it is.
+  which is not cut to the screen's width, and the search line where its prompt, which names what is searched, fills the
+  screen (the text typed and the cursor go past it). The reader turns wrapping at the last column off, so a terminal
+  stops such a row at its edge, the edge's cell holding the last character written to the row (measured on VS Code
+  1.147.0's xterm.js; on the other terminals reasoned, not measured). A known limit, left as it is.
 - A paragraph's levels are resolved once, when a line of it is first drawn, and kept for the last two drawn of 4,096
-  characters or more. For R's record (one paragraph of 4,000,000 Hebrew characters), measured on 2026-11-16 on one
-  machine, its first frame took 150 to 239 ms on Node 26.13.1 (11 runs), where it took 12 to 23 ms before (11 runs);
-  the levels alone 137 to 147 ms (6 runs), and 143 to 145 on Node 20.20.2 (2 runs); the frames after it as before (a
-  page at 200 x 60: 9.4 to 14.4 ms in 7 runs, 10.4 to 14.2 before). A line finds the paths in it by a binary search of
-  its paragraph's: in a right-to-left paragraph of 200,000 paths (3,200,004 characters), measured on 2026-11-17 (2 runs
-  each), the first frame took 163 to 171 ms (21 to 22 when each line was laid out by itself), and a page at its start,
-  its middle and its end 5.8 to 6.4 ms at 200 x 60 (13.6 to 16.5 before), 1.1 to 1.7 at 80 x 24 (2.1 to 2.8 before).
+  UTF-16 code units or more (a character past U+FFFF counts two). For R's record (one paragraph of 4,000,000 Hebrew
+  characters), measured on 2026-11-16 on one machine, its first frame took 150 to 239 ms on Node 26.13.1 (11 runs),
+  where it took 12 to 23 ms before (11 runs); the levels alone 137 to 147 ms (6 runs), and 143 to 145 on Node 20.20.2 (2
+  runs); the frames after it as before (a page at 200 x 60: 9.4 to 14.4 ms in 7 runs, 10.4 to 14.2 before). A line finds
+  the paths in it by a binary search of its paragraph's: in a right-to-left paragraph of 200,000 paths (3,200,004
+  characters), measured on 2026-11-17 (2 runs each), the first frame took 163 to 171 ms (21 to 22 when each line was
+  laid out by itself), and a page at its start, its middle and its end 5.8 to 6.4 ms at 200 x 60 (13.6 to 16.5 before),
+  1.1 to 1.7 at 80 x 24 (2.1 to 2.8 before).
 - On Node 20, a long line of text that is not ASCII is laid out about three times slower than on Node 26: Node 20's
   grapheme segmenter is slower, and walked over one long string it costs more at each cluster the longer the string is
   (3.4 us a cluster at 10,000 units, 115 at 80,000), so the reader walks a long line 256 units at a time. Measured on
