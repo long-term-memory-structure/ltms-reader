@@ -283,16 +283,18 @@ npm test
 `npm test` runs `node --test test/*.test.mjs`, the pattern expanded by the shell, which runs the test files on Node 20,
 22, 24 and 26 alike. Given the folder `test/` instead, Node 20 runs every module under it as a test, the fixtures too,
 and Node 22 and 24 run none: they take the folder for a module, and fail. The whole suite was run on five Node lines on
-2026-11-22, at this release's code, with no failure on any: Node 26.13.1, 444 tests, 444 passed (GNU FriBidi 1.0.18
+2026-11-22, at this release's code, by default with no failure: Node 26.13.1, 444 tests, 444 passed (GNU FriBidi 1.0.18
 there, its command and its library); Node 24.18.0 on a second machine, 444 tests, 444 passed (GNU FriBidi 1.0.18 there
 too); Node 24.22.3, 22.23.3 and 20.20.2 in docker (the images node:24-slim, node:22-slim and node:20-slim, as a user who
 is not root), 444 tests each, 436 passed and 8 skipped, as there is no GNU FriBidi, no python3 (which the five tests of
 FriBidi's library run) and no Electron in them. Each with the pinned Unicode files named (`LTMS_READER_UCD`,
-`LTMS_READER_EAW`). So it was under `NODE_OPTIONS=--max-old-space-size=100` and `=500` too, on each line: no test reads
-the environment's `NODE_OPTIONS` where it means none, and the test of a turn of 33,000 calls reads it in a process of
-its own. On Node 20 under `=100`, though, `test/record-view.test.mjs`'s own process was ended by SIGABRT in 2 of 5 runs
-of the whole suite and in 9 of 20 runs of it alone, on 2026-11-22 (Node's heap ran out in its test of a record nested
-990 deep). The tests run the session, turn and record views (as text and as JSON) at 80 x 24 and 200 x 60 over ltms's
+`LTMS_READER_EAW`). So it was under `NODE_OPTIONS=--max-old-space-size=500` on each line, and under `=100` on each but
+Node 20 (no test reads the environment's `NODE_OPTIONS` where it means none, and the test of a turn of 33,000 calls
+reads it in a process of its own): on Node 20 under `=100`, the process of the record view's tests was ended by
+SIGABRT in some runs, on 2026-11-22 in 2 of 5 runs of the whole suite and 9 of 20 of that file alone, and in a second
+set 3 of 5 and 6 of 20 (Node's heap ran out in its test of a record nested 990 deep, a test that gives the record rule
+more memory than its process has, after the file's test of a paragraph of 200,000 paths: the CHANGELOG's Tests
+line). The tests run the session, turn and record views (as text and as JSON) at 80 x 24 and 200 x 60 over ltms's
 own synthetic transcripts (`test/fixtures/ltms`) and the reader's (`test/fixtures/hebrew-english.jsonl`, `escapes.jsonl`
 and `channels.jsonl`, written by `node test/fixtures/make-fixtures.mjs`), Projects and Sessions at both sizes and Search
 at 80 x 24, compare what each row says with ltms's own commands, read every byte the reader writes for a transcript full

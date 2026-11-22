@@ -116,9 +116,16 @@
 - Tests: 435 → 444 (Node 26.13.1: 444 passing; Node 24.18.0, on a second machine: 444 passing; Node 24.22.3, 22.23.3 and
   20.20.2 in docker: 436 passing, 0 failing, 8 skipped, as their images have no GNU FriBidi, no python3, which the five
   tests of FriBidi's library run, and no Electron; each line the same under `NODE_OPTIONS=--max-old-space-size=100` and
-  `=500`, but Node 20.20.2 under `=100`, where `test/record-view.test.mjs`'s own process was ended by SIGABRT in 2 of 5
-  runs of the whole suite and in 9 of 20 runs of it alone, Node's heap running out in its test of a record nested 990
-  deep, the tests before it passing). The new ones: the FriBidi test above; a transcript's own LRM in rows the reader
+  `=500`, but Node 20.20.2 under `=100`, where the process of the record view's tests was ended by SIGABRT in some runs,
+  Node's heap running out in its test of a record nested 990 deep, the tests before it passing: on 2026-11-22, in 2 of 5
+  runs of the whole suite and 9 of 20 runs of that file alone, and in a second set of runs 3 of 5 and 6 of 20. That test
+  gives the record rule a memory limit of 256 MB in a process whose old space is 100 MB, and its abort needs the file's
+  test of a right-to-left paragraph of 200,000 paths to have run before it in the same process: in docker node:20-slim
+  under `=100`, a fresh process a run, it came in 0 of 70 runs without that test (the record's test alone, after each of
+  the other five tests before it, after all five), in 10 of 40 with that test right before it and in 2 of 10 in the
+  file's order; what of that test's run it needs was not measured. With the rule reading the process's own limit, the
+  record is refused under `=100`, and under `=114`, the least at which the rule shows it, it opened in 10 of 10 runs
+  after the same test. The new ones: the FriBidi test above; a transcript's own LRM in rows the reader
   lays out, in a frame's bytes and end to end in a pseudo-terminal, and the tests' own readers of a row
   (withoutOverride, said(), legible()) on known answers (a check of 0.1.1's claims found no test holding such a row, so
   that the tests could find the reader's LRM by its character, and the reader could drop a transcript's, and every test
