@@ -386,9 +386,12 @@ test('Y1: the mode: "reader" in every terminal, KONSOLE_VERSION and the terminal
     const b = before([file], { stdin: tty, stdout: tty, stderr: { write() { throw new Error('nothing is written'); } }, env });
     assert.equal(b.rtl, want, JSON.stringify(env));
   }
-  // --help says it, and names the four terminals measured
+  // --help says it, and names the four terminals measured: VS Code's by its xterm.js, run in a headless browser, as it was
+  // (the claims run on 0.1.1: RV-5, "its first character", where the marks go after the first grapheme cluster; RM-4,
+  // a terminal that lays text out with a left-to-right base; RM-H2, "VS Code's terminal", never run itself; RM-H3, the
+  // RLM of "terminal" left out)
   const { USAGE } = await import('../src/start.mjs');
-  assert.match(USAGE.replace(/\s+/g, ' '), /in every terminal the reader lays out each line itself.* inside a left-to-right override .*Measured on four terminals: Alacritty, Konsole, tmux and VS Code's terminal; no other was\..* LTMS_READER_BIDI=terminal as stored, with no override/);
+  assert.match(USAGE.replace(/\s+/g, ' '), /in every terminal the reader lays out each line itself.* inside a left-to-right override \(U\+200E and U\+202D after its first grapheme cluster that takes a column, U\+202C at its end\), so that a terminal that lays text out itself with a left-to-right base for each line \(Konsole at its default settings\) keeps that order\. Measured on Alacritty, Konsole, tmux and the xterm\.js of VS Code's terminal \(run in a headless browser\); no other was\..* LTMS_READER_BIDI=terminal as stored, with no override, and an RLM at the end of each line of a right-to-left paragraph \(for a terminal that lays text out itself\)/);
   assert.ok(!USAGE.includes('KONSOLE_VERSION'), 'no terminal is detected');
 });
 

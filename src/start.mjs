@@ -22,10 +22,12 @@ For lines to read or to pipe, ltms is the command (npx long-term-memory-structur
 
 Right to left (Hebrew, Arabic): in every terminal the reader lays out each line itself, by the Unicode Bidirectional
 Algorithm, and writes a line that holds right-to-left text inside a left-to-right override (U+200E and U+202D after
-its first character that takes a column, U+202C at its end), so that a terminal that lays text out itself keeps that order.
-Measured on four terminals: Alacritty, Konsole, tmux and VS Code's terminal; no other was. To choose:
+its first grapheme cluster that takes a column, U+202C at its end), so that a terminal that lays text out itself
+with a left-to-right base for each line (Konsole at its default settings) keeps that order. Measured on Alacritty,
+Konsole, tmux and the xterm.js of VS Code's terminal (run in a headless browser); no other was. To choose:
   LTMS_READER_BIDI=reader      the reader lays it out (the default)
-  LTMS_READER_BIDI=terminal    as stored, with no override (for a terminal that lays text out itself)
+  LTMS_READER_BIDI=terminal    as stored, with no override, and an RLM at the end of each line of a right-to-left
+                               paragraph (for a terminal that lays text out itself)
 `;
 
 /** The arguments: { help } | { version } | { path } (null for none) | { usage: what is wrong }. */
@@ -61,7 +63,7 @@ export function notTerminal(stdin, stdout) {
   // the commands are written as npx runs them, so that they run as they are written: installing ltms-reader does not put
   // ltms on the PATH (R.F13)
   return `ltms-reader: ${which}, so nothing was read.
-ltms-reader shows transcripts on a terminal's screen only: none of their text goes to a pipe, a file or a log.
+ltms-reader shows transcripts on a terminal's screen only: it writes none of their text to a pipe, a file or a log.
 For lines to read or to pipe, ltms is the command, from the package ltms-reader is built on.
 npm install -g long-term-memory-structure puts ltms on the PATH; npx runs it without that:
   npx long-term-memory-structure index <projects folder>/<project>    the sessions, newest first

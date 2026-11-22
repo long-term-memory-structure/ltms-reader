@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { App } from '../src/app.mjs';
 import { RootSource } from '../src/sources.mjs';
-import { notTerminal, parseArgs, startOf } from '../src/start.mjs';
+import { USAGE, notTerminal, parseArgs, startOf } from '../src/start.mjs';
 import { before } from '../src/main.mjs';
 import { KEY, keyboard, makeRoot, plainOf } from './helpers.mjs';
 
@@ -32,6 +32,16 @@ test('no terminal: which stream is not one, and ltms as the command for lines', 
   assert.match(notTerminal(tty, pipe), /^ltms-reader: stdout is not a terminal, so nothing was read\./);
   assert.match(notTerminal(pipe, pipe), /^ltms-reader: stdin and stdout are not terminals, so nothing was read\./);
   assert.match(notTerminal(tty, pipe), /ltms is the command, from the package ltms-reader is built on/);
+  // what it writes, and where (the claims run on 0.1.1, RM-42: what the reader writes, not where its text goes)
+  assert.match(notTerminal(tty, pipe), /\nltms-reader shows transcripts on a terminal's screen only: it writes none of their text to a pipe, a file or a log\.\n/);
+});
+
+// The claims run on 0.1.1 (S384, RV-5): a line of --help's right-to-left paragraph had grown to 123 columns, which a
+// terminal of 120 wraps; 0.1.0's widest was 116. USAGE is printable ASCII, a column a character.
+test('--help: printable ASCII, and no line wider than 116 columns, 0.1.0\'s widest', () => {
+  assert.match(USAGE, /^[\x20-\x7e\n]*$/);
+  const wide = USAGE.split('\n').filter((l) => l.length > 116);
+  assert.deepEqual(wide, [], `${wide.length} lines wider than 116 columns`);
 });
 
 // O1 (S379, the 0.1.0 claims run): what was refused before the screen opened was written to the terminal as it was given:

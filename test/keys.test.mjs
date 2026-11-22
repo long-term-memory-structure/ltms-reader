@@ -263,6 +263,22 @@ test('R.F11: the keys screen says so: q quits, any other key goes back', async (
   } finally { app.dispose(); source.dispose(); r.dispose(); }
 });
 
+// The claims run on 0.1.1 (S384, RM-42): the keys screen said "nothing it shows is written to stdout", where every frame
+// is written to stdout, the terminal it is shown on (measured there: with stdout another terminal, the frames went to it)
+test('the keys screen says where a transcript\'s text goes: on the alternate screen of this terminal, its stdout, and nowhere else', async () => {
+  const r = makeRoot();
+  const source = new RootSource({ root: r.root });
+  const app = new App({ source, cols: 200, rows: 60, timeZone: 'UTC' });
+  const k = keyboard(app);
+  try {
+    app.start(); await app.idle();
+    await k.press('?');
+    const said = frameOf(app).join(' ').replace(/\s+/g, ' ');
+    assert.ok(said.includes('It shows your transcripts\' text, to you, on the alternate screen of this terminal, its stdout, and writes it nowhere else: no file, no pipe, no log; a program that records this terminal records what it draws. It uses no network.'), said);
+    assert.ok(!said.includes('written to stdout'), said);
+  } finally { app.dispose(); source.dispose(); r.dispose(); }
+});
+
 // V2 (round 5): the keys screen gave each key's words max(1, cols - 16 - 4) columns beside a key column of 16, so that
 // at 20 columns, the narrowest the reader draws, its lines took 2 + 16 + 2 + 1 = 21 (round 4's check: 55 of 55 frames
 // at 20 columns, heights 5 to 59; the same at da5b8bb). Every size the reader draws, the keys screen within it.

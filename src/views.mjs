@@ -490,7 +490,7 @@ export function help(state, cols, rows) {
   const body = [
     ...KEYS.flatMap(([k, what]) => paragraph(what, Math.max(1, cols - kw - 4)).map((l, i) => [seg(`  ${cell(i ? '' : k, kw)}`, i ? null : 'addr'), seg('  '), l])),
     [],
-    ...textBody('It shows your transcripts\' text, to you, on this terminal\'s alternate screen: nothing it shows is written to stdout, a pipe or a log. It writes no file and uses no network. Its lists are the lines ltms index and ltms search print; a session\'s turns and calls are those ltms skeleton prints.', cols),
+    ...textBody('It shows your transcripts\' text, to you, on the alternate screen of this terminal, its stdout, and writes it nowhere else: no file, no pipe, no log; a program that records this terminal records what it draws. It uses no network. Its lists are the lines ltms index and ltms search print; a session\'s turns and calls are those ltms skeleton prints.', cols),
   ];
   return frame({ ...state, input: null, note: null }, cols, rows, { title: 'ltms-reader  Keys', sub: 'q quits; any other key goes back', body, detail: '', hint: 'q or Ctrl-C quits  any other key goes back' });
 }

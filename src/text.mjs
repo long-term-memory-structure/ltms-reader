@@ -21,10 +21,12 @@
 // Right to left (R1, decided by the measurement of S377 on three terminals; Y1, round 6, by that of S378 on four): there
 // are two modes (displayOrder, below): "reader", the default in every terminal, in which the reader lays the text out
 // itself, by the Unicode Bidirectional Algorithm (src/bidi.mjs), and writes it in visual order (src/screen.mjs writes a
-// row of it that holds right-to-left text inside a left-to-right override, so that a terminal that lays text out itself,
-// as Konsole does, keeps that order); and "terminal", LTMS_READER_BIDI's choice, in which the text is written as stored,
-// with a right-to-left mark (RLM) at the end of each right-to-left paragraph, which on Konsole puts the paragraph's end
-// punctuation where it belongs. rtlModeOf reads the choice; no terminal is detected. A paragraph here is a
+// row of it that holds right-to-left text inside a left-to-right override, so that a terminal that lays text out itself
+// with a left-to-right base for each line, as Konsole does at its default settings, keeps that order); and "terminal",
+// LTMS_READER_BIDI's choice, in which the text is written as stored, with a right-to-left mark (RLM) at the end of each
+// line of a right-to-left paragraph, which on Konsole puts the paragraph's end punctuation where it belongs after
+// right-to-left text or a number (after a left-to-right word or a path it does not: a model of Konsole, not measured).
+// rtlModeOf reads the choice; no terminal is detected. A paragraph here is a
 // segment of a row (a list's cell, the reader's own words before it, a line cut to the row's width), or a text a view
 // wraps into lines (a record's text line, a message, an error, the reader's own words), each line of which names it: its
 // levels are resolved once, and each line is reordered from them, whole (W1, round 4; V7, round 5; UAX #9 section 3.4:
