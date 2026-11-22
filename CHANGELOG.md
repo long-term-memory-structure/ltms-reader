@@ -17,19 +17,84 @@
   and keys: the two outputs differ only by the marks, each right before an LRO. Konsole 26.08.3 (its default bidi
   settings) drew the first letter at column 0, where 0.1.0's was at the row's right end, and so it did on 2026-11-22
   with tmux 3.6 inside it (tmux's status line off: the same pixels as without tmux); Alacritty 0.17.0 drew the same
-  pixels for both; tmux 3.6, and the xterm.js of VS Code 1.146.0 and 1.147.0 (run in a headless browser, not in VS
-  Code), hold the mark in the first letter's cell; in all four the mark took no column. The first letters measured were
-  two Hebrew letters without points, a vav and a final nun: a pointed first cluster or an Arabic one, and Konsole's
-  other bidi settings, were not measured on a terminal. Konsole's own library names the setting ("force LTR line
-  direction"; unchecked, a line takes its base from its first strong character), and with it unchecked the ICU that
-  Konsole lays lines out with, and GNU FriBidi, lay 0.1.1's row out as they do 0.1.0's, a first cluster that is right to
-  left at the line's other end (predicted, not run on Konsole).
-- What the docs said more than holds, as a check of each of 0.1.1's claims against its code and its measurements found
-  it (2026-11-21 and 22), is narrowed: in `--help`
-  (the first grapheme cluster, the left-to-right base, the xterm.js of VS Code's terminal, the RLM of mode `terminal`,
-  no line wider than 0.1.0's), the keys screen and the refusal (where a transcript's text goes), the README, and 0.1.0's
-  entry below (the terminals measured, the left-to-right base, a path as one unit, a paste, mode `terminal`'s RLM, the
-  docker skips, the README its first Known limit names).
+  pixels for both; tmux 3.6, and the xterm.js of VS Code 1.146.0 and 1.147.0 (run in a headless browser, not in VS Code;
+  with xterm.js's own Unicode 6 widths and with Unicode 11's), hold the mark in the first letter's cell; in all four the
+  mark took no column. The first letters measured were two Hebrew letters without points, a vav and a final nun: a
+  pointed first cluster or an Arabic one, and Konsole's other bidi settings, were not measured on a terminal. Konsole's
+  own library names the setting ("force LTR line direction"; unchecked, a line takes its base from its first strong
+  character), and with it unchecked the ICU that Konsole lays lines out with, and GNU FriBidi, lay 0.1.1's row out as
+  they do 0.1.0's, a first cluster that is right to left at the line's other end (predicted, not run on Konsole).
+- 0.1.0's entry below is narrowed where it said more than holds (found 2026-11-21 and 22): the terminals measured, the
+  left-to-right base, a path as one unit, a paste, mode `terminal`'s RLM, the docker skips, the README its first Known
+  limit names.
+- **Measured on terminals**, none of it a change of the code (each where it was run; none was run in VS Code's own
+  window, and no terminal but those named was run):
+  - On 2026-11-16, for 0.1.0, on Alacritty 0.17.0, Konsole 26.08.3, tmux 3.6 (in docker) and the xterm.js of VS Code
+    1.146.0 (6.1.0-beta.304, in headless Chromium, with its own Unicode 6 widths), the four 0.1.0's notes name: LRO,
+    PDF, LRM and RLM after a character took no column in any; at a line's first column an LRO was not applied by
+    Konsole, dropped by tmux and given a column of its own by xterm.js; Konsole applied an override from a line's second
+    column on; xterm.js gave an isolate a column anywhere; Alacritty and xterm.js drew text in the order it was written
+    (for xterm.js's DOM renderer, see below).
+  - xterm.js gives a zero-width control that follows an escape sequence a cell of its own, which moves what follows it
+    one column: the PDF, an LRM, an LRO, an isolate; right after a character an LRM, an LRO or a PDF takes none
+    (2026-11-22: xterm.js 6.1.0-beta.304, VS Code 1.146.0's, and beta.337, 1.147.0's, in headless Chromium 158, with
+    xterm.js's own Unicode 6 widths and with Unicode 11's; `@xterm/headless` 6.1.0-beta.335, 1.147.0's, in Node). The
+    reader writes its LRM and LRO right after a character, inside the style of a first cluster that ends a styled
+    segment (Y1 pins it now); its PDF follows the ESC [0m of a row whose last segment is styled, and takes a cell after
+    the row's text, so that no text moves, or, on the selected row, as wide as the screen, is written past the last
+    column. tmux 3.6 (in docker) gave none of the three a column after an escape sequence; Konsole and Alacritty were
+    not run so.
+  - An isolate (LRI, RLI, FSI, PDI), which the reader does not write, takes no column after a character with Unicode
+    11's widths, VS Code's default (`terminal.integrated.unicodeVersion`, read in 1.147.0's code), and one at a row's
+    first column or after an escape sequence; with xterm.js's own Unicode 6 widths, one anywhere, as on 2026-11-16
+    (2026-11-22, the same builds).
+  - xterm.js's DOM renderer puts a run of cells of one style whose glyphs need the same spacing into one span, which the
+    browser lays out itself, by UAX #9, a span a paragraph (read in its code, beta.304 and beta.337); its WebGL renderer
+    draws each cell where it was written. VS Code 1.147.0 loads the WebGL renderer at its default
+    (`terminal.integrated.gpuAcceleration` "auto"), and the DOM renderer with it "off" or where WebGL fails to load
+    (read in its code). Measured on 2026-11-22 in headless Chromium 158, beta.304 and beta.337 alike, on the record rows
+    of the 2026-11-21 measurement (the prompt above and its twin, 0.1.0's bytes and 0.1.1's), in the DOM renderer: with
+    the font `monospace` (its Hebrew from a proportional font), a span for each letter, both versions in order; with
+    Liberation Mono or Courier New (the Hebrew in the same font), one span for the row: 0.1.0 drew 14 of 14 and 12 of 12
+    letters elsewhere, its first letter at the row's other end, and 0.1.1 drew both rows in order; with Noto Sans Mono
+    and the Hebrew from Courier New, a span for each word: 0.1.0 drew 14 of 14 and 12 of 12 elsewhere, 0.1.1 8 of 14 and
+    8 of 12, its words after the first reversed in place (a Known limit below). The WebGL renderer (beta.304) drew both
+    versions' rows alike, each letter in the cell it was written to, with all four.
+  - tmux 3.6 keeps a mark in the cell of the character before it, and redraws that cell to the terminal outside it: the
+    record row, 0.1.0's and 0.1.1's, through tmux into xterm.js beta.337 came out cell for cell as without tmux, live
+    and replayed, with Unicode 6's widths and 11's (2026-11-21, headless Chromium); with Konsole 26.08.3 outside, the
+    same pixels as without tmux (above).
+  - At the screen's edge, wrapping off (`@xterm/headless` 6.1.0-beta.335 in Node, Unicode 6 and 11, the reader's own
+    bytes at 20 x 7, 2026-11-22): a cluster drawn wider than the reader counts it (an Indic conjunct, a family of emoji
+    joined by ZWJ) moves the rest of its row right, and a row that then reaches past the edge stops there, each
+    character past it written over the last column, which holds the last one written; so too the line that says what is
+    being read, wider than a narrow screen; the row after it is whole (as a control, without ESC [?7l the rows wrap and
+    the screen scrolls). On the other terminals: reasoned, not measured.
+  - On leaving, nothing of the reader stays on the screen: a run's `script` log replayed into the same `@xterm/headless`
+    showed its text on the alternate screen before the leave sequence and none on the normal screen after it
+    (2026-11-22). Its frames go to the terminal that is its stdout, and a program that records that terminal records
+    them: under util-linux `script` its log held them (2026-11-22, Node 24.18.0), and so did tmux's `pipe-pane`
+    (2026-11-21); with stdout another terminal, the terminal of the keys got none of them.
+  - A paste, in 0.1.1's code (2026-11-22, the keys through readline's decoding into the reader on Node 26.13.1, 24.18.0,
+    22.23.3 and 20.20.2, and end to end in a pseudo-terminal on Node 26.13.1): a Ctrl-C in it quits (130), in a line
+    being typed and outside one, but not right after an ESC, which is read with it as one key (in a line: the rest of
+    the paste was typed); an ESC [201~ in it ends the paste there, what follows it acting as keys; a CR LF pasted into a
+    line becomes two spaces, the line not run. What reaches the reader is the terminal's to say, by their sources (read,
+    not run): Alacritty 0.17.0 takes ESC and Ctrl-C out of a bracketed paste; Konsole 26.08.3 asks before it pastes a
+    control character, Ctrl-C among them (its first button pastes without them), and takes ESC out of a bracketed
+    paste; the xterm.js of VS Code 1.147.0 (6.1.0-beta.337) writes ESC as U+241B (␛) and passes Ctrl-C.
+  - Modelled, not run on such a terminal (xterm.js beta.304 with one of the three given a column, 2026-11-22): a
+    terminal that gives an LRM or an LRO a column shifts the row by it from its second cluster on; one that gives a PDF
+    a column shifts nothing, the column falling after the row's end, and on a row as wide as the screen in the place of
+    its last character. And mode `terminal` on Konsole: after a Hebrew letter, the RLM at a right-to-left line's end
+    puts the paragraph's end punctuation where it belongs, its brackets not mirrored (measured on 2026-11-16); after a
+    left-to-right word or a path it would not, by a model of Konsole's layout (ICU 78, which it links, with a
+    left-to-right base, and GNU FriBidi `--ltr`) that gives 10 of 10 lines measured on Konsole as they were drawn
+    (2026-11-22).
+- What `--help`, the keys screen and the refusal said more than holds, as a check of each of 0.1.1's claims against its
+  code and its measurements found it (2026-11-21 and 22), is narrowed, and so is the README: `--help` says the first
+  grapheme cluster, the left-to-right base, the xterm.js of VS Code's terminal and the RLM of mode `terminal`, in no
+  line wider than 0.1.0's; the keys screen and the refusal say where a transcript's text goes.
 - Tests: 435 → 443 (Node 26.13.1: 443 passing; Node 24.18.0, on a second machine: 443 passing; Node 24.22.3, 22.23.3 and
   20.20.2 in docker: 435 passing, 0 failing, 8 skipped, as their images have no GNU FriBidi, no python3, which the five
   tests of FriBidi's library run, and no Electron). The new ones: the FriBidi test above; a transcript's own LRM in rows
@@ -39,6 +104,18 @@
   passed); Y1's walk of the Hebrew fixture's views, a test of its own, each row's text against displayOrder's;
   `--help`'s widths; the keys screen's sentence on where the text goes. Y1, Z3 and Z4 take the LRM, LRO and PDF they
   expect from the tests' own constants, not from the module under test (Z4 passed with an RLM where the LRM goes).
+
+### Known limits
+
+- In xterm.js's DOM renderer (in VS Code 1.147.0's terminal, where WebGL fails to load or with
+  `terminal.integrated.gpuAcceleration` "off"), with the Hebrew drawn from a second monospace font, a row's
+  right-to-left words after its first come out reversed in place: the renderer puts each word into a span of its own,
+  the browser lays each span out by itself, and the override, in the first span, reaches none of the others. Measured on
+  2026-11-22 in headless Chromium 158 with xterm.js 6.1.0-beta.304 and beta.337 (VS Code 1.146.0's and 1.147.0's), the
+  font Noto Sans Mono with the Hebrew from Courier New: 0.1.1's record row of `שלום עולם ומלואו` drew 8 of its 14
+  letters elsewhere, and its twin 8 of 12 (0.1.0's rows: 14 of 14 and 12 of 12). With one monospace font for both
+  scripts, or the Hebrew from a proportional font, and in the WebGL renderer, 0.1.1's rows were drawn in order. Not run
+  in VS Code's own window.
 
 0.1.0's other Known limits (below) still hold; in the one of a letter followed by WJ and a mark, 0.1.1 writes U+05DD,
 U+200E, U+202D, U+2060, U+05B7, the rest, U+202C.
