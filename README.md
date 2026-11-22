@@ -185,8 +185,9 @@ out and asks before it pastes a control character, Ctrl-C among them, and the xt
   it reading right (UAX #9's higher-level protocol HL4), in pieces where a line breaks inside it, as an isolate is; one
   right after Markdown's opening backtick or `**`, or right after a colon or a comma, is not (in a right-to-left line,
   `/home/user/x.txt` in backticks reads `home/user/x.txt/`), and one that follows a space inside backticks or bold is
-  one, the closing backtick or `**` with it, which a right-to-left line lays out on the path's right (a known limit); a
-  path with a space in it is laid out as two, in a right-to-left line in the other order. Each cluster is kept whole,
+  one, the closing backtick or `**` with it when it follows the path directly, which a right-to-left line lays out on
+  the path's right (a known limit); a path with a space in it is laid out as two, in a right-to-left line in the other
+  order. Each cluster is kept whole,
   its marks after its letter, as a terminal draws
   them, and so is a mark after characters UAX #9 removes (a soft hyphen, ZWSP, WJ: clusters of their own), with the
   letter before them; the text is aligned left, so the columns stay. Checked against Unicode's conformance test

@@ -33,8 +33,9 @@
     base (Konsole, at its default settings) does, but for a first cluster that is right to left, its first Known limit
     (Konsole, above).
   - A path: "a path or a URL laid out as one left-to-right unit"; one that begins a line or follows a space, an opening
-    bracket or quote, `=` or a hyphen, up to the next space; not in backticks or bold, nor right after a colon or a
-    comma; a path with a space is two (read in `pathUnits`, and run on it, 2026-11-22).
+    bracket or quote, `=` or a hyphen, up to the next space; not right after Markdown's opening backtick or `**`, nor
+    right after a colon or a comma (one that follows a space inside backticks or bold is one: a Known limit below); a
+    path with a space is two (read in `pathUnits`, and run on it, 2026-11-22).
   - A paste: "text, never keys, but for a Ctrl-C character in it, which quits"; not right after an ESC, read with it as
     one key, and what follows an ESC [201~ in it acts as keys (2026-11-22, below).
   - Mode `terminal`: "an RLM at the end of each right-to-left paragraph"; at the end of each line of a right-to-left
@@ -146,12 +147,12 @@
   scripts, or the Hebrew from a proportional font, and in the WebGL renderer, 0.1.1's rows were drawn in order. Not run
   in VS Code's own window.
 - A path or a URL in Markdown's backticks or bold is no unit only where it comes right after the opening backtick or
-  `**` (the corrections to 0.1.0's notes, above, say "not in backticks or bold"): one that follows a space inside them
-  is one, up to the next space, the closing marker with it, so that in a right-to-left line that marker is laid out with
-  the path, on its right (`ראה **קובץ /home/x** שם` is laid out, from the left: `שם`, then `/home/x**`, then `קובץ`,
-  then `**`, then `ראה`). Right after the opening marker the path is laid out as UAX #9 has it, its first slash at its
-  right end: in a right-to-left line, `/home/user/x.txt` in backticks reads `home/user/x.txt/`. Read in `pathUnits`, and
-  run on it and on the reader's layout at this release's code (Node 24.18.0, 2026-11-22).
+  `**`: one that follows a space inside them is one, up to the next space, the closing marker with it when the marker
+  follows the path directly, so that in a right-to-left line that marker is laid out with the path, on its right
+  (`ראה **קובץ /home/x** שם` is laid out, from the left: `שם`, then `/home/x**`, then `קובץ`, then `**`, then `ראה`).
+  Right after the opening marker the path is laid out as UAX #9 has it, its first slash at its right end: in a
+  right-to-left line, `/home/user/x.txt` in backticks reads `home/user/x.txt/`. Read in `pathUnits`, and run on it and
+  on the reader's layout at this release's code (Node 24.18.0, 2026-11-22).
 
 Of 0.1.0's Known limits (below), the first, a first cluster that is right to left moved to the line's other end by a
 terminal that lays each line out with a left-to-right base, no longer holds at Konsole's default bidi settings, where it
