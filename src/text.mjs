@@ -388,9 +388,10 @@ export const RTL_MODES = Object.freeze(['reader', 'terminal']);
 
 /**
  * The right-to-left mode: LTMS_READER_BIDI when it is set ("terminal" or "reader"); else "reader", in every terminal
- * (Y1, round 6: one layout for every terminal, decided S378 on a measurement of Alacritty 0.17.0, Konsole 26.08.3, tmux
- * 3.6 and the xterm.js of VS Code 1.146.0's terminal, run in a headless browser, which 1.147.0's has matched since;
- * round 3 gave Konsole, detected by KONSOLE_VERSION, "terminal", which a reader run over ssh from Konsole did not see).
+ * (Y1, round 6: one layout for every terminal, chosen on a measurement on 2026-11-16 of Alacritty 0.17.0, Konsole
+ * 26.08.3, tmux 3.6 and the xterm.js of VS Code 1.146.0's terminal, run in a headless browser, which 1.147.0's has
+ * matched since; round 3 gave Konsole, detected by KONSOLE_VERSION, "terminal", which a reader run over ssh from
+ * Konsole did not see).
  * Returns { mode, by } or { refused: why }.
  */
 export function rtlModeOf(env) {
