@@ -110,15 +110,21 @@
   code and its measurements found it (2026-11-21 and 22), is narrowed, and so is the README: `--help` says the first
   grapheme cluster, the left-to-right base, the xterm.js of VS Code's terminal and the RLM of mode `terminal`, in no
   line wider than 0.1.0's; the keys screen and the refusal say where a transcript's text goes.
-- Tests: 435 → 443 (Node 26.13.1: 443 passing; Node 24.18.0, on a second machine: 443 passing; Node 24.22.3, 22.23.3 and
-  20.20.2 in docker: 435 passing, 0 failing, 8 skipped, as their images have no GNU FriBidi, no python3, which the five
-  tests of FriBidi's library run, and no Electron). The new ones: the FriBidi test above; a transcript's own LRM in rows
-  the reader lays out, in a frame's bytes and end to end in a pseudo-terminal, and the tests' own readers of a row
-  (withoutOverride, said(), legible()) on known answers (a check of 0.1.1's claims found no test holding such a row, so
-  that the tests could find the reader's LRM by its character, and the reader could drop a transcript's, and every test
-  passed); Y1's walk of the Hebrew fixture's views, a test of its own, each row's text against displayOrder's;
-  `--help`'s widths; the keys screen's sentence on where the text goes. Y1, Z3 and Z4 take the LRM, LRO and PDF they
-  expect from the tests' own constants, not from the module under test (Z4 passed with an RLM where the LRM goes).
+- Tests: 435 → 444 (Node 26.13.1: 444 passing; Node 24.18.0, on a second machine: 444 passing; Node 24.22.3, 22.23.3 and
+  20.20.2 in docker: 436 passing, 0 failing, 8 skipped, as their images have no GNU FriBidi, no python3, which the five
+  tests of FriBidi's library run, and no Electron; each line the same under `NODE_OPTIONS=--max-old-space-size=100` and
+  `=500`). The new ones: the FriBidi test above; a transcript's own LRM in rows the reader lays out, in a frame's bytes
+  and end to end in a pseudo-terminal, and the tests' own readers of a row (withoutOverride, said(), legible()) on known
+  answers (a check of 0.1.1's claims found no test holding such a row, so that the tests could find the reader's LRM by
+  its character, and the reader could drop a transcript's, and every test passed); Y1's walk of the Hebrew fixture's
+  views, and of a transcript whose lines begin with a letter and its mark, a test of its own, each row's text against
+  displayOrder's; `--help`'s widths; the keys screen's sentence on where the text goes; a step of the pseudo-terminal's
+  tests whose text comes only in a wrong form fails once the terminal has been quiet for 500 ms, no longer after its
+  wait. Y1, Z3 and Z4 take the LRM, LRO and PDF they expect from the tests' own constants, not from the module under
+  test (Z4 passed with an RLM where the LRM goes); Y1 pins where the LRM and LRO go when the first cluster that takes a
+  column ends a styled segment (inside its style), and withoutOverride checks that they sit where a grapheme cluster of
+  the row's text ends (a mutant that put them after the escape sequences passed every test; one that split the first
+  cluster failed only Y1's own rows).
 
 ### Known limits
 
