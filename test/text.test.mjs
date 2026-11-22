@@ -722,38 +722,55 @@ test('Y1: in "reader" mode a row that holds right-to-left text is written with L
 // with the override as without it, the override where it belongs (withoutOverride), and its text the one displayOrder
 // lays out, made visible as the screen writes it (the claims run on 0.1.1, RV-3: by withoutOverride alone, which cannot
 // tell a stray LRM of the reader's from a transcript's, this walk passed an LRM written in "terminal" and one on rows
-// without right-to-left text, on 46 and 104 of its rows).
-test('Y1: every row of every view of the Hebrew fixture at 80 x 24 and 200 x 60, in both modes: the override where it belongs, the row as wide as without it, and its text the one displayOrder lays out', async () => {
+// without right-to-left text, on 46 and 104 of its rows). And so for a transcript of one prompt whose record lines
+// begin, as laid out, with a cluster of a letter and its mark: no row of the Hebrew fixture's views begins with a
+// cluster of more than one code point, and the repairs' re-check's P1 (the LRM and LRO after the first cluster's first
+// code point) passed this walk.
+test('Y1: every row of every view of the Hebrew fixture, and of a transcript whose lines begin with a letter and its mark, at 80 x 24 and 200 x 60, in both modes: the override where it belongs, the row as wide as without it, and its text the one displayOrder lays out', async () => {
   const { frameBytes } = await import('../src/screen.mjs');
   // the text frameBytes writes of a line, its escape sequences and the reader's three taken out: displayOrder's segments,
   // made visible, a new line and a tab in them as \n and \t
   const textOf = (line, rtl) => visible(displayOrder(line, rtl).map((s) => s.text).join('')).replace(/\n/g, '\\n').replace(/\t/g, '\\t');
   const { App } = await import('../src/app.mjs');
   const { FileSource } = await import('../src/sources.mjs');
-  const { KEY, keyboard, OWN } = await import('./helpers.mjs');
-  let rows = 0, overridden = 0;
-  for (const [cols, height] of [[80, 24], [200, 60]]) {
-    const app = new App({ source: new FileSource({ file: path.join(OWN, 'hebrew-english.jsonl') }), cols, rows: height, timeZone: 'UTC' });
-    const k = keyboard(app);
-    try {
-      app.start(); await app.idle();
-      const check = () => {
-        const lines = app.lines();
-        for (const rtl of ['reader', 'terminal']) {
-          frameBytes(lines, { cols, rows: height, colour: true, rtl }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).forEach((row, i) => {
-            const plain = row.replace(/\x1b\[[0-9;]*m/g, ''), bare = withoutOverride(plain, rtl);
-            assert.equal(bare, textOf(lines[i] ?? [], rtl), `${rtl}, row ${i + 1}: ${legible(plain)}`);
-            assert.equal(width(plain), width(bare), legible(plain));
-            assert.ok(width(plain) <= cols, `${width(plain)} columns: ${legible(plain)}`);
-            rows++; if (bare !== plain) overridden++;
-          });
-        }
-      };
-      for (const step of [KEY.enter, KEY.enter, KEY.down, KEY.enter, KEY.escape, KEY.escape, KEY.end, KEY.enter, 'j']) { check(); await k.press(step); }
-      check();
-    } finally { app.dispose(); }
-  }
+  const { KEY, keyboard, OWN, takesNoColumn } = await import('./helpers.mjs');
+  const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  // the transcript: one prompt of two lines, 'e', U+0301, a space and a Hebrew word (left to right: the cluster first);
+  // a Hebrew word, a space, lamed and sheva, a final kaf and qamats (right to left: the kaf's cluster drawn first)
+  const own = mkdtempSync(path.join(tmpdir(), 'ltms-reader-walk-')), marked = path.join(own, 'markmark-0000-4000-8000-000000000000.jsonl');
+  const base = { isSidechain: false, userType: 'external', cwd: '/work/m', sessionId: 'markmark-0000-4000-8000-000000000000', version: '2.0.0', gitBranch: 'main', entrypoint: 'cli' };
+  const prompt = 'e\u0301 \u05e9\u05dc\u05d5\u05dd\n\u05e9\u05dc\u05d5\u05dd \u05dc\u05b0\u05da\u05b8';
+  writeFileSync(marked, `${JSON.stringify({ ...base, parentUuid: null, type: 'user', message: { role: 'user', content: prompt }, uuid: 'mm000000-0000-4000-8000-000000000001', timestamp: '2026-03-01T10:00:00.000Z', promptSource: 'typed' })}\n`);
+  const firstCluster = (s) => [...SEG.segment(s)].map((x) => x.segment).find((c) => !takesNoColumn(c)) ?? '';
+  let rows = 0, overridden = 0, longFirst = 0;
+  try {
+    for (const [file, steps] of [[path.join(OWN, 'hebrew-english.jsonl'), [KEY.enter, KEY.enter, KEY.down, KEY.enter, KEY.escape, KEY.escape, KEY.end, KEY.enter, 'j']], [marked, [KEY.enter, KEY.enter, 'j']]]) {
+      for (const [cols, height] of [[80, 24], [200, 60]]) {
+        const app = new App({ source: new FileSource({ file }), cols, rows: height, timeZone: 'UTC' });
+        const k = keyboard(app);
+        try {
+          app.start(); await app.idle();
+          const check = () => {
+            const lines = app.lines();
+            for (const rtl of ['reader', 'terminal']) {
+              frameBytes(lines, { cols, rows: height, colour: true, rtl }).split(/\x1b\[\d+;1H\x1b\[2K/).slice(1).forEach((row, i) => {
+                const plain = row.replace(/\x1b\[[0-9;]*m/g, ''), bare = withoutOverride(plain, rtl);
+                assert.equal(bare, textOf(lines[i] ?? [], rtl), `${rtl}, row ${i + 1}: ${legible(plain)}`);
+                assert.equal(width(plain), width(bare), legible(plain));
+                assert.ok(width(plain) <= cols, `${width(plain)} columns: ${legible(plain)}`);
+                rows++; if (bare !== plain) { overridden++; if ([...firstCluster(bare)].length > 1) longFirst++; }
+              });
+            }
+          };
+          for (const step of steps) { check(); await k.press(step); }
+          check();
+        } finally { app.dispose(); }
+      }
+    }
+  } finally { rmSync(own, { recursive: true, force: true }); }
   assert.ok(overridden >= 20 && overridden < rows, `${overridden} of ${rows} rows written with the override`);
+  assert.ok(longFirst > 0, `${longFirst} of ${overridden} rows with the override begin with a cluster of more than one code point`);
 });
 
 // Z3 (round 7): a row whose first grapheme cluster takes no column put the LRO in the row's first column, where the
@@ -870,7 +887,8 @@ test('0.1.1: withoutOverride, the tests\' reading of a row: the reader\'s LRM by
   for (const [row, mode] of [[`C++ ${LRM}`, 'reader'], [LRM, 'reader'], [RLM, 'reader'], [`${SHALOM}${RLM}`, 'terminal'], [`C++ ${LRM}${SHALOM}`, 'terminal']]) assert.equal(withoutOverride(row, mode), row, legible(row));
   // refused: 0.1.0's bytes (no LRM); the LRM after the LRO; the LRM before the first cluster; two; an RLM where it goes;
   // no PDF; the PDF not last; the override at the row's first column; an override on a row without right-to-left text,
-  // and in "terminal"
+  // and in "terminal"; the LRM and LRO between a letter and its mark, inside the first cluster (the repairs' re-check,
+  // its P1: the segmenter, given the row with the LRM in it, read the letter alone as the first cluster)
   const refused = [
     [`\u05dd${LRO}\u05d5\u05dc\u05e9${PDF}`, 'reader'],
     [`\u05dd${LRO}${LRM}\u05d5\u05dc\u05e9${PDF}`, 'reader'],
@@ -882,6 +900,8 @@ test('0.1.1: withoutOverride, the tests\' reading of a row: the reader\'s LRM by
     [`${LRM}${LRO}${MOLASH}${PDF}`, 'reader'],
     [`a${LRM}${LRO}bc${PDF}`, 'reader'],
     [`\u05dd${LRM}${LRO}\u05d5${PDF}`, 'terminal'],
+    [`e${LRM}${LRO}\u0301 ${MOLASH}${PDF}`, 'reader'],
+    [`\u05d0${LRM}${LRO}\u05b8 ${MOLASH}${PDF}`, 'reader'],
   ];
   for (const [row, mode] of refused) assert.throws(() => withoutOverride(row, mode), (e) => e instanceof assert.AssertionError && e.message.includes(legible(row)), `${mode}: ${legible(row)}`);
   // legible: what a terminal does not show, by its code point; JSON's own escapes as JSON writes them

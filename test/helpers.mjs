@@ -194,7 +194,10 @@ export const legible = (s) => (JSON.stringify(s) ?? String(s)).replace(/[\p{Cc}\
  * after the first such cluster (never in the row's first column: Z3) and PDF as its last character, and no other LRO or
  * PDF; a row that holds right-to-left text but no cluster that takes a column, any other row, and every row in
  * "terminal" mode, have no LRO and no PDF. Any other LRM is a transcript's own, written as it is, and is kept in its
- * place in what this returns: the reader's LRM is found by its place, never by its character. So on a row without the
+ * place in what this returns: the reader's LRM is found by its place, never by its character; and where the LRM and LRO
+ * are is where a grapheme cluster of the row's text ends, the three taken out (Intl.Segmenter: the repairs' re-check,
+ * its P1, the two written between a letter and its mark, passed, as the segmenter then read the letter alone as the
+ * row's first cluster). So on a row without the
  * override this cannot tell a stray LRM of the reader's from a transcript's (the claims run on 0.1.1, RV-3: this said
  * such a row has "none of the three"); a test that compares the row's text with displayOrder's tells them apart. Throws
  * an AssertionError otherwise, the row in its message as legible() writes it.
@@ -206,5 +209,7 @@ export function withoutOverride(row, mode = 'reader') {
   if (!rtl || k < 0) { assert.equal(row, bare, `${mode}: a row without the override: ${legible(row)}`); return row; }
   const first = cs.slice(0, k + 1).join(''), rest = bare.slice(first.length + LRM.length);
   assert.equal(row, `${first}${LRM}${LRO}${rest}${PDF}`, `a row that holds right-to-left text, LRM and LRO after its first cluster that takes a column and PDF last: ${legible(row)}`);
-  return `${first}${rest}`;
+  const text = `${first}${rest}`;
+  assert.ok([...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].some((x) => x.index + x.segment.length === first.length), `the LRM and LRO inside a grapheme cluster of the row's text: ${legible(row)}`);
+  return text;
 }
