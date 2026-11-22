@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1 (not yet released)
+## 0.1.1 (2026-11-22)
 
 - **Right to left on Konsole.** A line laid out by the reader that holds right-to-left text is now written with a
   left-to-right mark (U+200E, LRM) between its first grapheme cluster that takes a column and the LRO: that cluster,
