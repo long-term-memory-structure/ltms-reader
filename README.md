@@ -183,14 +183,14 @@ out and asks before it pastes a control character, Ctrl-C among them, and the xt
   (`/home/...`, `~/...`, `src/...`, `https://...`) that begins the line or follows a space, an opening bracket or quote,
   `=` or a hyphen is laid out as one left-to-right unit, up to the next space, its parts in order and a Hebrew name in
   it reading right (UAX #9's higher-level protocol HL4), in pieces where a line breaks inside it, as an isolate is; one
-  right after Markdown's opening backtick or `**`, or right after a colon or a comma, is not (in a right-to-left line,
-  `/home/user/x.txt` in backticks reads `home/user/x.txt/`), and one that follows a space inside backticks or bold is
-  one, the closing backtick or `**` with it when it follows the path directly, which a right-to-left line lays out on
-  the path's right (a known limit); a path with a space in it is laid out as two, in a right-to-left line in the other
-  order. Each cluster is kept whole,
-  its marks after its letter, as a terminal draws
-  them, and so is a mark after characters UAX #9 removes (a soft hyphen, ZWSP, WJ: clusters of their own), with the
-  letter before them; the text is aligned left, so the columns stay. Checked against Unicode's conformance test
+  right after Markdown's opening backtick, `**` or `*`, or right after a colon or a comma, is not (in a right-to-left
+  line, `/home/user/x.txt` in backticks reads `home/user/x.txt/`); one right after an opening `_` or `__` is one, the
+  markers in it; and one that follows a space inside any of these markers is one, the closing marker with it when it
+  follows the path directly, which a right-to-left line lays out on the path's right (a known limit); a path with a
+  space in it is laid out as two, in a right-to-left line in the other order. Each cluster is kept whole, its marks
+  after its letter, as a terminal draws them, and so is a mark after characters UAX #9 removes (a soft hyphen, ZWSP, WJ:
+  clusters of their own), with the letter before them; the text is aligned left, so the columns stay. Checked against
+  Unicode's conformance test
   (BidiCharacterTest.txt: every case without an explicit formatting character, which the reader shows as an escape and
   never applies) and against GNU FriBidi: its command for a line, its library for a paragraph wrapped into lines.
 - Colour follows [NO_COLOR](https://no-color.org): set, there is none; the selected row is still drawn in reverse.

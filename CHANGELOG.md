@@ -155,13 +155,16 @@
   letters elsewhere, and its twin 8 of 12 (0.1.0's rows: 14 of 14 and 12 of 12). With one monospace font for both
   scripts, or the Hebrew from a proportional font, and in the WebGL renderer, 0.1.1's rows were drawn in order. Not run
   in VS Code's own window.
-- A path or a URL in Markdown's backticks or bold is no unit only where it comes right after the opening backtick or
-  `**`: one that follows a space inside them is one, up to the next space, the closing marker with it when the marker
-  follows the path directly, so that in a right-to-left line that marker is laid out with the path, on its right
-  (`ראה **קובץ /home/x** שם` is laid out, from the left: `שם`, then `/home/x**`, then `קובץ`, then `**`, then `ראה`).
-  Right after the opening marker the path is laid out as UAX #9 has it, its first slash at its right end: in a
-  right-to-left line, `/home/user/x.txt` in backticks reads `home/user/x.txt/`. Read in `pathUnits`, and run on it and
-  on the reader's layout at this release's code (Node 24.18.0, 2026-11-22).
+- A path or a URL in Markdown's markers (backticks, bold, italics) is no unit only where it comes right after an opening
+  backtick, `**` or `*`: one right after an opening `_` or `__` is one, the markers in it (`_/home/x_`), laid out in a
+  right-to-left line as written; and one that follows a space inside any of them is one, up to the next space, the
+  closing marker with it when the marker follows the path directly (with a word between them, the path alone), so that
+  in a right-to-left line that marker is laid out with the path, on its right (`ראה **קובץ /home/x** שם` is laid out,
+  from the left: `שם`, then `/home/x**`, then `קובץ`, then `**`, then `ראה`; so with `*`, `_` and `__`). Right after an
+  opening backtick, `**` or `*` the path is laid out as UAX #9 has it, its first slash at its right end: in a
+  right-to-left line, `/home/user/x.txt` in backticks reads `home/user/x.txt/`, and so in `**` or `*`. Read in
+  `pathUnits`, and run on it and on the reader's layout at this release's code (Node 24.18.0, 2026-11-22: backticks and
+  bold, then italics too).
 - A transcript is read into memory whole, in the reader's own process: one over a tenth of Node's memory limit is
   refused with its size (rounded up) and that limit (rounded down), so that the two differ, and the
   `NODE_OPTIONS=--max-old-space-size=...` that would let it be read, and one over 480 MB at all, by JavaScript's limit
