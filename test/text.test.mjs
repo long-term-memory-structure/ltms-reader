@@ -431,6 +431,14 @@ test('R1 (HL4): a path or a URL is laid out as one left-to-right unit: its parts
     ['/tmp/f(1) "/srv/q"', ['/tmp/f(1)', '/srv/q']],
     ['\u05d5/\u05d0\u05d5, 50 / 50, a / b', []],
   ]) assert.deepEqual(pathUnits(text).map(([a, b]) => text.slice(a, b)), units, text);
+  // Markdown's backticks and bold, as the README says them: a path right after the opening marker is no unit; one that
+  // follows a space inside them is one, up to the next space, the closing marker with it, which in a right-to-left
+  // line is laid out on the path's right (a Known limit of 0.1.1; a re-check of 0.1.1 found the docs saying more)
+  for (const [text, units] of [
+    ['`/home/x` **/home/x**', []],
+    ['`see /home/x` **see /home/x**', ['/home/x`', '/home/x**']],
+  ]) assert.deepEqual(pathUnits(text).map(([a, b]) => text.slice(a, b)), units, text);
+  assert.equal(visualLine('\u05e8\u05d0\u05d4 **\u05e7\u05d5\u05d1\u05e5 /home/x** \u05e9\u05dd'), '\u05dd\u05e9 /home/x** \u05e5\u05d1\u05d5\u05e7** \u05d4\u05d0\u05e8');
   assert.equal(visualLine('\u05e8\u05d0\u05d4 src/\u05de\u05d5\u05d3\u05d5\u05dc.ts:12, \u05d5\u05e2\u05db\u05e9\u05d9\u05d5'), '\u05d5\u05d9\u05e9\u05db\u05e2\u05d5 ,src/\u05dc\u05d5\u05d3\u05d5\u05de.ts:12 \u05d4\u05d0\u05e8');
   // its direction: a path is passed over, as an isolate's content is (P2)
   assert.equal(directionOf('/home/user/x \u05d4\u05d9\u05d5\u05dd'), 1);
