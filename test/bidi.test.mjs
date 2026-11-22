@@ -27,7 +27,7 @@ import { BRACKETS, BRACKET_EQUIVALENTS, CLASSES, CLASS_RANGES, MIRRORS, SOURCE_S
 import { SOURCES, TEST_SOURCE, VERSION, readPinned } from '../scripts/bidi-table.mjs';
 import { directionOf, displayOrder, expandTabs, lineSpans, paragraphLine, pathUnits, visible, visualLine, width, wordSpans, wrap } from '../src/text.mjs';
 import { RecordLines } from '../src/views.mjs';
-import { FX, OWN, ROOT, afterHebrewLetter, withoutOverride } from './helpers.mjs';
+import { FX, OWN, ROOT, afterHebrewLetter, legible, withoutOverride } from './helpers.mjs';
 import * as reference from './uba-reference.mjs';
 
 const UCD = process.env.LTMS_READER_UCD || null;
@@ -828,18 +828,28 @@ test('Z5: the same paragraphs, each line as GNU FriBidi\'s library lays it out, 
 // own order. The characters are built from their code points (the controls are invisible in a source)
 const cps = (hex) => String.fromCodePoint(...hex.split(' ').map((h) => parseInt(h, 16)));
 const READER_CONTROLS = new RegExp(`[${cps('200E 202C 202D')}]`, 'gu');
-test('0.1.1: a row whose first cluster is right to left keeps it first on a terminal with a left-to-right base (GNU FriBidi --ltr, standing for Konsole)', { skip: hasFribidi ? false : `no ${FRIBIDI}` }, async () => {
+// FriBidi's command writes Arabic in its presentation forms (it has no switch to leave them), which NFKC takes back to
+// the letters; and, without --reordernsm, a mark before its letter (UAX #9's L3 is the renderer's), where the reader
+// keeps each cluster whole, as a terminal draws it (the claims run on 0.1.1, RV-9: so this test could take neither a
+// pointed first cluster nor an Arabic one, though their order was the reader's)
+const PRESENTATION_FORMS = new RegExp(`[${cps('FB50')}-${cps('FDFF')}${cps('FE70')}-${cps('FEFC')}]`, 'gu');
+const lettersOf = (s) => s.replace(PRESENTATION_FORMS, (c) => c.normalize('NFKC'));
+test('0.1.1: a row whose first cluster is right to left keeps it first on a terminal with a left-to-right base (GNU FriBidi --ltr, standing for Konsole), a pointed one and an Arabic one too', { skip: hasFribidi ? false : `no ${FRIBIDI}` }, async () => {
   const { frameBytes } = await import('../src/screen.mjs');
   const prompts = [
     cps('05E9 05DC 05D5 05DD 0020 05E2 05D5 05DC 05DD 0020 05D5 05DE 05DC 05D5 05D0 05D5'),   // the Known limit's own prompt
     cps('05E9 05DC 05D5 05DD 0020 05E2 05D5 05DC 05DD 0020 05D5 05D0 05D1 05DF'),             // its twin, a final nun last
     cps('05E9 05DC 05D5 05DD'),                                                                // one word
     cps('05D0 0020 0031 0032 0020 0061 0062 0063'),                                            // a row whose first cluster is left to right
+    cps('05E9 05DC 05D5 05B9'),                                                                // its first cluster pointed: vav and holam
+    cps('05E9 05B8 05C1 05DC 05D5 05B9 05DD 0020 05E9 05B8 05C1'),                             // shin, qamats and shin dot
+    cps('0645 0631 062D 0628 0627'),                                                           // Arabic: its first cluster an alef
+    cps('0645 0631 062D 0628 064E'),                                                           // Arabic: beh and fatha
   ];
   for (const p of prompts) {
     const out = frameBytes([[{ text: p, style: null }]], { cols: 80, rows: 1, colour: false }), row = out.slice(out.indexOf('2K') + 2);
-    const theirs = spawnSync(FRIBIDI, ['--ltr', '--nopad', '--nobreak'], { input: `${row}\n`, encoding: 'utf8' }).stdout.split('\n')[0];
-    assert.equal(theirs.replace(READER_CONTROLS, ''), row.replace(READER_CONTROLS, ''), `a left-to-right base keeps the reader's order: ${JSON.stringify(row)}`);
+    const theirs = spawnSync(FRIBIDI, ['--ltr', '--nopad', '--nobreak', '--reordernsm'], { input: `${row}\n`, encoding: 'utf8' }).stdout.split('\n')[0];
+    assert.equal(lettersOf(theirs).replace(READER_CONTROLS, ''), row.replace(READER_CONTROLS, ''), `a left-to-right base keeps the reader's order: ${legible(row)}`);
     withoutOverride(row);                                                                      // and the row's shape (helpers.mjs)
   }
 });
